@@ -1,0 +1,65 @@
+#!/usr/bin/python
+######################################################################
+#  Send a view request to the wiv server.
+#
+#  Dov Grobgeld <dov.grobgeld@gmail.com>
+#  2020-03-03 Tue
+######################################################################
+
+import urllib.request,sys,shutil,os,json,pathlib
+
+def die(msg):
+  sys.stderr.write(msg+'\n')
+  exit(-1)
+
+def warn(msg):
+  sys.stderr.write(msg+'\n')
+
+config_file = os.environ['HOME'] + '/.config/wiv.conf'
+
+# configuration defaults
+image_dir = '/tmp/wiv-images/'
+port = 8042
+
+# Overrides from config_file
+if os.path.exists(config_file):
+    with open(config_file) as fh:
+        try:
+            config = json.load(fh)
+        except JSONDecodeError as e:
+            die(str(e))
+
+    # Override from config file
+    image_dir = config.get('image_dir',image_dir)
+    port = config.get('port',port)
+  
+if not os.path.exists(image_dir):
+    try:
+        pathlib.Path(image_dir).mkdir(parents=True)
+    except Exception as e:
+        die(str(e))
+
+argp=1
+if argp>= len(sys.argv):
+  die('wiv needs a filename!')
+
+image_path = sys.argv[argp]
+image_name = os.path.basename(image_path)
+
+# Either copy or convert the image to png
+if (image_name.endswith('.png')
+    or image_name.endswith('.svg')
+    or image_name.endswith('.jpg')):
+    shutil.copy(image_path, os.path.join(image_dir, image_name))
+else:
+    basename,ext=os.path.splitext(image_name)
+    image_name = basename + '.png'
+    output_image_path = os.path.join(image_dir, image_name)
+    try:
+        os.system(f'convert "{image_path}" "{output_image_path}"')
+    except Exception as e:
+        die(str(e)) 
+
+# Send image request change to server
+urllib.request.urlopen(f'http://localhost:{port}/props?image='+image_name).read()
+

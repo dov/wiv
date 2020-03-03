@@ -1,0 +1,184 @@
+#!/usr/bin/python
+######################################################################
+#  An web based image viewer in python, asyncio,
+#  websockets, and some web technology.
+#
+#  Change image by running:
+#    wiv /path/image.png
+#
+#  Dov Grobgeld <dov.grobgeld@gmail.com>
+#  2020-03-03 Tue
+#######################################################################
+
+import asyncio
+from aiohttp import web
+import json,os,pathlib,sys
+
+def die(msg):
+  sys.stderr.write(msg+'\n')
+  exit(-1)
+
+def warn(msg):
+  sys.stderr.write(msg+'\n')
+
+# configuration defaults
+image_dir = '/tmp/wiv-images/'
+port = 8042
+
+# Override from config file
+config_file = os.environ['HOME'] + '/.config/wiv.conf'
+
+# Overrides from config_file
+if os.path.exists(config_file):
+    with open(config_file) as fh:
+        try:
+            config = json.load(fh)
+        except JSONDecodeError as e:
+            die(str(e))
+
+    # Override from config file
+    image_dir = config.get('image_dir',image_dir)
+    port = config.get('port',port)
+  
+if not os.path.exists(image_dir):
+    pathlib.Path(image_dir).mkdir(parents=True)
+
+last_image = None
+queue = None
+
+async def websocket_handler(request):
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+    await ws.send_str(json.dumps({'image': last_image}))
+    while True:
+      image = await queue.get()
+      print('Got image',image)
+      for i in range(5):
+          await ws.send_str(json.dumps({'image': image}))
+          await asyncio.sleep(0.1) # Send five times just in case
+      i+=1
+    await ws.send_str('Done!')
+    await ws.close()
+    print('websocket connection closed')
+    return ws
+
+async def handle(request):
+    name = request.match_info.get('name',None)
+    if name is not None:
+        extension = os.path.splitext(name)[1][1:]
+        # raw images
+        if extension in ['jpg','png','svg']:
+            last_name = name
+            try:
+                image_path = os.path.join(image_dir, name)
+                with open(image_path,'rb') as fh:
+                    content = fh.read()
+            except:
+                # Set content empty. This will appear as a broken image
+                content = ''
+              
+            return web.Response(body=content,
+                                content_type='image/'+extension,
+                                # Make sure the images are never cached!
+                                headers = {
+                                  'Cache-Control':'no-cache, no-store, must-revalidate',
+                                  'Pragma':'no-cache',
+                                  'Expires':'0'
+                                })
+
+    # Default page
+    text = f'''
+<!doctype html>
+<html>
+<style>
+img {{    
+    max-width: 80%;
+    max-height: 80%;
+    width: auto;
+    height: auto;
+}}
+</style>
+<head>
+    <meta charset="utf-8" />
+    <title>Image viewer</title>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+<script>
+
+// show message in message
+function showMessage(message) {{
+    $('#message').html(message);
+}}
+
+try{{
+    var sock = new WebSocket('ws://127.0.0.1:{port}/ws');
+}}
+catch(err){{
+    showMessage('Failed opening websocket!')
+}}
+
+sock.onopen = function(){{
+    showMessage('Connection to server started')
+}}
+
+// income message handler
+sock.onmessage = function(event) {{
+  obj = JSON.parse(event.data);
+  $('#img').attr("src", obj["image"])
+  showMessage(obj["image"]);
+}};
+
+sock.onclose = function(event){{
+    if(event.wasClean){{
+        showMessage('Clean connection end')
+    }}else{{
+        showMessage('Connection broken')
+    }}
+}};
+
+sock.onerror = function(error){{
+    showMessage('Error: '+error);
+}}
+showMessage('Waiting for websocket message...')
+</script>
+</head>
+<body>
+  <!-- some empty breaks in the begining so that I can scroll the web page -->
+  <br/>
+  <br/>
+  <br/>
+  <br/>
+  <br/>
+  <br/>
+  <div class="fill">
+    <img id="img" src="maja.png" width=100%>
+  </div>
+  <br/>
+  <br/>
+  <span id="message"></span>
+</body>
+</html>
+
+'''
+    return web.Response(text=text, content_type='html')
+
+async def set_props(request):
+    global label
+    
+    query = request.query
+    if 'image' in query:
+        image = query['image']
+        queue.put_nowait(image)
+    return web.Response(text='ok')
+
+queue = asyncio.Queue()
+app = web.Application()
+app.add_routes([web.get('/ws', websocket_handler),
+                web.get('/props', set_props),
+                web.get('/',handle),
+                web.get('/{name}', handle, name='name'),
+                ])
+
+try:
+    web.run_app(app, port=port)
+except Exception as e:
+    die(str(e))
