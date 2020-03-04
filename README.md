@@ -2,9 +2,9 @@
 
 wiv - The Web Image Viewer - is an remote image viewer working through the web.
 
-## The story (Or ... scratching my own itch)
+## The story (or ... scratching my own itch)
 
-I'm often sitting at meetings when my active presence is not needed the entire time. During these times I often connect with my tablet and termux to my local Linux host, where I can continue to developing. One issue that has been bothering me during these times is that there is no easy way that I can transfer an image from my Linux host and have it displayed on my tablet. This was the incentive for the wiv image viewer project. The goal was to be able to issue a command in my Linux shell and have the image displayed on my tablet.
+I'm often sitting at meetings when my active presence is not needed the entire time. During these times I often connect with my tablet and termux to my local Linux host, where I can continue developing. One issue that has been bothering me during these times is that there is no easy way that I can display an image from my Linux host on the tablet. This was the incentive for the wiv image viewer project. The goal was to be able to issue a command in my Linux shell and have the image displayed on my tablet.
 
 It turns out wiv is quite useful when working from *any* remote computer. 
 
@@ -15,16 +15,16 @@ The solution involved the following technologies:
 - python3 and asyncio
 - The aiohttp web server
 - ssh port forwarding
-- web socket
+- websockets
 
 Here is a scenario describing how this works:
 
-1. The user adds portforwarding of port 8080 to their ssh configration. This only needs to be done once.
-2. The user starts a terminal (or tmux on Android) and connects by ssh to a remote (Linux) host.
-3. The user runs the  "wiv-server" command on the remote host.
-4. On the local (android) device the open the web page http://localhost:8042. which through portforwarding connects to the wiv server.
-5. (On an android device the user my want to use the android split screens support so that tmux and the web browser are be seen side by side.)
-6. On the remote server, run `wv /path/to/image.pgm' which sends an image to the wv-server which via websockets forwards it to the web browser.
+1. The user adds portforwarding of port 8042 to their ssh configration. This only needs to be done once.
+2. The user starts a terminal (or termux on Android) and connects by ssh to a remote (Linux) host.
+3. The user runs the `wiv-server` command on the remote host.
+4. On the local (android) device the open the web page http://localhost:8042 . which through portforwarding connects to the wiv server.
+5. (On an android device the user my want to use the split screens so that tmux and the web browser are be visible side by side.)
+6. On the remote server, run `wiv /path/to/image.png` which makes the wiv-server send the image to the web browser via websockets.
 
 ![wiv tablet screenshot](/wiv-screenshot.jpg "Logo Title Text 1")
 
