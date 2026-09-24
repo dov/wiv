@@ -62,6 +62,28 @@ private:
     float lastWorldPerPixel_ = -1.0f;
 };
 
+// Like PixelSizeAnimator, but for the arrowhead triangle-soup vertices in
+// the fill batch (posArray, see SceneBuilder::build's "Fill batch"
+// section): each arrowhead's shape is defined relative to its tip as an
+// offset in constant screen pixels (matching giv's line-width-relative,
+// pixel-constant arrow sizing - see addArrowHead in SceneBuilder.cpp), so
+// on zoom we recompute each vertex as `tip + offsetPixels * worldPerPixel`
+// and re-upload the affected positions, the same way PixelSizeAnimator
+// keeps mark/line sizes pixel-constant.
+class ArrowVertexAnimator : public vsg::Inherit<vsg::Object, ArrowVertexAnimator>
+{
+public:
+    vsg::ref_ptr<vsg::vec2Array> posArray;
+    std::vector<uint32_t> indices;        // indices into `posArray`
+    std::vector<vsg::vec2> tip;           // parallel to `indices`: world-space anchor point
+    std::vector<vsg::vec2> offsetPixels;  // parallel to `indices`: local offset, in "1 screen pixel" world-units
+
+    void update(float worldPerPixel);
+
+private:
+    float lastWorldPerPixel_ = -1.0f;
+};
+
 class SceneBuilder
 {
 public:
@@ -75,12 +97,14 @@ public:
     // respectively.
     vsg::ref_ptr<PixelSizeAnimator> markSizeAnimator() const { return markSizeAnimator_; }
     vsg::ref_ptr<PixelSizeAnimator> lineWidthAnimator() const { return lineWidthAnimator_; }
+    vsg::ref_ptr<ArrowVertexAnimator> arrowVertexAnimator() const { return arrowVertexAnimator_; }
 
 private:
     vsg::ref_ptr<vsg::Options> options_;
     std::unordered_map<std::string, vsg::ref_ptr<vsg::Font>> fontCache_;
     vsg::ref_ptr<PixelSizeAnimator> markSizeAnimator_;
     vsg::ref_ptr<PixelSizeAnimator> lineWidthAnimator_;
+    vsg::ref_ptr<ArrowVertexAnimator> arrowVertexAnimator_;
 
     vsg::ref_ptr<vsg::Font> resolveFont(const std::string& fontSpec, double& outSize);
 };

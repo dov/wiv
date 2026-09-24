@@ -1,7 +1,14 @@
-// Auto-generated from the authentic X11R6 rgb.txt (X Consortium, 1994),
-// as shipped with GNU Emacs (xc/programs/rgb/rgb.txt). Public/MIT-style
-// license per the X Consortium copyright notice in that file.
-// Generator: tools/gen_color_table.py (see scratchpad history in README).
+// Auto-generated color name table matching giv's actual runtime color
+// resolution: giv parses names via GDK's gdk_rgba_parse() (see
+// color_parse() in giv-parser.cc), which uses CSS3/SVG named colors -
+// NOT the same table as the historical X11 rgb.txt (they disagree on a
+// handful of names, e.g. "green" is (0,255,0) in X11 rgb.txt but
+// (0,128,0) per CSS/SVG and GDK). The name list/coverage comes from the
+// X11R6 rgb.txt file (X Consortium, 1994, as shipped with GNU Emacs), but
+// every value is re-resolved through gdk_rgba_parse() - the same call giv
+// makes - so this table matches giv byte-for-byte wherever GDK can parse
+// the name; only names GDK can't parse fall back to the raw X11 value.
+// Generator: tools/gen_color_table.py.
 static const GivNamedColor g_givColorTable[] = {
   {"snow", 255, 250, 250},
   {"ghostwhite", 248, 248, 255},
@@ -38,8 +45,8 @@ static const GivNamedColor g_givColorTable[] = {
   {"slategrey", 112, 128, 144},
   {"lightslategray", 119, 136, 153},
   {"lightslategrey", 119, 136, 153},
-  {"gray", 190, 190, 190},
-  {"grey", 190, 190, 190},
+  {"gray", 128, 128, 128},
+  {"grey", 128, 128, 128},
   {"lightgrey", 211, 211, 211},
   {"lightgray", 211, 211, 211},
   {"midnightblue", 25, 25, 112},
@@ -79,7 +86,7 @@ static const GivNamedColor g_givColorTable[] = {
   {"palegreen", 152, 251, 152},
   {"springgreen", 0, 255, 127},
   {"lawngreen", 124, 252, 0},
-  {"green", 0, 255, 0},
+  {"green", 0, 128, 0},
   {"chartreuse", 127, 255, 0},
   {"mediumspringgreen", 0, 250, 154},
   {"greenyellow", 173, 255, 47},
@@ -125,7 +132,7 @@ static const GivNamedColor g_givColorTable[] = {
   {"pink", 255, 192, 203},
   {"lightpink", 255, 182, 193},
   {"palevioletred", 219, 112, 147},
-  {"maroon", 176, 48, 96},
+  {"maroon", 128, 0, 0},
   {"mediumvioletred", 199, 21, 133},
   {"violetred", 208, 32, 144},
   {"magenta", 255, 0, 255},
@@ -136,7 +143,7 @@ static const GivNamedColor g_givColorTable[] = {
   {"darkorchid", 153, 50, 204},
   {"darkviolet", 148, 0, 211},
   {"blueviolet", 138, 43, 226},
-  {"purple", 160, 32, 240},
+  {"purple", 128, 0, 128},
   {"mediumpurple", 147, 112, 219},
   {"thistle", 216, 191, 216},
   {"snow1", 255, 250, 250},

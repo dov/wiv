@@ -12,6 +12,20 @@
 namespace giv
 {
 
+void ArrowVertexAnimator::update(float worldPerPixel)
+{
+    if (indices.empty() || !posArray) return;
+    if (std::abs(worldPerPixel - lastWorldPerPixel_) < 1e-9f) return;
+    lastWorldPerPixel_ = worldPerPixel;
+
+    for (size_t k = 0; k < indices.size(); ++k)
+    {
+        uint32_t idx = indices[k];
+        posArray->set(idx, tip[k] + offsetPixels[k] * worldPerPixel);
+    }
+    posArray->dirty();
+}
+
 void PixelSizeAnimator::update(float worldPerPixel)
 {
     if (indices.empty() || !array) return;
@@ -172,19 +186,70 @@ void addLineSegment(std::vector<LineInstance>& lines, const vsg::vec2& p0, const
     cumLen += vsg::length(p1 - p0);
 }
 
-// Appends a small filled triangle arrowhead at `tip`, pointing along
-// direction `dir` (unit vector), sized relative to `lineHalfWidth`.
-void addArrowHead(std::vector<FillVertex>& tris, const vsg::vec2& tip, const vsg::vec2& dir,
-                   float size, const vsg::vec4& color)
+// Appends a filled arrowhead at `tip`, pointing along direction `dir` (unit
+// vector, direction of travel - i.e. the arrow points *along* `dir`), sized
+// relative to `hw` (== the same pixel-constant `lineHalfWidth` value lines
+// are built with - see ArrowVertexAnimator/PixelSizeAnimator).
+//
+// Shape/sizing matches giv's AGG arrowhead (giv_agg_arrowhead.cc, driven
+// from GivPainterAgg::set_arrow with the default d1..d5 = 0,3,2,2,1 scaled
+// by the stroke width W = 2*hw, and d5 overridden to W/2 = hw):
+//   d1 = 0        (tip is flush with the path endpoint)
+//   d2 = 3W = 6hw
+//   d3 = 2W = 4hw (half-width of the swept-back wingtips)
+//   d4 = 2W = 4hw
+//   d5 = W/2 = hw (half-width of the flat tip edge)
+// Local +x runs *backward* from the tip (opposite `dir`); local y is
+// perpendicular. Vertices (giv's arrowhead::rewind order), plus the
+// geometric tip T at the local origin used to fan-triangulate the
+// concave (swallow-tail) polygon:
+//   T  = (0, 0)
+//   V0 = (-d1, -d5) = (0,   -hw)
+//   V1 = (d2+d4, -d3) = (10hw, -4hw)
+//   V2 = (d2, 0)      = (6hw,  0)
+//   V3 = (d2+d4, d3)  = (10hw, 4hw)
+//   V4 = (-d1, d5)    = (0,   hw)
+//
+// Unlike addPolygonFill, these vertices must stay pixel-constant in size as
+// the view zooms (matching giv's device-pixel line/arrow sizing), so rather
+// than baking final world-space positions here, each vertex is recorded as
+// (tip, offset-in-pixel-units) into `arrowTip`/`arrowOffsetPixels` (parallel
+// to the newly-appended `tris` entries) for ArrowVertexAnimator to resolve
+// to world space whenever the view's world-per-pixel scale changes. The
+// position written into `tris` here is just a same-scale-as-lines initial
+// placeholder, good enough until the first update() call.
+void addArrowHead(std::vector<FillVertex>& tris, std::vector<uint32_t>& arrowIndex, std::vector<vsg::vec2>& arrowTip,
+                   std::vector<vsg::vec2>& arrowOffsetPixels, const vsg::vec2& tip, const vsg::vec2& dir,
+                   float hw, const vsg::vec4& color)
 {
-    vsg::vec2 back = vsg::vec2(-dir.x, -dir.y);
+    vsg::vec2 back(-dir.x, -dir.y);
     vsg::vec2 normal(-dir.y, dir.x);
-    vsg::vec2 base = tip + back * size;
-    vsg::vec2 left = base + normal * (size * 0.5f);
-    vsg::vec2 right = base - normal * (size * 0.5f);
-    tris.push_back({tip, color});
-    tris.push_back({left, color});
-    tris.push_back({right, color});
+
+    auto offset = [&](float lx, float ly) {
+        return back * lx + normal * ly;
+    };
+
+    vsg::vec2 oT(0.0f, 0.0f);
+    vsg::vec2 oV0 = offset(0.0f, -hw);
+    vsg::vec2 oV1 = offset(10.0f * hw, -4.0f * hw);
+    vsg::vec2 oV2 = offset(6.0f * hw, 0.0f);
+    vsg::vec2 oV3 = offset(10.0f * hw, 4.0f * hw);
+    vsg::vec2 oV4 = offset(0.0f, hw);
+
+    auto tri = [&](const vsg::vec2& oa, const vsg::vec2& ob, const vsg::vec2& oc) {
+        for (const vsg::vec2& o : {oa, ob, oc})
+        {
+            arrowIndex.push_back(static_cast<uint32_t>(tris.size()));
+            tris.push_back({tip + o, color});
+            arrowTip.push_back(tip);
+            arrowOffsetPixels.push_back(o);
+        }
+    };
+    tri(oT, oV0, oV1);
+    tri(oT, oV1, oV2);
+    tri(oT, oV2, oV3);
+    tri(oT, oV3, oV4);
+    tri(oT, oV4, oV0);
 }
 
 // Fan-triangulates a (assumed simple-ish) closed polygon from vertex 0.
@@ -253,6 +318,13 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     std::vector<bool> markScalesWithZoom; // parallel to `marks`; see PixelSizeAnimator
     std::vector<LineInstance> lines;
     std::vector<FillVertex> fillTris;
+    // Indices into `fillTris` of just the arrowhead vertices (polygon-fill
+    // vertices are not pixel-constant and have no entry here), with
+    // `arrowTip`/`arrowOffsetPixels` parallel to `arrowIndex`; see
+    // addArrowHead's doc comment and ArrowVertexAnimator.
+    std::vector<uint32_t> arrowIndex;
+    std::vector<vsg::vec2> arrowTip;
+    std::vector<vsg::vec2> arrowOffsetPixels;
 
     // Text nodes are created directly (not batched); typical giv scenes have
     // at most thousands of labels, not millions.
@@ -283,6 +355,17 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
         const bool needSubpaths = ds.doDrawLines || ds.doDrawPolygon || ds.arrowType != ArrowType::None;
 
         std::vector<std::vector<vsg::vec2>> subpaths;
+        // Parallel to `subpaths`: true if the subpath was explicitly closed
+        // (giv `z` / Op::ClosePath), in which case `subpaths[i]` has a
+        // synthetic duplicate of its first point appended as the last
+        // point (see Op::ClosePath below) purely so the line/outline
+        // geometry draws the closing edge. That duplicate must NOT be
+        // treated as the "real" last vertex when placing an end-arrow -
+        // giv's marker generator places the end arrowhead at the actual
+        // last emitted vertex (using the tangent of the real last segment),
+        // ignoring the synthetic closing segment. See the arrow placement
+        // code below, which uses this flag to look one point further back.
+        std::vector<bool> subpathClosed;
         std::vector<vsg::vec2> cur;
         vsg::vec2 currentPoint(0.0f, 0.0f);
 
@@ -309,7 +392,11 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
                 }
                 if (needSubpaths)
                 {
-                    if (!cur.empty()) subpaths.push_back(cur);
+                    if (!cur.empty())
+                    {
+                        subpaths.push_back(cur);
+                        subpathClosed.push_back(false);
+                    }
                     cur.clear();
                     cur.push_back(p);
                 }
@@ -335,6 +422,7 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
                 {
                     cur.push_back(cur.front());
                     subpaths.push_back(cur);
+                    subpathClosed.push_back(true);
                     cur.clear();
                 }
                 break;
@@ -370,9 +458,11 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
                     if (!cur.empty())
                     {
                         subpaths.push_back(cur);
+                        subpathClosed.push_back(false);
                         cur.clear();
                     }
                     subpaths.push_back(tessellateEllipse(center, wh.x, wh.y, angle, 48));
+                    subpathClosed.push_back(true); // tessellated ellipse loop has no "real" last point to special-case
                 }
                 currentPoint = center;
                 i += 2;
@@ -388,7 +478,7 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
                 {
                     vsg::vec2 dir = tip - currentPoint;
                     float len = vsg::length(dir);
-                    if (len > 1e-6f) addArrowHead(fillTris, tip, dir / len, std::max(2.0f, lineHalfWidth * 4.0f), quiverColor);
+                    if (len > 1e-6f) addArrowHead(fillTris, arrowIndex, arrowTip, arrowOffsetPixels, tip, dir / len, lineHalfWidth, quiverColor);
                 }
                 break;
             }
@@ -433,12 +523,19 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             }
         }
 
-        if (needSubpaths && !cur.empty()) subpaths.push_back(cur);
+        if (needSubpaths && !cur.empty())
+        {
+            subpaths.push_back(cur);
+            subpathClosed.push_back(false);
+        }
 
         if (needSubpaths)
         {
-            for (const auto& sp : subpaths)
+            for (size_t spIdx = 0; spIdx < subpaths.size(); ++spIdx)
             {
+                const auto& sp = subpaths[spIdx];
+                const bool spClosed = subpathClosed[spIdx];
+
                 if (ds.doDrawPolygon) addPolygonFill(fillTris, sp, fillColor);
                 if (ds.doDrawPolygonOutline && ds.doDrawPolygon)
                 {
@@ -455,18 +552,31 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
 
                 if (ds.doDrawLines && ds.arrowType != ArrowType::None && sp.size() >= 2)
                 {
-                    float headSize = std::max(3.0f, lineHalfWidth * 4.0f);
                     if (ds.arrowType == ArrowType::End || ds.arrowType == ArrowType::Both)
                     {
-                        vsg::vec2 dir = sp.back() - sp[sp.size() - 2];
-                        float len = vsg::length(dir);
-                        if (len > 1e-6f) addArrowHead(fillTris, sp.back(), dir / len, headSize, lineColor);
+                        // For a closed subpath, sp.back() is a synthetic
+                        // duplicate of sp.front() (added purely to draw the
+                        // closing edge - see subpathClosed's doc comment
+                        // above) rather than a real path vertex. giv places
+                        // the end-arrow at the actual last emitted vertex
+                        // using the tangent of the real last segment, so
+                        // skip past that duplicate here to match.
+                        const bool haveTriple = spClosed ? sp.size() >= 3 : sp.size() >= 2;
+                        if (haveTriple)
+                        {
+                            size_t tipIdx = spClosed ? sp.size() - 2 : sp.size() - 1;
+                            size_t prevIdx = tipIdx - 1;
+                            vsg::vec2 tip = sp[tipIdx];
+                            vsg::vec2 dir = tip - sp[prevIdx];
+                            float len = vsg::length(dir);
+                            if (len > 1e-6f) addArrowHead(fillTris, arrowIndex, arrowTip, arrowOffsetPixels, tip, dir / len, lineHalfWidth, lineColor);
+                        }
                     }
                     if (ds.arrowType == ArrowType::Start || ds.arrowType == ArrowType::Both)
                     {
                         vsg::vec2 dir = sp.front() - sp[1];
                         float len = vsg::length(dir);
-                        if (len > 1e-6f) addArrowHead(fillTris, sp.front(), dir / len, headSize, lineColor);
+                        if (len > 1e-6f) addArrowHead(fillTris, arrowIndex, arrowTip, arrowOffsetPixels, sp.front(), dir / len, lineHalfWidth, lineColor);
                     }
                 }
             }
@@ -614,6 +724,19 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
         {
             posArray->set(i, fillTris[i].pos);
             colorArray->set(i, fillTris[i].color);
+        }
+        // Arrowhead vertices must stay pixel-constant in size as the view
+        // zooms (see addArrowHead's doc comment) - mark the position buffer
+        // dynamic and hand ArrowVertexAnimator what it needs to rewrite
+        // just those vertices whenever the view's world-per-pixel changes.
+        if (!arrowIndex.empty())
+        {
+            posArray->properties.dataVariance = vsg::DYNAMIC_DATA;
+            arrowVertexAnimator_ = ArrowVertexAnimator::create();
+            arrowVertexAnimator_->posArray = posArray;
+            arrowVertexAnimator_->indices = arrowIndex;
+            arrowVertexAnimator_->tip = arrowTip;
+            arrowVertexAnimator_->offsetPixels = arrowOffsetPixels;
         }
 
         auto drawCommands = vsg::Commands::create();

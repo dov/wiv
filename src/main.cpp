@@ -40,6 +40,26 @@ int main(int argc, char** argv)
     auto windowTraits = vsg::WindowTraits::create(arguments);
     windowTraits->windowTitle = "wiv";
 
+    // giv (Cairo/AGG) composites colors "raw": a named color like "green"
+    // (0,128,0) is written to the framebuffer as literally 128/255 in each
+    // channel, with no gamma/color-management pass. VSG's default swapchain
+    // preference is VK_FORMAT_B8G8R8A8_SRGB, which makes the GPU treat our
+    // fragment shaders' [0,1] outputs as *linear* light and re-encode them
+    // to sRGB on write - e.g. a raw 0.502 (128/255) linear value gets
+    // written out as ~0.735 (~188/255), visibly brightening/shifting every
+    // non-extreme color relative to giv. Use a non-sRGB (UNORM) swapchain
+    // format instead so shader color values map directly to the displayed
+    // bytes, matching giv's naive (non-color-managed) output.
+    windowTraits->swapchainPreferences.surfaceFormat = {VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
+
+    // giv/AGG rasterizes with software anti-aliasing (smooth edges on
+    // lines, mark circles, polygon fills). Enable hardware MSAA to get
+    // comparable geometric edge smoothing; combined with analytic
+    // (fwidth-based) edge AA in the marks/lines shaders for the SDF-drawn
+    // primitives, this gets wiv's edges close to AGG's. Clamp to the
+    // device's supported color sample counts.
+    windowTraits->samples = VK_SAMPLE_COUNT_4_BIT;
+
     std::string geomStr = arguments.value(std::string(), "--geometry");
     if (!geomStr.empty())
     {
@@ -195,12 +215,14 @@ int main(int argc, char** argv)
     // SceneBuilder.h (PixelSizeAnimator).
     auto markSizeAnimator = builder.markSizeAnimator();
     auto lineWidthAnimator = builder.lineWidthAnimator();
+    auto arrowVertexAnimator = builder.arrowVertexAnimator();
     auto updateMarkSizes = [&]() {
         auto extent = window->extent2D();
         if (extent.width == 0) return;
         float worldPerPixel = static_cast<float>((projection->right - projection->left) / static_cast<double>(extent.width));
         if (markSizeAnimator) markSizeAnimator->update(worldPerPixel);
         if (lineWidthAnimator) lineWidthAnimator->update(worldPerPixel);
+        if (arrowVertexAnimator) arrowVertexAnimator->update(worldPerPixel);
     };
     updateMarkSizes();
 
