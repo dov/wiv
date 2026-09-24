@@ -1,0 +1,20 @@
+{
+  "name": "wiv",
+  "version": "0.1.0",
+  "description": "Vulkan-based, giv-format-compatible 2D vector viewer",
+  "builtin-baseline": "b5d1a94fb7f88fd835e360fd23a45a09ceedbf48",
+  "dependencies": [
+    {
+      "name": "vsg",
+      "features": [
+        "windowing"
+      ]
+    },
+    {
+      "name": "vsgxchange",
+      "features": [
+        "freetype"
+      ]
+    }
+  ]
+}

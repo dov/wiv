@@ -1,0 +1,5 @@
+build/
+vcpkg_installed/
+*.o
+*.spv
+compile_commands.json
