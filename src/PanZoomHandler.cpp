@@ -10,7 +10,10 @@ PanZoomHandler::PanZoomHandler(vsg::ref_ptr<vsg::Camera> camera) : camera_(camer
 
 void PanZoomHandler::apply(vsg::ButtonPressEvent& event)
 {
-    if (event.button == 1)
+    // giv uses middle-mouse-button-drag to pan (standard image-viewer
+    // convention); button 2 is the middle button in vsg's raw button
+    // numbering (1=left, 2=middle, 3=right), matching vsg::BUTTON_MASK_2.
+    if (event.button == 2)
     {
         dragging_ = true;
         lastX_ = event.x;
@@ -20,7 +23,7 @@ void PanZoomHandler::apply(vsg::ButtonPressEvent& event)
 
 void PanZoomHandler::apply(vsg::ButtonReleaseEvent& event)
 {
-    if (event.button == 1) dragging_ = false;
+    if (event.button == 2) dragging_ = false;
 }
 
 void PanZoomHandler::apply(vsg::MoveEvent& event)

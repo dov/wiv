@@ -26,6 +26,42 @@
 namespace giv
 {
 
+// Keeps a chosen vec4 component of selected instances at a constant
+// on-screen (pixel) size as the view zooms. Marks and lines are both
+// expanded in *world* space by their vertex shaders (marks.vert reads
+// posSizeMode.z as a world half-size; lines.vert reads widthDash.x as a
+// world half-width), but giv itself sizes them in constant device pixels
+// (see giv-data.cc default_mark_size/default_line_width and
+// GivPainterCairo::set_line_width - cairo's CTM is left at identity, so
+// pixel/device units, not world units). So every time the view's world-
+// units-per-pixel changes (i.e. on zoom) we recompute the world-space
+// value that currently corresponds to the desired fixed pixel size and
+// re-upload just the affected component of just the affected instances.
+//
+// Used for: (a) marks whose dataset did not set `$scale_marks 1` -
+// giv's default do_scale_marks == FALSE (giv-data.cc: default_scale_marks)
+// - component z of posSizeModeArray; marks with `$scale_marks 1` are
+// excluded (left growing/shrinking with zoom, using their world-space
+// mark_size directly). (b) line/outline/quiver half-width - component x
+// of widthDashArray; giv has no scale-with-zoom option for line width at
+// all, so *every* line instance is included.
+class PixelSizeAnimator : public vsg::Inherit<vsg::Object, PixelSizeAnimator>
+{
+public:
+    vsg::ref_ptr<vsg::vec4Array> array;
+    int component = 2; // 0=x,1=y,2=z,3=w
+    std::vector<uint32_t> indices;    // indices into `array`
+    std::vector<float> pixelSize;     // desired size in screen pixels, parallel to `indices`
+
+    // Call once per frame (or whenever the view may have zoomed) with the
+    // current world-units-per-pixel scale (assumed isotropic - x and y
+    // scale equally since the view is always fit to the window aspect).
+    void update(float worldPerPixel);
+
+private:
+    float lastWorldPerPixel_ = -1.0f;
+};
+
 class SceneBuilder
 {
 public:
@@ -35,9 +71,16 @@ public:
     // containing the precompiled marks/lines/fill .vert.spv/.frag.spv files.
     vsg::ref_ptr<vsg::Group> build(const SceneData& scene, const std::string& shaderDir);
 
+    // Valid after build(); non-null only if the scene contains marks/lines
+    // respectively.
+    vsg::ref_ptr<PixelSizeAnimator> markSizeAnimator() const { return markSizeAnimator_; }
+    vsg::ref_ptr<PixelSizeAnimator> lineWidthAnimator() const { return lineWidthAnimator_; }
+
 private:
     vsg::ref_ptr<vsg::Options> options_;
     std::unordered_map<std::string, vsg::ref_ptr<vsg::Font>> fontCache_;
+    vsg::ref_ptr<PixelSizeAnimator> markSizeAnimator_;
+    vsg::ref_ptr<PixelSizeAnimator> lineWidthAnimator_;
 
     vsg::ref_ptr<vsg::Font> resolveFont(const std::string& fontSpec, double& outSize);
 };

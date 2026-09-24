@@ -12,6 +12,22 @@
 namespace giv
 {
 
+void PixelSizeAnimator::update(float worldPerPixel)
+{
+    if (indices.empty() || !array) return;
+    if (std::abs(worldPerPixel - lastWorldPerPixel_) < 1e-9f) return;
+    lastWorldPerPixel_ = worldPerPixel;
+
+    for (size_t k = 0; k < indices.size(); ++k)
+    {
+        uint32_t idx = indices[k];
+        vsg::vec4 v = array->at(idx);
+        v[component] = pixelSize[k] * worldPerPixel;
+        array->set(idx, v);
+    }
+    array->dirty();
+}
+
 namespace
 {
 
@@ -234,6 +250,7 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     auto root = vsg::Group::create();
 
     std::vector<MarkInstance> marks;
+    std::vector<bool> markScalesWithZoom; // parallel to `marks`; see PixelSizeAnimator
     std::vector<LineInstance> lines;
     std::vector<FillVertex> fillTris;
 
@@ -285,7 +302,11 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             switch (op)
             {
             case Op::Move:
-                if (ds.doDrawMarks) marks.push_back({vsg::vec4(p.x, p.y, markHalfSize, markMode), markColor});
+                if (ds.doDrawMarks)
+                {
+                    marks.push_back({vsg::vec4(p.x, p.y, markHalfSize, markMode), markColor});
+                    markScalesWithZoom.push_back(ds.doScaleMarks);
+                }
                 if (needSubpaths)
                 {
                     if (!cur.empty()) subpaths.push_back(cur);
@@ -296,7 +317,11 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
                 break;
 
             case Op::Draw:
-                if (ds.doDrawMarks) marks.push_back({vsg::vec4(p.x, p.y, markHalfSize, markMode), markColor});
+                if (ds.doDrawMarks)
+                {
+                    marks.push_back({vsg::vec4(p.x, p.y, markHalfSize, markMode), markColor});
+                    markScalesWithZoom.push_back(ds.doScaleMarks);
+                }
                 if (needSubpaths)
                 {
                     if (cur.empty()) cur.push_back(p);
@@ -474,11 +499,32 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
         auto stateGroup = makePipeline(shaderDir, "marks.vert.spv", "marks.frag.spv", bindings, attributes);
 
         auto posSizeModeArray = vsg::vec4Array::create(static_cast<uint32_t>(marks.size()));
+        // Marked dynamic: fixed-pixel-size marks (do_scale_marks == false,
+        // giv's default) have their z (half-size) component rewritten every
+        // time the view zoom changes - see PixelSizeAnimator::update() and
+        // its call site in main.cpp's render loop.
+        posSizeModeArray->properties.dataVariance = vsg::DYNAMIC_DATA;
         auto colorArray = vsg::vec4Array::create(static_cast<uint32_t>(marks.size()));
         for (size_t i = 0; i < marks.size(); ++i)
         {
             posSizeModeArray->set(i, marks[i].posSizeMode);
             colorArray->set(i, marks[i].color);
+        }
+
+        markSizeAnimator_ = PixelSizeAnimator::create();
+        markSizeAnimator_->array = posSizeModeArray;
+        markSizeAnimator_->component = 2; // z = half size
+        for (size_t i = 0; i < marks.size(); ++i)
+        {
+            if (!markScalesWithZoom[i])
+            {
+                markSizeAnimator_->indices.push_back(static_cast<uint32_t>(i));
+                // marks[i].posSizeMode.z currently holds ds.markSize * 0.5
+                // interpreted as a *pixel* half-size (giv's do_scale_marks
+                // == false semantics); PixelSizeAnimator converts this to
+                // world units on the first update() call.
+                markSizeAnimator_->pixelSize.push_back(marks[i].posSizeMode.z);
+            }
         }
 
         auto drawCommands = vsg::Commands::create();
@@ -511,12 +557,31 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
 
         auto p0p1Array = vsg::vec4Array::create(static_cast<uint32_t>(lines.size()));
         auto widthDashArray = vsg::vec4Array::create(static_cast<uint32_t>(lines.size()));
+        // giv always draws line/outline/quiver-shaft width in constant
+        // device pixels regardless of zoom (GivPainterCairo::set_line_width
+        // sets cairo's line width directly with no CTM scale applied, and
+        // there's no $scale_marks-equivalent toggle for line width - see
+        // giv-data.cc default_line_width). lines.vert expands half-width in
+        // world space, so keep it dynamic and recompute every zoom change.
+        widthDashArray->properties.dataVariance = vsg::DYNAMIC_DATA;
         auto colorArray = vsg::vec4Array::create(static_cast<uint32_t>(lines.size()));
         for (size_t i = 0; i < lines.size(); ++i)
         {
             p0p1Array->set(i, lines[i].p0p1);
             widthDashArray->set(i, lines[i].widthDash);
             colorArray->set(i, lines[i].color);
+        }
+
+        lineWidthAnimator_ = PixelSizeAnimator::create();
+        lineWidthAnimator_->array = widthDashArray;
+        lineWidthAnimator_->component = 0; // x = half width
+        for (size_t i = 0; i < lines.size(); ++i)
+        {
+            lineWidthAnimator_->indices.push_back(static_cast<uint32_t>(i));
+            // lines[i].widthDash.x currently holds lineHalfWidth interpreted
+            // as a *pixel* half-width; PixelSizeAnimator converts it to
+            // world units on the first update() call.
+            lineWidthAnimator_->pixelSize.push_back(lines[i].widthDash.x);
         }
 
         auto drawCommands = vsg::Commands::create();

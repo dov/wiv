@@ -72,7 +72,7 @@ struct Dataset
     int lineCap = 1;           // 0=butt,1=round,2=square (matches giv's line_cap)
 
     MarkType markType = MarkType::FCircle;
-    double markSize = 4.0;
+    double markSize = 7.0; // giv's default_mark_size (giv-data.cc); full diameter in pixels when !doScaleMarks
     bool doScaleMarks = false;
 
     double textSize = 12.0;

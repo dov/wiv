@@ -133,6 +133,11 @@ int main(int argc, char** argv)
     }
     viewer->addWindow(window);
 
+    // giv clears its canvas to plain white (see gtk-image-viewer.c:
+    // gdk_rgba_parse(&background_color,"white")); vsg's window default
+    // clear color is a dark blue-gray, so override it to match.
+    window->clearColor() = vsg::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+
     double minX = scene.hasBounds() ? scene.minX : -100.0;
     double maxX = scene.hasBounds() ? scene.maxX : 100.0;
     // SceneBuilder renders with Y negated (giv uses image-style Y-down
@@ -183,6 +188,22 @@ int main(int argc, char** argv)
 
     viewer->compile();
 
+    // Marks that don't opt into $scale_marks, and all line/outline/quiver
+    // widths, stay a constant size in screen pixels; since they're expanded
+    // in world space in the vertex shaders (marks.vert / lines.vert), keep
+    // their world-space size in sync with the current zoom level here. See
+    // SceneBuilder.h (PixelSizeAnimator).
+    auto markSizeAnimator = builder.markSizeAnimator();
+    auto lineWidthAnimator = builder.lineWidthAnimator();
+    auto updateMarkSizes = [&]() {
+        auto extent = window->extent2D();
+        if (extent.width == 0) return;
+        float worldPerPixel = static_cast<float>((projection->right - projection->left) / static_cast<double>(extent.width));
+        if (markSizeAnimator) markSizeAnimator->update(worldPerPixel);
+        if (lineWidthAnimator) lineWidthAnimator->update(worldPerPixel);
+    };
+    updateMarkSizes();
+
     std::cerr << "wiv: entering render loop (bounds: [" << minX << "," << minY << "] - [" << maxX << "," << maxY << "])\n";
 
     // Lightweight FPS reporting to stderr, matches the plan's "report frame
@@ -195,6 +216,7 @@ int main(int argc, char** argv)
     {
         viewer->handleEvents();
         viewer->update();
+        updateMarkSizes();
 
         auto rsStart = std::chrono::steady_clock::now();
         viewer->recordAndSubmit();
