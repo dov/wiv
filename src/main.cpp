@@ -8,6 +8,7 @@
 
 #include <vsg/all.h>
 #include <vsgXchange/all.h>
+#include <vsgXchange/freetype.h>
 
 #include <chrono>
 #include <iostream>
@@ -119,6 +120,12 @@ int main(int argc, char** argv)
     auto options = vsg::Options::create();
     options->paths = vsg::getEnvPaths("VSG_FILE_PATH");
     options->add(vsgXchange::all::create());
+    // Widen vsgXchange's freetype glyph-atlas margins (defaults: 0.25/0.125)
+    // to give the SDF distance field more empty border around each glyph
+    // quad, reducing the faint box/edge artifacts that mipmapped sampling
+    // of a tightly-packed atlas can otherwise bleed in at the quad edges.
+    options->setValue(vsgXchange::freetype::texel_margin_ratio, 0.5f);
+    options->setValue(vsgXchange::freetype::quad_margin_ratio, 0.25f);
 
 #ifndef WIV_SHADER_DIR
 #    define WIV_SHADER_DIR "shaders"
@@ -168,15 +175,24 @@ int main(int argc, char** argv)
 
     double centerX = (minX + maxX) * 0.5;
     double centerY = (minY + maxY) * 0.5;
-    double halfW = std::max((maxX - minX) * 0.5, 1e-3);
-    double halfH = std::max((maxY - minY) * 0.5, 1e-3);
 
-    double aspect = static_cast<double>(window->extent2D().width) / static_cast<double>(window->extent2D().height);
-    // Pad by 5% and fit to window aspect ratio (matches giv's do_auto_fit_marks default).
-    halfW *= 1.05;
-    halfH *= 1.05;
-    if (halfW / halfH > aspect) halfH = halfW / aspect;
-    else halfW = halfH * aspect;
+    // Match giv's fit_marks_in_window/gtk_image_viewer_zoom_to_box exactly:
+    // a constant 10-screen-pixel margin on each side (not a percentage of
+    // the data range), then preserve aspect ratio by using whichever axis's
+    // resulting scale is more constraining (gtk-image-viewer.c:
+    // new_scale_{x,y} = (canvas_dim - 2*margin_px) / data_dim, then the
+    // smaller of the two is used for both axes).
+    double dataW = std::max(maxX - minX, 2e-3);
+    double dataH = std::max(maxY - minY, 2e-3);
+    double canvasW = static_cast<double>(window->extent2D().width);
+    double canvasH = static_cast<double>(window->extent2D().height);
+    constexpr double kFitMarginPx = 10.0;
+    double scaleX = (canvasW - 2.0 * kFitMarginPx) / dataW;
+    double scaleY = (canvasH - 2.0 * kFitMarginPx) / dataH;
+    double scale = std::min(scaleX, scaleY);
+    if (scale <= 0.0) scale = std::min(canvasW, canvasH) / std::max(dataW, dataH); // pathological fallback (tiny window)
+    double halfW = canvasW / (2.0 * scale);
+    double halfH = canvasH / (2.0 * scale);
 
     if (noAutoFit)
     {

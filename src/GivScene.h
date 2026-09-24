@@ -135,6 +135,18 @@ struct SceneData
         maxY = std::max(maxY, py + margin);
     }
 
+    // Like updateBounds, but with independent (possibly asymmetric) offsets
+    // on each side - used for text labels, whose extent relative to the
+    // anchor point depends on the text alignment (see GivParser's 't'/'T'
+    // handling).
+    void updateBoundsRect(double px, double py, double x0, double x1, double y0, double y1)
+    {
+        minX = std::min(minX, px + x0);
+        maxX = std::max(maxX, px + x1);
+        minY = std::min(minY, py + y0);
+        maxY = std::max(maxY, py + y1);
+    }
+
     bool hasBounds() const { return minX <= maxX && minY <= maxY; }
 };
 

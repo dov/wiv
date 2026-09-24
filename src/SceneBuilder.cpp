@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <sstream>
 #include <stdexcept>
 
 namespace giv
@@ -288,13 +289,53 @@ vsg::ref_ptr<vsg::Font> SceneBuilder::resolveFont(const std::string& fontSpec, d
         }
     }
 
-    auto cached = fontCache_.find(family);
+    // giv passes the whole spec through to Pango, which parses out
+    // weight/style keywords (Bold, Italic, Oblique) embedded among the
+    // family words (e.g. "Sans Bold Italic"). fontconfig's own pattern
+    // syntax doesn't understand those as part of the family name - it needs
+    // them as separate ":weight=...:slant=..." fields - so pull them out of
+    // the remaining words here and build the equivalent fontconfig pattern
+    // (see `man fontconfig-pattern` / `fc-match --help`).
+    bool bold = false, italic = false, oblique = false;
+    std::vector<std::string> familyWords;
+    {
+        std::istringstream iss(family);
+        std::string word;
+        while (iss >> word)
+        {
+            std::string lower = word;
+            for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (lower == "bold") bold = true;
+            else if (lower == "italic") italic = true;
+            else if (lower == "oblique") oblique = true;
+            else familyWords.push_back(word);
+        }
+    }
+    family.clear();
+    for (size_t i = 0; i < familyWords.size(); ++i)
+    {
+        if (i) family += ' ';
+        family += familyWords[i];
+    }
+    if (family.empty()) family = "Sans";
+
+    std::string cacheKey = family;
+    if (bold) cacheKey += ":bold";
+    if (italic) cacheKey += ":italic";
+    else if (oblique) cacheKey += ":oblique";
+
+    auto cached = fontCache_.find(cacheKey);
     if (cached != fontCache_.end()) return cached->second;
+
+    std::string pattern = family;
+    if (bold) pattern += ":weight=bold";
+    if (italic) pattern += ":slant=italic";
+    else if (oblique) pattern += ":slant=oblique";
 
     // Resolve an actual font file via fontconfig (Linux). Falls back to
     // whatever vsgXchange's default search turns up if fc-match is absent.
     std::string path;
-    std::string cmd = "fc-match -f '%{file}' \"" + family + "\" 2>/dev/null";
+    std::string cmd = "fc-match -f '%{file}' \"" + pattern + "\" 2>/dev/null";
     if (FILE* p = popen(cmd.c_str(), "r"))
     {
         char buf[1024] = {0};
@@ -306,7 +347,7 @@ vsg::ref_ptr<vsg::Font> SceneBuilder::resolveFont(const std::string& fontSpec, d
     if (!path.empty())
         font = vsg::read_cast<vsg::Font>(path, options_);
 
-    fontCache_[family] = font; // cache even nullptr, so we don't keep retrying
+    fontCache_[cacheKey] = font; // cache even nullptr, so we don't keep retrying
     return font;
 }
 

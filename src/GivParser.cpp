@@ -107,6 +107,25 @@ private:
     std::vector<std::pair<size_t, size_t>> bounds_;
 };
 
+// Mirrors SceneBuilder::resolveFont's extraction of a trailing point-size
+// token from a Pango-style "$font" spec (e.g. "Serif Bold 50" -> 50), since
+// that's what actually determines the rendered glyph size - an explicit
+// $text_size is only a fallback when the font spec has no trailing number.
+double effectiveTextSize(const std::string& fontName, double textSize)
+{
+    if (!fontName.empty())
+    {
+        size_t lastSpace = fontName.find_last_of(' ');
+        if (lastSpace != std::string::npos)
+        {
+            std::string tail = fontName.substr(lastSpace + 1);
+            if (!tail.empty() && std::isdigit(static_cast<unsigned char>(tail[0])))
+                return std::atof(tail.c_str());
+        }
+    }
+    return textSize > 0 ? textSize : 12.0;
+}
+
 MarkType parseMarkType(const std::string& lower)
 {
     if (lower == "circle") return MarkType::Circle;
@@ -510,6 +529,45 @@ void GivParser::parseLine(Dataset& ds, const char* line, size_t len, SceneData& 
             }
             ds.texts.push_back(TextItem{ds.pointCount(), align, out});
             pushPoint(x, y, Op::Text);
+
+            // giv's own bbox computation ignores text entirely (relying on
+            // incidental coverage from other drawn marks/lines in the
+            // scene), which is why real giv can still clip labels that
+            // don't happen to be covered - but this looks much more
+            // reliably correct, and giv-compatible output isn't harmed by
+            // being more generous here. Estimate the label's screen-space
+            // footprint from its (approximate) glyph metrics and expand the
+            // bbox so auto-fit doesn't clip large/edge-positioned text
+            // (e.g. the 50pt "GIV" logo in example.giv).
+            {
+                double maxLineChars = 0, curLineChars = 0;
+                int lineCount = 1;
+                for (char c : out)
+                {
+                    if (c == '\n') { lineCount++; curLineChars = 0; }
+                    else { curLineChars += 1; if (curLineChars > maxLineChars) maxLineChars = curLineChars; }
+                }
+                // Rough average glyph width for proportional fonts is
+                // ~0.55x the em size; line height (ascent+descent+leading)
+                // is ~1.2x. Not exact glyph metrics, but close enough to
+                // avoid clipping without needing to query the actual font.
+                double effSize = effectiveTextSize(ds.fontName, ds.textSize);
+                double textW = maxLineChars * effSize * 0.55;
+                double textH = lineCount * effSize * 1.2;
+
+                int col = (align - 1) % 3; // 0=left,1=center,2=right
+                int row = (align - 1) / 3; // 0=bottom,1=center,2=top
+                double x0 = (col == 0) ? 0.0 : (col == 1) ? -textW * 0.5 : -textW;
+                double x1 = (col == 0) ? textW : (col == 1) ? textW * 0.5 : 0.0;
+                // SceneBuilder renders with y negated (see its "giv uses
+                // image-style Y-down coordinates" comment), so in the
+                // un-negated parser-space y used here, bottom-aligned text
+                // extends toward smaller y and top-aligned text toward
+                // larger y.
+                double y0 = (row == 0) ? -textH : (row == 1) ? -textH * 0.5 : 0.0;
+                double y1 = (row == 0) ? 0.0 : (row == 1) ? textH * 0.5 : textH;
+                scene.updateBoundsRect(x, y, x0, x1, y0, y1);
+            }
         }
         return;
     }
