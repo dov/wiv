@@ -2,10 +2,12 @@
 
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -55,6 +57,30 @@ constexpr float kPi = 3.14159265358979323846f;
 vsg::vec4 toVsg(const Color& c)
 {
     return vsg::vec4(c.r, c.g, c.b, c.isNone ? 0.0f : c.a);
+}
+
+// Stable (process-to-process) FNV-1a hash used to name on-disk font-atlas
+// cache files - deliberately not std::hash<std::string>, whose output isn't
+// guaranteed stable across runs.
+uint64_t fnv1a(const std::string& s)
+{
+    uint64_t h = 1469598103934665603ull;
+    for (unsigned char c : s)
+    {
+        h ^= c;
+        h *= 1099511628211ull;
+    }
+    return h;
+}
+
+// Directory for cached, pre-rasterized vsg::Font atlases (see resolveFont).
+std::string fontCacheDir()
+{
+    const char* xdgCache = std::getenv("XDG_CACHE_HOME");
+    if (xdgCache && *xdgCache) return std::string(xdgCache) + "/wiv/fonts";
+    const char* home = std::getenv("HOME");
+    if (home && *home) return std::string(home) + "/.cache/wiv/fonts";
+    return "/tmp/wiv-font-cache";
 }
 
 vsg::ref_ptr<vsg::ShaderStage> loadShader(VkShaderStageFlagBits stage, const std::string& dir, const std::string& file)
@@ -345,7 +371,55 @@ vsg::ref_ptr<vsg::Font> SceneBuilder::resolveFont(const std::string& fontSpec, d
 
     vsg::ref_ptr<vsg::Font> font;
     if (!path.empty())
-        font = vsg::read_cast<vsg::Font>(path, options_);
+    {
+        // vsgXchange's freetype reader rasterizes *every* glyph in the font
+        // file into the atlas (it walks the whole charmap via
+        // FT_Get_First_Char/FT_Get_Next_Char, sized off face->num_glyphs),
+        // not just the glyphs a given label actually uses. For a large
+        // Unicode-coverage font like Noto Sans that's thousands of glyphs
+        // and costs ~1-2 seconds - independent of, and much larger than,
+        // the fc-match lookup above. fontCache_ already avoids paying that
+        // cost twice *within* one run for the same font spec, but every
+        // fresh wiv process pays it again. The built vsg::Font is a plain
+        // data object (atlas image + glyph metrics) that round-trips
+        // losslessly through VSG's native binary (.vsgb) format, so persist
+        // it on disk, keyed by the resolved font file's path+mtime, and
+        // load that on subsequent runs instead of re-rasterizing.
+        std::error_code ec;
+        std::string trimmedPath = path;
+        while (!trimmedPath.empty() && (trimmedPath.back() == '\n' || trimmedPath.back() == '\r'))
+            trimmedPath.pop_back();
+
+        std::string cacheDir = fontCacheDir();
+        std::filesystem::create_directories(cacheDir, ec);
+
+        auto mtime = std::filesystem::last_write_time(trimmedPath, ec);
+        std::ostringstream keyStream;
+        keyStream << trimmedPath << '|' << (ec ? int64_t{0} : mtime.time_since_epoch().count());
+        std::string cacheFile = cacheDir + "/" + std::to_string(fnv1a(keyStream.str())) + ".vsgb";
+
+        if (std::filesystem::exists(cacheFile, ec))
+            font = vsg::read_cast<vsg::Font>(cacheFile, options_);
+
+        if (!font)
+        {
+            font = vsg::read_cast<vsg::Font>(path, options_);
+            if (font)
+            {
+                std::error_code writeEc;
+                try
+                {
+                    vsg::write(font, cacheFile, options_);
+                }
+                catch (...)
+                {
+                    // Non-fatal - just means this run doesn't get to prime
+                    // the cache (e.g. unwritable cache dir); font loading
+                    // itself already succeeded above.
+                }
+            }
+        }
+    }
 
     fontCache_[cacheKey] = font; // cache even nullptr, so we don't keep retrying
     return font;
@@ -370,6 +444,18 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     // Text nodes are created directly (not batched); typical giv scenes have
     // at most thousands of labels, not millions.
     auto textGroup = vsg::Group::create();
+
+    // vsg::Text::setup() calls vsg::createTextShaderSet(options_) whenever
+    // text->shaderSet isn't already set, and that function only consults
+    // options_->shaderSets["text"] as a cache - if it's empty (the default),
+    // every single text item re-deserializes the embedded text shader (a
+    // binary VSG blob with several GLSL stages) from scratch instead of
+    // reusing one instance. That's cheap next to the font-atlas cost fixed
+    // in resolveFont() below, but it's still wasted, redundant work per
+    // label, so avoid it too: populate the cache once up front so every
+    // Text::setup() call below hits it.
+    if (options_ && options_->shaderSets.find("text") == options_->shaderSets.end())
+        options_->shaderSets["text"] = vsg::createTextShaderSet(options_);
 
     for (const Dataset& ds : scene.datasets)
     {
