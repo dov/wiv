@@ -72,8 +72,10 @@ void BalloonController::update(vsg::Viewer* viewer)
 
     // giv falls back to the dataset's $path name when no $balloon text was
     // given (giv-parser.cc: push_back(marks->path_name) when
-    // !marks->balloon_string), and to a bare "label = N" when neither is
-    // set (giv-widget.gob's giv_widget_show_balloon).
+    // !marks->balloon_string). path_name itself defaults to "Dataset %d"
+    // (giv-data.cc: new_giv_dataset), so a dataset with neither $path nor
+    // $balloon still shows a "Dataset N" tooltip; "label = N" only remains
+    // as a last-resort fallback in case pathName is ever left empty.
     const Dataset& ds = scene_->datasets[static_cast<size_t>(label)];
     std::string text = !ds.balloon.empty() ? ds.balloon : ds.pathName;
     if (text.empty()) text = "label = " + std::to_string(label);

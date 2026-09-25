@@ -59,10 +59,13 @@ private:
     void buildMenus();
     void buildStatusBar();
 
+    std::vector<std::string> lastPaths_;
+
     void openFiles();
     void updateRecentFilesMenu();
     void addRecentFile(const QString& path);
     void loadFilesInternal(const std::vector<std::string>& paths);
+    void reloadFiles();
 
     void showMarkBrowser();
     void setMarkBrowserPlacement(bool asPanel);

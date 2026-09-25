@@ -104,6 +104,7 @@ private:
 
     vsg::ref_ptr<vsg::Switch> imageSwitch_;
     std::vector<std::string> loadedImageNames_; // resolved paths of successfully-loaded $image refs
+    std::vector<std::pair<double, double>> loadedImageSizes_; // (width, height) px, parallel to loadedImageNames_/loadedImages_
     int currentImageIndex_ = 0;
 
     double autoFitMarginPx_ = 10.0;
@@ -112,6 +113,16 @@ private:
     int lastHeight_ = 0;
 
     void fitToBounds(double minX, double minY, double maxX, double maxY);
+
+    // Fit bounds (in giv/image y-down space, i.e. before SceneBuilder's
+    // Y-negation) for whatever should currently be visible: the parsed
+    // dataset/mark bounds (scene_.min/maxX/Y), unioned with the pixel rect
+    // of the currently-selected image only (not every loaded image - giv
+    // only ever has one image resident at a time, so its own auto-fit never
+    // sees the others). Falls back to a fixed -100..100 box if there's
+    // nothing to fit at all.
+    void currentFitBoundsYDown(double& minX, double& minY, double& maxX, double& maxY) const;
+
     void resizeEvent(QResizeEvent* event) override;
 
     // Shared tail of loadFiles()/setDatasetsVisible()/setShowMarks(): builds

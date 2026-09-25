@@ -10,6 +10,7 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <filesystem>
 #include <iostream>
@@ -40,6 +41,17 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
     traits_->swapchainPreferences.presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
 
     viewer_ = GivViewer::create(8);
+
+    // Render on demand rather than unconditionally on every timer tick:
+    // vsgQt::Window's own mouse/key/resize/expose handlers (and every
+    // VulkanViewport method that changes the view - pan/zoom, fit,
+    // visibility toggles, background color, $image cycling, balloon
+    // toggle) already call viewer_->request() themselves, so nothing here
+    // needs an extra nudge; this just stops GivViewer::render() from
+    // recording/submitting/presenting a frame when nothing has requested
+    // one (see its `!continuousUpdate && requests.load() == 0` check).
+    viewer_->continuousUpdate = false;
+
     viewer_->worldPerPixel = [this]() -> float {
         if (!projection_ || !window_ || !window_->windowAdapter) return 1.0f;
         auto extent = window_->windowAdapter->extent2D();
@@ -131,12 +143,25 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     size_t totalPoints = 0;
     for (const auto& f : paths)
     {
-        giv::GivParser parser;
-        std::string parseError;
-        if (!parser.parseFile(f, newScene, parseError))
+        // Mirrors giv's own load_file (giv-win.gob): only .giv/.marks/.svg
+        // go through the text parser - anything else is a bare image file
+        // and is loaded directly, the same way a $image reference inside a
+        // .giv file is (see the loadedImages loop below).
+        std::string ext = std::filesystem::path(f).extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
+        if (ext == ".giv" || ext == ".marks" || ext == ".svg")
         {
-            if (error) *error = QString::fromStdString(parseError);
-            return false;
+            giv::GivParser parser;
+            std::string parseError;
+            if (!parser.parseFile(f, newScene, parseError))
+            {
+                if (error) *error = QString::fromStdString(parseError);
+                return false;
+            }
+        }
+        else
+        {
+            newScene.images.push_back(f);
         }
     }
     for (const auto& ds : newScene.datasets) totalPoints += ds.pointCount();
@@ -149,6 +174,7 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     // it's retried relative to the directory of the first loaded .giv file.
     std::vector<giv::LoadedImage> loadedImages;
     std::vector<std::string> newLoadedImageNames;
+    std::vector<std::pair<double, double>> newLoadedImageSizes;
     std::filesystem::path givDir = paths.empty() ? std::filesystem::path() : std::filesystem::path(paths.front()).parent_path();
     for (const auto& imgRef : newScene.images)
     {
@@ -160,21 +186,15 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
         if (!loaded)
             continue;
 
-        // A pure-$image .giv file has no dataset points to derive bounds
-        // from; include every loaded image's pixel rect so auto-fit still
-        // works. Un-negated (giv/image y-down) coordinates, matching how
-        // GivParser tracks dataset point bounds - SceneBuilder applies the
-        // Y-negation once, at world-space geometry-build time.
-        newScene.updateBounds(0.0, 0.0);
-        newScene.updateBounds(loaded->width, loaded->height);
-
         newLoadedImageNames.push_back(resolved.string());
+        newLoadedImageSizes.emplace_back(static_cast<double>(loaded->width), static_cast<double>(loaded->height));
         loadedImages.push_back(std::move(*loaded));
     }
 
     scene_ = std::move(newScene);
     loadedImages_ = std::move(loadedImages);
     loadedImageNames_ = std::move(newLoadedImageNames);
+    loadedImageSizes_ = std::move(newLoadedImageSizes);
     hasScene_ = true;
     currentImageIndex_ = 0;
 
@@ -234,16 +254,14 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
 
     if (isInitialLoad)
     {
-        double minX = scene_.hasBounds() ? scene_.minX : -100.0;
-        double maxX = scene_.hasBounds() ? scene_.maxX : 100.0;
-        double minY = scene_.hasBounds() ? -scene_.maxY : -100.0;
-        double maxY = scene_.hasBounds() ? -scene_.minY : 100.0;
+        double minXyd, minYyd, maxXyd, maxYyd;
+        currentFitBoundsYDown(minXyd, minYyd, maxXyd, maxYyd);
 
         auto lookAt = vsg::LookAt::create(vsg::dvec3(0.0, 0.0, 1.0), vsg::dvec3(0.0, 0.0, 0.0), vsg::dvec3(0.0, 1.0, 0.0));
         projection_ = vsg::Orthographic::create(-100.0, 100.0, -100.0, 100.0, 0.01, 100.0);
         camera_ = vsg::Camera::create(projection_, lookAt, vsg::ViewportState::create(window_->windowAdapter->extent2D()));
 
-        fitToBounds(minX, minY, maxX, maxY);
+        fitToBounds(minXyd, -maxYyd, maxXyd, -minYyd);
     }
 
     panZoom_ = giv::PanZoomHandler::create(camera_);
@@ -343,7 +361,7 @@ void VulkanViewport::nextImage()
     if (loadedImageNames_.size() < 2 || !imageSwitch_) return;
     currentImageIndex_ = (currentImageIndex_ + 1) % static_cast<int>(loadedImageNames_.size());
     imageSwitch_->setSingleChildOn(static_cast<size_t>(currentImageIndex_));
-    viewer_->request();
+    fitToWindow(); // matches giv's do_auto_fit_marks (default on): re-fit on every image switch
     emit imageChanged(currentImageIndex_, imageCount(), QString::fromStdString(currentImageName()));
 }
 
@@ -352,7 +370,7 @@ void VulkanViewport::previousImage()
     if (loadedImageNames_.size() < 2 || !imageSwitch_) return;
     currentImageIndex_ = (currentImageIndex_ - 1 + static_cast<int>(loadedImageNames_.size())) % static_cast<int>(loadedImageNames_.size());
     imageSwitch_->setSingleChildOn(static_cast<size_t>(currentImageIndex_));
-    viewer_->request();
+    fitToWindow(); // matches giv's do_auto_fit_marks (default on): re-fit on every image switch
     emit imageChanged(currentImageIndex_, imageCount(), QString::fromStdString(currentImageName()));
 }
 
@@ -397,11 +415,35 @@ void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double m
 void VulkanViewport::fitToWindow()
 {
     if (!hasScene_) return;
-    double minX = scene_.hasBounds() ? scene_.minX : -100.0;
-    double maxX = scene_.hasBounds() ? scene_.maxX : 100.0;
-    double minY = scene_.hasBounds() ? -scene_.maxY : -100.0;
-    double maxY = scene_.hasBounds() ? -scene_.minY : 100.0;
-    fitToBounds(minX, minY, maxX, maxY);
+    double minXyd, minYyd, maxXyd, maxYyd;
+    currentFitBoundsYDown(minXyd, minYyd, maxXyd, maxYyd);
+    fitToBounds(minXyd, -maxYyd, maxXyd, -minYyd);
+}
+
+void VulkanViewport::currentFitBoundsYDown(double& minX, double& minY, double& maxX, double& maxY) const
+{
+    bool has = scene_.hasBounds();
+    minX = has ? scene_.minX : 1e30;
+    maxX = has ? scene_.maxX : -1e30;
+    minY = has ? scene_.minY : 1e30;
+    maxY = has ? scene_.maxY : -1e30;
+
+    if (currentImageIndex_ >= 0 && currentImageIndex_ < static_cast<int>(loadedImageSizes_.size()))
+    {
+        const auto& size = loadedImageSizes_[currentImageIndex_];
+        minX = std::min(minX, 0.0);
+        maxX = std::max(maxX, size.first);
+        minY = std::min(minY, 0.0);
+        maxY = std::max(maxY, size.second);
+    }
+
+    if (minX > maxX || minY > maxY)
+    {
+        minX = -100.0;
+        maxX = 100.0;
+        minY = -100.0;
+        maxY = 100.0;
+    }
 }
 
 void VulkanViewport::zoomIn()

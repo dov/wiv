@@ -44,13 +44,17 @@ void PanZoomHandler::apply(vsg::MoveEvent& event)
         }
     }
 
-    if (!dragging_) return;
     if (!window) return;
 
     int32_t dx = event.x - lastX_;
     int32_t dy = event.y - lastY_;
     lastX_ = event.x;
     lastY_ = event.y;
+
+    // lastX_/lastY_ must stay current on every move (not just while dragging)
+    // since ScrollWheelEvent carries no cursor position of its own and relies
+    // on these for the zoom-at-cursor anchor.
+    if (!dragging_) return;
 
     if (dx == 0 && dy == 0) return;
     pan(dx, dy, window->extent2D());
@@ -68,15 +72,12 @@ void PanZoomHandler::apply(vsg::ScrollWheelEvent& event)
 
     double factor = std::pow(0.9, amount);
 
-    // vsg doesn't give pointer position on ScrollWheelEvent, so zoom around
-    // the window center; PanZoomHandler still supports zoom-at-cursor for
-    // platforms/backends that do report it via a MoveEvent immediately
-    // preceding the scroll (most X11/desktop setups update lastX_/lastY_
-    // before the wheel event arrives).
+    // vsg doesn't give pointer position on ScrollWheelEvent, so fall back to
+    // lastX_/lastY_, which apply(MoveEvent&) keeps current on every hover
+    // move (not just while dragging); (0,0) only if a scroll arrives before
+    // any move has ever been reported, which zooms around the top-left.
     auto extent = window->extent2D();
-    int32_t cx = (lastX_ != 0 || lastY_ != 0) ? lastX_ : static_cast<int32_t>(extent.width / 2);
-    int32_t cy = (lastX_ != 0 || lastY_ != 0) ? lastY_ : static_cast<int32_t>(extent.height / 2);
-    zoom(factor, cx, cy, extent);
+    zoom(factor, lastX_, lastY_, extent);
 }
 
 void PanZoomHandler::pan(int32_t dxPix, int32_t dyPix, const VkExtent2D& extent)

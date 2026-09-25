@@ -82,8 +82,12 @@ void MainWindow::buildMenus()
     updateRecentFilesMenu();
 
     fileMenu->addSeparator();
+    auto reloadAction = fileMenu->addAction("&Reload", this, &MainWindow::reloadFiles);
+    reloadAction->setShortcuts({QKeySequence(Qt::Key_Return), QKeySequence(Qt::Key_Enter)});
+
+    fileMenu->addSeparator();
     auto quitAction = fileMenu->addAction("&Quit", qApp, &QApplication::quit);
-    quitAction->setShortcut(QKeySequence::Quit);
+    quitAction->setShortcuts({QKeySequence::Quit, QKeySequence("Q")});
 
     auto viewMenu = menuBar()->addMenu("&View");
     auto zoomInAction = viewMenu->addAction("Zoom In", viewport_, &VulkanViewport::zoomIn);
@@ -91,7 +95,7 @@ void MainWindow::buildMenus()
     auto zoomOutAction = viewMenu->addAction("Zoom Out", viewport_, &VulkanViewport::zoomOut);
     zoomOutAction->setShortcut(QKeySequence::ZoomOut);
     auto fitAction = viewMenu->addAction("Fit to Window", viewport_, &VulkanViewport::fitToWindow);
-    fitAction->setShortcut(QKeySequence("Ctrl+0"));
+    fitAction->setShortcuts({QKeySequence("Ctrl+0"), QKeySequence("F")});
 
     balloonAction_ = viewMenu->addAction("Balloon Tooltips", viewport_, &VulkanViewport::toggleBalloon);
     balloonAction_->setCheckable(true);
@@ -112,10 +116,10 @@ void MainWindow::buildMenus()
 
     viewMenu->addSeparator();
     nextImageAction_ = viewMenu->addAction("Next Image", viewport_, &VulkanViewport::nextImage);
-    nextImageAction_->setShortcut(QKeySequence("Shift+Up"));
+    nextImageAction_->setShortcuts({QKeySequence("Shift+Up"), QKeySequence("Space"), QKeySequence("Right")});
     nextImageAction_->setEnabled(false);
     previousImageAction_ = viewMenu->addAction("Previous Image", viewport_, &VulkanViewport::previousImage);
-    previousImageAction_->setShortcut(QKeySequence("Shift+Down"));
+    previousImageAction_->setShortcuts({QKeySequence("Shift+Down"), QKeySequence("Backspace"), QKeySequence("Left")});
     previousImageAction_->setEnabled(false);
 
     auto editMenu = menuBar()->addMenu("&Edit");
@@ -175,7 +179,14 @@ void MainWindow::loadFilesInternal(const std::vector<std::string>& paths)
         QMessageBox::critical(this, "wiv", QString("Failed to load file(s):\n%1").arg(error));
         return;
     }
+    lastPaths_ = paths;
     balloonAction_->setChecked(false);
+}
+
+void MainWindow::reloadFiles()
+{
+    if (lastPaths_.empty()) return;
+    loadFilesInternal(lastPaths_);
 }
 
 void MainWindow::updateRecentFilesMenu()
