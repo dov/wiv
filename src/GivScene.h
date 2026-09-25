@@ -103,6 +103,20 @@ struct Dataset
     // at that index; x[i],y[i] give the anchor position).
     std::vector<TextItem> texts;
 
+    // Pre-rasterized RGBA sprite drawn as a positioned textured quad
+    // instead of the vector geometry above - used for SVG shapes with an
+    // feGaussianBlur filter (see SvgLoader), which this renderer's flat-
+    // colored triangle fills/lines can't express. Rasterized+blurred once
+    // at load time; x/y/w/h are world-space (same Y-down convention as
+    // the point arrays above). When isSprite is set, the x/y/op arrays
+    // above are empty and doDrawMarks/doDrawLines/doDrawPolygon are moot.
+    bool isSprite = false;
+    std::vector<unsigned char> spriteRGBA; // spriteWidth*spriteHeight*4, top-to-bottom
+    int spriteWidth = 0;
+    int spriteHeight = 0;
+    double spriteX = 0.0, spriteY = 0.0;
+    double spriteW = 0.0, spriteH = 0.0;
+
     void reserve(size_t n)
     {
         x.reserve(n);

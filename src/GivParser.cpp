@@ -1,4 +1,5 @@
 #include "GivParser.h"
+#include "SvgLoader.h"
 
 #include <algorithm>
 #include <charconv>
@@ -214,8 +215,11 @@ void GivParser::applyStyleLine(Dataset& ds, const std::string& key, const std::s
     else if (key == "outline_color")
     {
         Color c;
-        if (parseGivColor(t.get(0), c)) ds.outlineColor = c;
-        ds.doDrawPolygonOutline = true;
+        if (parseGivColor(t.get(0), c))
+        {
+            ds.outlineColor = c;
+            ds.doDrawPolygonOutline = !c.isNone;
+        }
     }
     else if (key == "marks")
     {
@@ -339,8 +343,11 @@ void GivParser::parseLine(Dataset& ds, const char* line, size_t len, SceneData& 
         {
             Color c;
             std::string spec = tok.getRest(1);
-            if (parseGivColor(spec, c)) ds.outlineColor = c;
-            ds.doDrawPolygonOutline = true;
+            if (parseGivColor(spec, c))
+            {
+                ds.outlineColor = c;
+                ds.doDrawPolygonOutline = !c.isNone;
+            }
         }
         else if (w0 == "$quiver_color")
         {
@@ -542,6 +549,9 @@ void GivParser::parseLine(Dataset& ds, const char* line, size_t len, SceneData& 
 
 bool GivParser::parseFile(const std::string& filename, SceneData& scene, std::string& error)
 {
+    if (filename.size() >= 4 && toLower(filename.substr(filename.size() - 4)) == ".svg")
+        return loadSvgFile(filename, scene, error);
+
     MappedFile file;
     if (!file.load(filename))
     {
@@ -579,7 +589,13 @@ bool GivParser::parseFile(const std::string& filename, SceneData& scene, std::st
                 // size()-1: the dataset just emplaced is already counted in
                 // size(), so the first dataset must index kDefaultColors[0]
                 // (red, matching giv - see gallery-cat-contour.jpg), not [1].
-                current->color = kDefaultColors[(scene.datasets.size() - 1) % 6];
+                size_t datasetIndex = scene.datasets.size() - 1;
+                current->color = kDefaultColors[datasetIndex % 6];
+                // giv's new_giv_dataset() (giv-data.cc) seeds path_name with
+                // "Dataset %d" up front, so a dataset with neither $path nor
+                // $balloon still gets a balloon tooltip; $path below
+                // overwrites this.
+                current->pathName = "Dataset " + std::to_string(datasetIndex);
                 needNewDataset = false;
             }
             parseLine(*current, data + lineStart, len, scene);

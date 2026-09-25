@@ -20,7 +20,9 @@ class GivParser
 public:
     // Parses `filename` and appends resulting datasets to `scene`, updating
     // scene bounds. Returns true on success; on failure returns false and
-    // fills `error`.
+    // fills `error`. Dispatches .svg files to SvgLoader instead of the .giv
+    // text grammar below (mirrors giv's own load_file/giv_parser_parse_file,
+    // which route .svg the same way).
     bool parseFile(const std::string& filename, SceneData& scene, std::string& error);
 
 private:
