@@ -12,11 +12,14 @@
 class QLabel;
 class QAction;
 class QMenu;
+class QDialog;
+class QDockWidget;
 
 namespace givqt
 {
 
 class VulkanViewport;
+class MarkTreeView;
 
 class MainWindow : public QMainWindow
 {
@@ -40,7 +43,18 @@ private:
     QAction* balloonAction_ = nullptr;
     QAction* nextImageAction_ = nullptr;
     QAction* previousImageAction_ = nullptr;
+    QAction* showMarksAction_ = nullptr;
+    QAction* markBrowserPanelAction_ = nullptr;
     QMenu* recentFilesMenu_ = nullptr;
+
+    // Mark Browser: one shared MarkTreeView content widget, hosted in either
+    // a standalone (non-modal) window or a docked side panel - see
+    // showMarkBrowser()/setMarkBrowserPlacement(). Only one of the two
+    // containers exists at a time.
+    MarkTreeView* markTreeView_ = nullptr;
+    QDialog* markBrowserDialog_ = nullptr;
+    QDockWidget* markBrowserDock_ = nullptr;
+    bool markBrowserAsPanel_ = false;
 
     void buildMenus();
     void buildStatusBar();
@@ -49,6 +63,9 @@ private:
     void updateRecentFilesMenu();
     void addRecentFile(const QString& path);
     void loadFilesInternal(const std::vector<std::string>& paths);
+
+    void showMarkBrowser();
+    void setMarkBrowserPlacement(bool asPanel);
 };
 
 } // namespace givqt

@@ -172,45 +172,85 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
         loadedImages.push_back(std::move(*loaded));
     }
 
-    giv::SceneBuilder builder(options_);
-    vsg::ref_ptr<vsg::Group> sceneGraph;
+    scene_ = std::move(newScene);
+    loadedImages_ = std::move(loadedImages);
+    loadedImageNames_ = std::move(newLoadedImageNames);
+    hasScene_ = true;
+    currentImageIndex_ = 0;
+
     auto buildStart = std::chrono::steady_clock::now();
-    try
-    {
-        sceneGraph = builder.build(newScene, shaderDir_, loadedImages);
-    }
-    catch (const std::exception& e)
-    {
-        if (error) *error = QString("failed to build scene: %1").arg(e.what());
-        return false;
-    }
+    if (!rebuildSceneGraph(error, /*isInitialLoad=*/true)) return false;
     double buildMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - buildStart).count();
     std::cerr << "wiv: scene build took " << buildMs << " ms\n";
 
-    scene_ = std::move(newScene);
-    hasScene_ = true;
+    emit sceneLoaded();
+    emit imageChanged(currentImageIndex_, imageCount(), QString::fromStdString(currentImageName()));
+    return true;
+}
 
-    // Drop the previous load's event handlers (pan/zoom + balloon) but keep
+bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
+{
+    // The global "View Marks" switch hides every dataset without disturbing
+    // the per-dataset isVisible flags the Mark Browser tree maintains - so
+    // apply it only for the duration of this build, then restore.
+    std::vector<bool> savedVisible(scene_.datasets.size());
+    for (size_t i = 0; i < scene_.datasets.size(); ++i)
+    {
+        savedVisible[i] = scene_.datasets[i].isVisible;
+        scene_.datasets[i].isVisible = savedVisible[i] && globalShowMarks_;
+    }
+
+    giv::SceneBuilder builder(options_);
+    vsg::ref_ptr<vsg::Group> sceneGraph;
+    try
+    {
+        sceneGraph = builder.build(scene_, shaderDir_, loadedImages_);
+    }
+    catch (const std::exception& e)
+    {
+        for (size_t i = 0; i < scene_.datasets.size(); ++i) scene_.datasets[i].isVisible = savedVisible[i];
+        if (error) *error = QString("failed to build scene: %1").arg(e.what());
+        return false;
+    }
+    for (size_t i = 0; i < scene_.datasets.size(); ++i) scene_.datasets[i].isVisible = savedVisible[i];
+
+    // A visibility-only rebuild replaces command/render graphs (and the
+    // pipelines/descriptor sets/buffers they reference) that the GPU may
+    // still be mid-flight on from a previous frame - dropping the old
+    // vsg::ref_ptrs below would destroy those Vulkan objects out from under
+    // an in-progress vkQueueSubmit/present, which is undefined behavior (and
+    // was observed to eventually wedge the window: rendering kept running
+    // but the Qt event loop stopped servicing input). Only needed once the
+    // viewer has actually presented a frame before (i.e. never on the very
+    // first build).
+    if (!isInitialLoad) viewer_->deviceWaitIdle();
+
+    // Drop the previous build's event handlers (pan/zoom + balloon) but keep
     // the CloseHandler added once in the constructor.
     auto& handlers = viewer_->getEventHandlers();
     handlers.erase(std::remove_if(handlers.begin(), handlers.end(),
                                    [](const vsg::ref_ptr<vsg::Visitor>& h) { return h.cast<giv::PanZoomHandler>() || h.cast<giv::BalloonController>(); }),
                    handlers.end());
 
-    double minX = scene_.hasBounds() ? scene_.minX : -100.0;
-    double maxX = scene_.hasBounds() ? scene_.maxX : 100.0;
-    double minY = scene_.hasBounds() ? -scene_.maxY : -100.0;
-    double maxY = scene_.hasBounds() ? -scene_.minY : 100.0;
+    if (isInitialLoad)
+    {
+        double minX = scene_.hasBounds() ? scene_.minX : -100.0;
+        double maxX = scene_.hasBounds() ? scene_.maxX : 100.0;
+        double minY = scene_.hasBounds() ? -scene_.maxY : -100.0;
+        double maxY = scene_.hasBounds() ? -scene_.minY : 100.0;
 
-    auto lookAt = vsg::LookAt::create(vsg::dvec3(0.0, 0.0, 1.0), vsg::dvec3(0.0, 0.0, 0.0), vsg::dvec3(0.0, 1.0, 0.0));
-    projection_ = vsg::Orthographic::create(-100.0, 100.0, -100.0, 100.0, 0.01, 100.0);
-    camera_ = vsg::Camera::create(projection_, lookAt, vsg::ViewportState::create(window_->windowAdapter->extent2D()));
+        auto lookAt = vsg::LookAt::create(vsg::dvec3(0.0, 0.0, 1.0), vsg::dvec3(0.0, 0.0, 0.0), vsg::dvec3(0.0, 1.0, 0.0));
+        projection_ = vsg::Orthographic::create(-100.0, 100.0, -100.0, 100.0, 0.01, 100.0);
+        camera_ = vsg::Camera::create(projection_, lookAt, vsg::ViewportState::create(window_->windowAdapter->extent2D()));
 
-    fitToBounds(minX, minY, maxX, maxY);
+        fitToBounds(minX, minY, maxX, maxY);
+    }
 
     panZoom_ = giv::PanZoomHandler::create(camera_);
     panZoom_->onCursorMove = [this](double x, double y) { emit cursorWorldPosition(x, y); };
     viewer_->addEventHandler(panZoom_);
+
+    bool wasBalloonEnabled = isInitialLoad ? false : balloonEnabled_;
 
     labelPicker_ = giv::LabelPicker::create(window_->windowAdapter, camera_, builder.labelGraph());
     balloonOverlay_ = giv::BalloonOverlay::create(options_, shaderDir_);
@@ -226,9 +266,7 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     viewer_->imageFilterAnimator = builder.imageFilterAnimator();
 
     imageSwitch_ = builder.imageSwitch();
-    loadedImageNames_ = std::move(newLoadedImageNames);
-    currentImageIndex_ = 0;
-    if (imageSwitch_) imageSwitch_->setSingleChildOn(0);
+    if (imageSwitch_) imageSwitch_->setSingleChildOn(static_cast<size_t>(currentImageIndex_));
 
     auto renderGraph = vsg::createRenderGraphForView(window_->windowAdapter, camera_, sceneGraph);
     renderGraph->addChild(balloonOverlay_->view());
@@ -238,25 +276,60 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     viewer_->assignRecordAndSubmitTaskAndPresentation({labelPicker_->commandGraph(), commandGraph});
     viewer_->compile();
 
-    balloonEnabled_ = false;
-    balloonController_->setEnabled(false);
-    labelPicker_->setEnabled(false);
-    balloonOverlay_->hide();
+    balloonEnabled_ = wasBalloonEnabled;
+    balloonController_->setEnabled(wasBalloonEnabled);
+    labelPicker_->setEnabled(wasBalloonEnabled);
+    if (!wasBalloonEnabled) balloonOverlay_->hide();
 
-    // Force the first frame to be recorded/presented right here, matching
-    // the reference application's Widget3D construction order (compile() then one render()
-    // call, all before the widget is ever shown - see MainWindow::show()
-    // being called only after this in main.cpp). Presenting into this
-    // embedded window for the first time *after* it's already mapped/visible
-    // reliably hung forever inside the NVIDIA driver's present() path (main
-    // thread stuck in libnvidia-glcore.so's poll()); doing it once while
-    // still hidden avoids that entirely.
-    viewer_->request();
-    viewer_->render();
+    if (isInitialLoad)
+    {
+        // Force the first frame to be recorded/presented right here, matching
+        // the reference application's Widget3D construction order (compile() then one
+        // render() call, all before the widget is ever shown - see
+        // MainWindow::show() being called only after this in main.cpp).
+        // Presenting into this embedded window for the first time *after*
+        // it's already mapped/visible reliably hung forever inside the
+        // NVIDIA driver's present() path (main thread stuck in
+        // libnvidia-glcore.so's poll()); doing it once while still hidden
+        // avoids that entirely.
+        viewer_->request();
+        viewer_->render();
+    }
+    else
+    {
+        viewer_->request();
+    }
 
-    emit sceneLoaded();
-    emit imageChanged(currentImageIndex_, imageCount(), QString::fromStdString(currentImageName()));
     return true;
+}
+
+void VulkanViewport::setDatasetsVisible(const std::vector<size_t>& indices, bool visible)
+{
+    if (!hasScene_) return;
+    bool changed = false;
+    for (size_t idx : indices)
+    {
+        if (idx >= scene_.datasets.size()) continue;
+        if (scene_.datasets[idx].isVisible != visible)
+        {
+            scene_.datasets[idx].isVisible = visible;
+            changed = true;
+        }
+    }
+    if (!changed) return;
+    rebuildSceneGraph(nullptr, /*isInitialLoad=*/false);
+}
+
+void VulkanViewport::setShowMarks(bool show)
+{
+    if (globalShowMarks_ == show) return;
+    globalShowMarks_ = show;
+    if (hasScene_) rebuildSceneGraph(nullptr, /*isInitialLoad=*/false);
+}
+
+void VulkanViewport::toggleShowMarks()
+{
+    setShowMarks(!globalShowMarks_);
 }
 
 std::string VulkanViewport::currentImageName() const

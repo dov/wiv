@@ -1,10 +1,13 @@
 #include "MainWindow.h"
 
+#include "MarkTreeView.h"
 #include "PreferencesDialog.h"
 #include "VulkanViewport.h"
 
 #include <QAction>
 #include <QApplication>
+#include <QDialog>
+#include <QDockWidget>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QLabel>
@@ -13,6 +16,7 @@
 #include <QMessageBox>
 #include <QSettings>
 #include <QStatusBar>
+#include <QVBoxLayout>
 
 namespace givqt
 {
@@ -41,6 +45,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         size_t points = 0;
         for (const auto& ds : scene.datasets) points += ds.pointCount();
         countsLabel_->setText(QString("%1 dataset(s), %2 points").arg(scene.datasets.size()).arg(points));
+        if (markTreeView_) markTreeView_->rebuildFromScene();
     });
     connect(viewport_, &VulkanViewport::cursorWorldPosition, this, [this](double x, double y) {
         cursorLabel_->setText(QString("(%1, %2)").arg(x, 0, 'f', 2).arg(y, 0, 'f', 2));
@@ -91,6 +96,19 @@ void MainWindow::buildMenus()
     balloonAction_ = viewMenu->addAction("Balloon Tooltips", viewport_, &VulkanViewport::toggleBalloon);
     balloonAction_->setCheckable(true);
     balloonAction_->setShortcut(QKeySequence("B"));
+
+    viewMenu->addSeparator();
+    showMarksAction_ = viewMenu->addAction("Show Marks", viewport_, &VulkanViewport::toggleShowMarks);
+    showMarksAction_->setCheckable(true);
+    showMarksAction_->setChecked(true);
+    showMarksAction_->setShortcut(QKeySequence("M"));
+
+    viewMenu->addAction("Mark Browser...", this, &MainWindow::showMarkBrowser);
+
+    markBrowserPanelAction_ = new QAction("Mark Browser as Panel", this);
+    markBrowserPanelAction_->setCheckable(true);
+    connect(markBrowserPanelAction_, &QAction::toggled, this, &MainWindow::setMarkBrowserPlacement);
+    viewMenu->addAction(markBrowserPanelAction_);
 
     viewMenu->addSeparator();
     nextImageAction_ = viewMenu->addAction("Next Image", viewport_, &VulkanViewport::nextImage);
@@ -181,6 +199,68 @@ void MainWindow::addRecentFile(const QString& path)
     while (recent.size() > kMaxRecentFiles) recent.removeLast();
     settings.setValue("recentFiles", recent);
     updateRecentFilesMenu();
+}
+
+void MainWindow::showMarkBrowser()
+{
+    if (!markTreeView_) markTreeView_ = new MarkTreeView(viewport_);
+    markTreeView_->rebuildFromScene();
+
+    if (markBrowserAsPanel_)
+    {
+        if (!markBrowserDock_)
+        {
+            markBrowserDock_ = new QDockWidget("Mark Browser", this);
+            markBrowserDock_->setWidget(markTreeView_);
+            addDockWidget(Qt::LeftDockWidgetArea, markBrowserDock_);
+        }
+        markBrowserDock_->show();
+        markBrowserDock_->raise();
+    }
+    else
+    {
+        if (!markBrowserDialog_)
+        {
+            // Non-modal, resizable, and left open across further interaction
+            // with the main window - matching giv's own Mark Browser dialog
+            // (giv-mark-tree-dialog.gob: transient-for + destroy-with-parent,
+            // but not a blocking gtk_dialog_run).
+            markBrowserDialog_ = new QDialog(this);
+            markBrowserDialog_->setWindowTitle("Mark Browser");
+            markBrowserDialog_->resize(400, 350);
+            auto layout = new QVBoxLayout(markBrowserDialog_);
+            layout->setContentsMargins(0, 0, 0, 0);
+            layout->addWidget(markTreeView_);
+        }
+        markBrowserDialog_->show();
+        markBrowserDialog_->raise();
+        markBrowserDialog_->activateWindow();
+    }
+}
+
+void MainWindow::setMarkBrowserPlacement(bool asPanel)
+{
+    if (markBrowserAsPanel_ == asPanel) return;
+
+    bool wasVisible = (markBrowserDialog_ && markBrowserDialog_->isVisible()) || (markBrowserDock_ && markBrowserDock_->isVisible());
+
+    // Detach the shared tree view before tearing down whichever container
+    // currently owns it, then destroy that (now-empty) container.
+    if (markTreeView_) markTreeView_->setParent(nullptr);
+    if (markBrowserDialog_)
+    {
+        markBrowserDialog_->deleteLater();
+        markBrowserDialog_ = nullptr;
+    }
+    if (markBrowserDock_)
+    {
+        removeDockWidget(markBrowserDock_);
+        markBrowserDock_->deleteLater();
+        markBrowserDock_ = nullptr;
+    }
+
+    markBrowserAsPanel_ = asPanel;
+    if (wasVisible) showMarkBrowser();
 }
 
 } // namespace givqt

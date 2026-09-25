@@ -11,6 +11,7 @@
 #include "BalloonOverlay.h"
 #include "GivScene.h"
 #include "GivViewer.h"
+#include "ImagePluginHost.h"
 #include "LabelPicker.h"
 #include "PanZoomHandler.h"
 #include "SceneBuilder.h"
@@ -61,6 +62,20 @@ public:
     const giv::SceneData& sceneData() const { return scene_; }
     bool hasScene() const { return hasScene_; }
 
+    // Master "View Marks" switch (giv's 'm' key / do_show_marks): hides or
+    // shows every mark/line/fill/text overlay regardless of each dataset's
+    // own isVisible state (which the Mark Browser tree controls) - the two
+    // are combined (AND) only at scene-build time, so toggling this back on
+    // restores whatever the tree had set. Camera/pan state is preserved.
+    void setShowMarks(bool show);
+    void toggleShowMarks();
+    bool showMarks() const { return globalShowMarks_; }
+
+    // Sets the persisted isVisible flag for each of `indices` (indices into
+    // sceneData().datasets) and rebuilds the scene graph in place. Used by
+    // the Mark Browser tree.
+    void setDatasetsVisible(const std::vector<size_t>& indices, bool visible);
+
 signals:
     void sceneLoaded();
     void cursorWorldPosition(double x, double y);
@@ -77,6 +92,8 @@ private:
 
     giv::SceneData scene_;
     bool hasScene_ = false;
+    std::vector<giv::LoadedImage> loadedImages_; // kept around so visibility-only rebuilds can redraw $image quads too
+    bool globalShowMarks_ = true;
 
     vsg::ref_ptr<vsg::Camera> camera_;
     vsg::ref_ptr<vsg::Orthographic> projection_;
@@ -96,6 +113,14 @@ private:
 
     void fitToBounds(double minX, double minY, double maxX, double maxY);
     void resizeEvent(QResizeEvent* event) override;
+
+    // Shared tail of loadFiles()/setDatasetsVisible()/setShowMarks(): builds
+    // the scene graph from the current scene_/loadedImages_ and (re)installs
+    // it into the viewer. `isInitialLoad` controls whether the camera is
+    // (re)created and auto-fit to the new bounds (a fresh file load) or left
+    // untouched (a visibility-only rebuild), and whether the balloon overlay
+    // is force-reset to hidden (new file) or kept as it was.
+    bool rebuildSceneGraph(QString* error, bool isInitialLoad);
 };
 
 } // namespace givqt

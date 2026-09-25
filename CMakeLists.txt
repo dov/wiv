@@ -69,6 +69,7 @@ add_executable(wiv
   src/qt/VulkanViewport.cpp
   src/qt/PreferencesDialog.cpp
   src/qt/MainWindow.cpp
+  src/qt/MarkTreeView.cpp
 )
 
 add_dependencies(wiv wiv_shaders)
