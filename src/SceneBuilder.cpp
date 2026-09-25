@@ -1328,6 +1328,52 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     // -------------------------------------------------------------
     auto spriteQuadIndices = vsg::ushortArray::create({0, 1, 2, 2, 3, 0});
 
+    // Bind nodes for the shared, whole-scene marks/fill/lines arrays are
+    // built ONCE here and the same node objects are reused in every
+    // dataset's draw commands below (not re-created per dataset). This
+    // matters more than it looks: vsg::BindVertexBuffers::assignArrays()
+    // wraps each vsg::Data in a brand-new vsg::BufferInfo, and
+    // BindVertexBuffers::compile() re-uploads to a freshly allocated GPU
+    // buffer whenever it sees a BufferInfo it hasn't compiled before -
+    // there's no dedup by the underlying vsg::Data pointer across
+    // different BindVertexBuffers nodes. So calling
+    // vsg::BindVertexBuffers::create() again inside the per-dataset loop
+    // (as this used to do) re-uploaded the *entire* scene's marks/fill/
+    // lines arrays to a brand-new buffer once per dataset instead of once
+    // total. For a file with a handful of large datasets that's wasteful;
+    // for one with hundreds of thousands of tiny datasets (e.g.
+    // GeomSimPrintedPattern.giv: 477,838 datasets for only 482,647 total
+    // points) it re-uploads the whole-scene arrays 477,838 times and
+    // exhausts GPU memory during Viewer::compile(), throwing
+    // vsg::Exception(VK_ERROR_OUT_OF_DEVICE_MEMORY) before a single frame
+    // is drawn. Sharing one already-compiled node across every dataset's
+    // draw commands avoids the re-upload: compile() checks each
+    // BufferInfo's own copied-modified-count, so calling compile() again
+    // on the *same* node is a cheap no-op once it has been compiled once.
+    vsg::ref_ptr<vsg::BindVertexBuffers> marksVertexBind, marksLabelVertexBind;
+    vsg::ref_ptr<vsg::BindVertexBuffers> fillVertexBind, fillLabelVertexBind;
+    vsg::ref_ptr<vsg::BindVertexBuffers> linesVertexBind, linesLabelVertexBind;
+    vsg::ref_ptr<vsg::BindIndexBuffer> quadIndexBind;
+
+    if (marksBind)
+    {
+        marksVertexBind = vsg::BindVertexBuffers::create(0, vsg::DataList{quadCorners, markPosSizeModeArray, markColorArray});
+        marksLabelVertexBind = vsg::BindVertexBuffers::create(0, vsg::DataList{quadCorners, markPosSizeModeArray, markLabelColorArray});
+        quadIndexBind = vsg::BindIndexBuffer::create(quadIndices);
+    }
+    if (fillBind)
+    {
+        fillVertexBind = vsg::BindVertexBuffers::create(0, vsg::DataList{fillPosArray, fillColorArray});
+        fillLabelVertexBind = vsg::BindVertexBuffers::create(0, vsg::DataList{fillPosArray, fillLabelColorArray});
+    }
+    if (linesBind)
+    {
+        linesVertexBind = vsg::BindVertexBuffers::create(0, vsg::DataList{quadCorners, linesP0p1Array, linesWidthDashArray, linesColorArray});
+        linesLabelVertexBind =
+            vsg::BindVertexBuffers::create(0, vsg::DataList{quadCorners, linesP0p1Array, linesLabelWidthDashArray, linesLabelColorArray});
+        if (!quadIndexBind) quadIndexBind = vsg::BindIndexBuffer::create(quadIndices);
+    }
+
     for (size_t dsIdx = 0; dsIdx < scene.datasets.size(); ++dsIdx)
     {
         const Dataset& spriteDs = scene.datasets[dsIdx];
@@ -1365,14 +1411,14 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
         if (marksBind && mr.count > 0)
         {
             auto drawCommands = vsg::Commands::create();
-            drawCommands->addChild(vsg::BindVertexBuffers::create(0, vsg::DataList{quadCorners, markPosSizeModeArray, markColorArray}));
-            drawCommands->addChild(vsg::BindIndexBuffer::create(quadIndices));
+            drawCommands->addChild(marksVertexBind);
+            drawCommands->addChild(quadIndexBind);
             drawCommands->addChild(vsg::DrawIndexed::create(6, mr.count, 0, 0, mr.start));
             root->addChild(wrapDraw(marksBind, drawCommands));
 
             auto labelDrawCommands = vsg::Commands::create();
-            labelDrawCommands->addChild(vsg::BindVertexBuffers::create(0, vsg::DataList{quadCorners, markPosSizeModeArray, markLabelColorArray}));
-            labelDrawCommands->addChild(vsg::BindIndexBuffer::create(quadIndices));
+            labelDrawCommands->addChild(marksLabelVertexBind);
+            labelDrawCommands->addChild(quadIndexBind);
             labelDrawCommands->addChild(vsg::DrawIndexed::create(6, mr.count, 0, 0, mr.start));
             labelRoot->addChild(wrapDraw(marksLabelBind, labelDrawCommands));
         }
@@ -1381,12 +1427,12 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
         if (fillBind && fr.count > 0)
         {
             auto drawCommands = vsg::Commands::create();
-            drawCommands->addChild(vsg::BindVertexBuffers::create(0, vsg::DataList{fillPosArray, fillColorArray}));
+            drawCommands->addChild(fillVertexBind);
             drawCommands->addChild(vsg::Draw::create(fr.count, 1, fr.start, 0));
             root->addChild(wrapDraw(fillBind, drawCommands));
 
             auto labelDrawCommands = vsg::Commands::create();
-            labelDrawCommands->addChild(vsg::BindVertexBuffers::create(0, vsg::DataList{fillPosArray, fillLabelColorArray}));
+            labelDrawCommands->addChild(fillLabelVertexBind);
             labelDrawCommands->addChild(vsg::Draw::create(fr.count, 1, fr.start, 0));
             labelRoot->addChild(wrapDraw(fillLabelBind, labelDrawCommands));
         }
@@ -1395,14 +1441,14 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
         if (linesBind && lr.count > 0)
         {
             auto drawCommands = vsg::Commands::create();
-            drawCommands->addChild(vsg::BindVertexBuffers::create(0, vsg::DataList{quadCorners, linesP0p1Array, linesWidthDashArray, linesColorArray}));
-            drawCommands->addChild(vsg::BindIndexBuffer::create(quadIndices));
+            drawCommands->addChild(linesVertexBind);
+            drawCommands->addChild(quadIndexBind);
             drawCommands->addChild(vsg::DrawIndexed::create(6, lr.count, 0, 0, lr.start));
             root->addChild(wrapDraw(linesBind, drawCommands));
 
             auto labelDrawCommands = vsg::Commands::create();
-            labelDrawCommands->addChild(vsg::BindVertexBuffers::create(0, vsg::DataList{quadCorners, linesP0p1Array, linesLabelWidthDashArray, linesLabelColorArray}));
-            labelDrawCommands->addChild(vsg::BindIndexBuffer::create(quadIndices));
+            labelDrawCommands->addChild(linesLabelVertexBind);
+            labelDrawCommands->addChild(quadIndexBind);
             labelDrawCommands->addChild(vsg::DrawIndexed::create(6, lr.count, 0, 0, lr.start));
             labelRoot->addChild(wrapDraw(linesLabelBind, labelDrawCommands));
         }
