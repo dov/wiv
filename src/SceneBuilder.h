@@ -99,12 +99,34 @@ public:
     vsg::ref_ptr<PixelSizeAnimator> lineWidthAnimator() const { return lineWidthAnimator_; }
     vsg::ref_ptr<ArrowVertexAnimator> arrowVertexAnimator() const { return arrowVertexAnimator_; }
 
+    // Drives the label-pass lines batch's half-width, which - like giv's own
+    // do_paint_by_index picking pass (GivPainterAgg::set_line_width /
+    // GivPainterCairo::set_line_width: `if (do_paint_by_index && line_width
+    // < 3) line_width = 3;`) - is floored to a wider minimum than the real
+    // line width so thin lines stay easy to hover. Non-null only if the
+    // scene contains lines.
+    vsg::ref_ptr<PixelSizeAnimator> labelLineWidthAnimator() const { return labelLineWidthAnimator_; }
+
+    // A second scene graph geometrically identical to the one returned by
+    // build(), but painted with one flat, non-antialiased "label color" per
+    // dataset (dataset index + 1 packed into RGB) instead of its real color -
+    // see labelColorFor() in SceneBuilder.cpp. Meant to be rendered
+    // off-screen (see LabelPicker) so a single pixel readback under the
+    // mouse cursor can be decoded back into a dataset index for the 'b'
+    // balloon/tooltip feature, matching giv's label-image approach
+    // (giv-widget.gob's w_label_image / GivPainterAgg::do_paint_by_index).
+    // Valid after build(); never null, but may have no children if the
+    // scene has no markable geometry.
+    vsg::ref_ptr<vsg::Group> labelGraph() const { return labelGraph_; }
+
 private:
     vsg::ref_ptr<vsg::Options> options_;
     std::unordered_map<std::string, vsg::ref_ptr<vsg::Font>> fontCache_;
     vsg::ref_ptr<PixelSizeAnimator> markSizeAnimator_;
     vsg::ref_ptr<PixelSizeAnimator> lineWidthAnimator_;
     vsg::ref_ptr<ArrowVertexAnimator> arrowVertexAnimator_;
+    vsg::ref_ptr<PixelSizeAnimator> labelLineWidthAnimator_;
+    vsg::ref_ptr<vsg::Group> labelGraph_;
 
     vsg::ref_ptr<vsg::Font> resolveFont(const std::string& fontSpec, double& outSize);
 };

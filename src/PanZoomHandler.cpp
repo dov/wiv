@@ -28,8 +28,23 @@ void PanZoomHandler::apply(vsg::ButtonReleaseEvent& event)
 
 void PanZoomHandler::apply(vsg::MoveEvent& event)
 {
-    if (!dragging_) return;
     auto window = event.window.ref_ptr();
+    if (window && onCursorMove)
+    {
+        auto extent = window->extent2D();
+        auto ortho = camera_->projectionMatrix.cast<vsg::Orthographic>();
+        auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
+        if (ortho && lookAt && extent.width > 0 && extent.height > 0)
+        {
+            double worldPerPixelX = (ortho->right - ortho->left) / static_cast<double>(extent.width);
+            double worldPerPixelY = (ortho->top - ortho->bottom) / static_cast<double>(extent.height);
+            double worldX = lookAt->center.x + (static_cast<double>(event.x) - extent.width * 0.5) * worldPerPixelX;
+            double worldY = -(lookAt->center.y + (extent.height * 0.5 - static_cast<double>(event.y)) * worldPerPixelY);
+            onCursorMove(worldX, worldY);
+        }
+    }
+
+    if (!dragging_) return;
     if (!window) return;
 
     int32_t dx = event.x - lastX_;

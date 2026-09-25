@@ -5,12 +5,16 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+set(CMAKE_AUTOMOC ON)
+
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
 
 find_package(vsg CONFIG REQUIRED)
 find_package(vsgXchange CONFIG REQUIRED)
+find_package(vsgQt CONFIG REQUIRED)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 
 # ---------------------------------------------------------------------------
 # Shader compilation (GLSL -> SPIR-V) via glslangValidator
@@ -23,6 +27,7 @@ endif()
 set(WIV_SHADER_SOURCES
   ${CMAKE_SOURCE_DIR}/shaders/marks.vert
   ${CMAKE_SOURCE_DIR}/shaders/marks.frag
+  ${CMAKE_SOURCE_DIR}/shaders/marks_label.frag
   ${CMAKE_SOURCE_DIR}/shaders/lines.vert
   ${CMAKE_SOURCE_DIR}/shaders/lines.frag
   ${CMAKE_SOURCE_DIR}/shaders/fill.vert
@@ -54,12 +59,20 @@ add_executable(wiv
   src/GivParser.cpp
   src/SceneBuilder.cpp
   src/PanZoomHandler.cpp
+  src/LabelPicker.cpp
+  src/BalloonOverlay.cpp
+  src/BalloonController.cpp
+  src/qt/GivViewer.cpp
+  src/qt/VulkanViewport.cpp
+  src/qt/DatasetPanel.cpp
+  src/qt/PreferencesDialog.cpp
+  src/qt/MainWindow.cpp
 )
 
 add_dependencies(wiv wiv_shaders)
 
 target_include_directories(wiv PRIVATE src)
-target_link_libraries(wiv PRIVATE vsg::vsg vsgXchange::vsgXchange)
+target_link_libraries(wiv PRIVATE vsg::vsg vsgXchange::vsgXchange vsgQt::vsgQt Qt6::Core Qt6::Gui Qt6::Widgets)
 
 target_compile_definitions(wiv PRIVATE
   WIV_SHADER_DIR="${CMAKE_BINARY_DIR}/shaders"

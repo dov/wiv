@@ -100,7 +100,8 @@ vsg::ref_ptr<vsg::StateGroup> makePipeline(const std::string& shaderDir,
                                             const std::string& vertFile,
                                             const std::string& fragFile,
                                             const vsg::VertexInputState::Bindings& bindings,
-                                            const vsg::VertexInputState::Attributes& attributes)
+                                            const vsg::VertexInputState::Attributes& attributes,
+                                            bool blend = true)
 {
     auto vertexShader = loadShader(VK_SHADER_STAGE_VERTEX_BIT, shaderDir, vertFile);
     auto fragmentShader = loadShader(VK_SHADER_STAGE_FRAGMENT_BIT, shaderDir, fragFile);
@@ -116,8 +117,12 @@ vsg::ref_ptr<vsg::StateGroup> makePipeline(const std::string& shaderDir,
     depthStencil->depthTestEnable = VK_FALSE;
     depthStencil->depthWriteEnable = VK_FALSE;
 
+    // The label-picking pass (blend == false) writes exact, unblended id
+    // colors - any blending there would let a discard-free but partially
+    // transparent fragment mix with whatever was already in the attachment,
+    // corrupting the id readback (see marks_label.frag).
     auto colorBlend = vsg::ColorBlendState::create();
-    colorBlend->configureAttachments(true);
+    colorBlend->configureAttachments(blend);
 
     vsg::GraphicsPipelineStates pipelineStates{
         vsg::VertexInputState::create(bindings, attributes),
@@ -143,6 +148,7 @@ struct MarkInstance
 {
     vsg::vec4 posSizeMode; // xy = position, z = half size, w = mark mode
     vsg::vec4 color;
+    vsg::vec4 labelColor; // this instance's dataset, encoded for label picking - see labelColorFor()
 };
 
 struct LineInstance
@@ -150,13 +156,29 @@ struct LineInstance
     vsg::vec4 p0p1;      // xy = p0, zw = p1
     vsg::vec4 widthDash; // x = half width, y = dashOn, z = dashOff, w = cumulative length at p0
     vsg::vec4 color;
+    vsg::vec4 labelColor;
 };
 
 struct FillVertex
 {
     vsg::vec2 pos;
     vsg::vec4 color;
+    vsg::vec4 labelColor;
 };
+
+// Encodes a dataset index as a flat opaque color for the offscreen label-
+// picking pass, matching giv's GivPainterAgg::label_to_color exactly (id+1
+// packed big-endian into RGB, so an empty/background pixel - cleared to
+// (0,0,0,1) - decodes to id -1): b = (id+1)&0xFF, g = ((id+1)>>8)&0xFF,
+// r = ((id+1)>>16)&0xFF. LabelPicker::decode() is the inverse.
+vsg::vec4 labelColorFor(size_t datasetIndex)
+{
+    uint32_t v = static_cast<uint32_t>(datasetIndex + 1);
+    float r = static_cast<float>((v >> 16) & 0xFFu) / 255.0f;
+    float g = static_cast<float>((v >> 8) & 0xFFu) / 255.0f;
+    float b = static_cast<float>(v & 0xFFu) / 255.0f;
+    return vsg::vec4(r, g, b, 1.0f);
+}
 
 float markModeFor(MarkType type)
 {
@@ -203,12 +225,14 @@ std::vector<vsg::vec2> tessellateEllipse(const vsg::vec2& center, float rx, floa
 }
 
 void addLineSegment(std::vector<LineInstance>& lines, const vsg::vec2& p0, const vsg::vec2& p1,
-                     float halfWidth, float dashOn, float dashOff, float& cumLen, const vsg::vec4& color)
+                     float halfWidth, float dashOn, float dashOff, float& cumLen, const vsg::vec4& color,
+                     const vsg::vec4& labelColor)
 {
     LineInstance li;
     li.p0p1 = vsg::vec4(p0.x, p0.y, p1.x, p1.y);
     li.widthDash = vsg::vec4(halfWidth, dashOn, dashOff, cumLen);
     li.color = color;
+    li.labelColor = labelColor;
     lines.push_back(li);
     cumLen += vsg::length(p1 - p0);
 }
@@ -247,7 +271,7 @@ void addLineSegment(std::vector<LineInstance>& lines, const vsg::vec2& p0, const
 // placeholder, good enough until the first update() call.
 void addArrowHead(std::vector<FillVertex>& tris, std::vector<uint32_t>& arrowIndex, std::vector<vsg::vec2>& arrowTip,
                    std::vector<vsg::vec2>& arrowOffsetPixels, const vsg::vec2& tip, const vsg::vec2& dir,
-                   float hw, const vsg::vec4& color)
+                   float hw, const vsg::vec4& color, const vsg::vec4& labelColor)
 {
     vsg::vec2 back(-dir.x, -dir.y);
     vsg::vec2 normal(-dir.y, dir.x);
@@ -267,7 +291,7 @@ void addArrowHead(std::vector<FillVertex>& tris, std::vector<uint32_t>& arrowInd
         for (const vsg::vec2& o : {oa, ob, oc})
         {
             arrowIndex.push_back(static_cast<uint32_t>(tris.size()));
-            tris.push_back({tip + o, color});
+            tris.push_back({tip + o, color, labelColor});
             arrowTip.push_back(tip);
             arrowOffsetPixels.push_back(o);
         }
@@ -282,14 +306,15 @@ void addArrowHead(std::vector<FillVertex>& tris, std::vector<uint32_t>& arrowInd
 // Fan-triangulates a (assumed simple-ish) closed polygon from vertex 0.
 // Not a full earcut - concave polygons may triangulate incorrectly, noted
 // as a Phase 1 simplification.
-void addPolygonFill(std::vector<FillVertex>& tris, const std::vector<vsg::vec2>& poly, const vsg::vec4& color)
+void addPolygonFill(std::vector<FillVertex>& tris, const std::vector<vsg::vec2>& poly, const vsg::vec4& color,
+                     const vsg::vec4& labelColor)
 {
     if (poly.size() < 3) return;
     for (size_t i = 1; i + 1 < poly.size(); ++i)
     {
-        tris.push_back({poly[0], color});
-        tris.push_back({poly[i], color});
-        tris.push_back({poly[i + 1], color});
+        tris.push_back({poly[0], color, labelColor});
+        tris.push_back({poly[i], color, labelColor});
+        tris.push_back({poly[i + 1], color, labelColor});
     }
 }
 
@@ -457,9 +482,16 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     if (options_ && options_->shaderSets.find("text") == options_->shaderSets.end())
         options_->shaderSets["text"] = vsg::createTextShaderSet(options_);
 
-    for (const Dataset& ds : scene.datasets)
+    for (size_t dsIdx = 0; dsIdx < scene.datasets.size(); ++dsIdx)
     {
+        const Dataset& ds = scene.datasets[dsIdx];
         if (!ds.isVisible) continue;
+
+        // Every mark/line/fill vertex emitted for this dataset also carries
+        // this flat id color alongside its real color, so the parallel
+        // label batches built after the main ones (below) can reuse these
+        // same geometry-building code paths - see labelColorFor().
+        const vsg::vec4 labelColor = labelColorFor(dsIdx);
 
         const vsg::vec4 lineColor = toVsg(ds.color);
         const vsg::vec4 markColor = toVsg(ds.color);
@@ -514,7 +546,7 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             case Op::Move:
                 if (ds.doDrawMarks)
                 {
-                    marks.push_back({vsg::vec4(p.x, p.y, markHalfSize, markMode), markColor});
+                    marks.push_back({vsg::vec4(p.x, p.y, markHalfSize, markMode), markColor, labelColor});
                     markScalesWithZoom.push_back(ds.doScaleMarks);
                 }
                 if (needSubpaths)
@@ -533,7 +565,7 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             case Op::Draw:
                 if (ds.doDrawMarks)
                 {
-                    marks.push_back({vsg::vec4(p.x, p.y, markHalfSize, markMode), markColor});
+                    marks.push_back({vsg::vec4(p.x, p.y, markHalfSize, markMode), markColor, labelColor});
                     markScalesWithZoom.push_back(ds.doScaleMarks);
                 }
                 if (needSubpaths)
@@ -600,12 +632,12 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             {
                 vsg::vec2 tip = currentPoint + p * static_cast<float>(ds.quiverScale);
                 float cum = 0.0f;
-                addLineSegment(lines, currentPoint, tip, lineHalfWidth, 1e9f, 0.0f, cum, quiverColor);
+                addLineSegment(lines, currentPoint, tip, lineHalfWidth, 1e9f, 0.0f, cum, quiverColor, labelColor);
                 if (ds.quiverHead)
                 {
                     vsg::vec2 dir = tip - currentPoint;
                     float len = vsg::length(dir);
-                    if (len > 1e-6f) addArrowHead(fillTris, arrowIndex, arrowTip, arrowOffsetPixels, tip, dir / len, lineHalfWidth, quiverColor);
+                    if (len > 1e-6f) addArrowHead(fillTris, arrowIndex, arrowTip, arrowOffsetPixels, tip, dir / len, lineHalfWidth, quiverColor, labelColor);
                 }
                 break;
             }
@@ -663,18 +695,18 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
                 const auto& sp = subpaths[spIdx];
                 const bool spClosed = subpathClosed[spIdx];
 
-                if (ds.doDrawPolygon) addPolygonFill(fillTris, sp, fillColor);
+                if (ds.doDrawPolygon) addPolygonFill(fillTris, sp, fillColor, labelColor);
                 if (ds.doDrawPolygonOutline && ds.doDrawPolygon)
                 {
                     float cum = 0.0f;
                     for (size_t i = 0; i + 1 < sp.size(); ++i)
-                        addLineSegment(lines, sp[i], sp[i + 1], lineHalfWidth, dashOn, dashOff, cum, outlineColor);
+                        addLineSegment(lines, sp[i], sp[i + 1], lineHalfWidth, dashOn, dashOff, cum, outlineColor, labelColor);
                 }
                 else if (ds.doDrawLines)
                 {
                     float cum = 0.0f;
                     for (size_t i = 0; i + 1 < sp.size(); ++i)
-                        addLineSegment(lines, sp[i], sp[i + 1], lineHalfWidth, dashOn, dashOff, cum, lineColor);
+                        addLineSegment(lines, sp[i], sp[i + 1], lineHalfWidth, dashOn, dashOff, cum, lineColor, labelColor);
                 }
 
                 if (ds.doDrawLines && ds.arrowType != ArrowType::None && sp.size() >= 2)
@@ -696,14 +728,14 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
                             vsg::vec2 tip = sp[tipIdx];
                             vsg::vec2 dir = tip - sp[prevIdx];
                             float len = vsg::length(dir);
-                            if (len > 1e-6f) addArrowHead(fillTris, arrowIndex, arrowTip, arrowOffsetPixels, tip, dir / len, lineHalfWidth, lineColor);
+                            if (len > 1e-6f) addArrowHead(fillTris, arrowIndex, arrowTip, arrowOffsetPixels, tip, dir / len, lineHalfWidth, lineColor, labelColor);
                         }
                     }
                     if (ds.arrowType == ArrowType::Start || ds.arrowType == ArrowType::Both)
                     {
                         vsg::vec2 dir = sp.front() - sp[1];
                         float len = vsg::length(dir);
-                        if (len > 1e-6f) addArrowHead(fillTris, arrowIndex, arrowTip, arrowOffsetPixels, sp.front(), dir / len, lineHalfWidth, lineColor);
+                        if (len > 1e-6f) addArrowHead(fillTris, arrowIndex, arrowTip, arrowOffsetPixels, sp.front(), dir / len, lineHalfWidth, lineColor, labelColor);
                     }
                 }
             }
@@ -715,6 +747,13 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     // -------------------------------------------------------------
     auto quadCorners = vsg::vec2Array::create({{-1.0f, -1.0f}, {1.0f, -1.0f}, {1.0f, 1.0f}, {-1.0f, 1.0f}});
     auto quadIndices = vsg::ushortArray::create({0, 1, 2, 2, 3, 0});
+
+    // labelRoot mirrors root's marks/lines/fill batches geometrically
+    // (reusing the very same position/shape buffers built below), but is
+    // painted with each vertex's labelColor instead of its color, using
+    // hard-edged (no blend, no AA) pipelines - see labelGraph()'s doc
+    // comment in SceneBuilder.h and marks_label.frag.
+    auto labelRoot = vsg::Group::create();
 
     // -------------------------------------------------------------
     // Marks batch
@@ -742,10 +781,12 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
         // its call site in main.cpp's render loop.
         posSizeModeArray->properties.dataVariance = vsg::DYNAMIC_DATA;
         auto colorArray = vsg::vec4Array::create(static_cast<uint32_t>(marks.size()));
+        auto labelColorArray = vsg::vec4Array::create(static_cast<uint32_t>(marks.size()));
         for (size_t i = 0; i < marks.size(); ++i)
         {
             posSizeModeArray->set(i, marks[i].posSizeMode);
             colorArray->set(i, marks[i].color);
+            labelColorArray->set(i, marks[i].labelColor);
         }
 
         markSizeAnimator_ = PixelSizeAnimator::create();
@@ -771,6 +812,17 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
 
         stateGroup->addChild(drawCommands);
         root->addChild(stateGroup);
+
+        // Label variant: same quad/position/mode buffers (marks_label.frag
+        // reads fragMode/fragCorner exactly like marks.frag), labelColor in
+        // place of color, hard edges, no blending.
+        auto labelStateGroup = makePipeline(shaderDir, "marks.vert.spv", "marks_label.frag.spv", bindings, attributes, /*blend=*/false);
+        auto labelDrawCommands = vsg::Commands::create();
+        labelDrawCommands->addChild(vsg::BindVertexBuffers::create(0, vsg::DataList{quadCorners, posSizeModeArray, labelColorArray}));
+        labelDrawCommands->addChild(vsg::BindIndexBuffer::create(quadIndices));
+        labelDrawCommands->addChild(vsg::DrawIndexed::create(6, static_cast<uint32_t>(marks.size()), 0, 0, 0));
+        labelStateGroup->addChild(labelDrawCommands);
+        labelRoot->addChild(labelStateGroup);
     }
 
     // -------------------------------------------------------------
@@ -802,11 +854,13 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
         // world space, so keep it dynamic and recompute every zoom change.
         widthDashArray->properties.dataVariance = vsg::DYNAMIC_DATA;
         auto colorArray = vsg::vec4Array::create(static_cast<uint32_t>(lines.size()));
+        auto labelColorArray = vsg::vec4Array::create(static_cast<uint32_t>(lines.size()));
         for (size_t i = 0; i < lines.size(); ++i)
         {
             p0p1Array->set(i, lines[i].p0p1);
             widthDashArray->set(i, lines[i].widthDash);
             colorArray->set(i, lines[i].color);
+            labelColorArray->set(i, lines[i].labelColor);
         }
 
         lineWidthAnimator_ = PixelSizeAnimator::create();
@@ -821,6 +875,26 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             lineWidthAnimator_->pixelSize.push_back(lines[i].widthDash.x);
         }
 
+        // Label-pass copy of widthDashArray, but with the half-width
+        // widened to a 1.5px floor (3px total) - matches giv's own
+        // do_paint_by_index picking pass (GivPainterAgg::set_line_width /
+        // GivPainterCairo::set_line_width: `if (do_paint_by_index &&
+        // line_width < 3) line_width = 3;`), which gives thin lines a
+        // bigger hit area to hover without changing how thick they actually
+        // look on screen. giv applies no equivalent widening to marks.
+        auto labelWidthDashArray = vsg::vec4Array::create(static_cast<uint32_t>(lines.size()));
+        labelWidthDashArray->properties.dataVariance = vsg::DYNAMIC_DATA;
+        for (size_t i = 0; i < lines.size(); ++i) labelWidthDashArray->set(i, lines[i].widthDash);
+
+        labelLineWidthAnimator_ = PixelSizeAnimator::create();
+        labelLineWidthAnimator_->array = labelWidthDashArray;
+        labelLineWidthAnimator_->component = 0;
+        for (size_t i = 0; i < lines.size(); ++i)
+        {
+            labelLineWidthAnimator_->indices.push_back(static_cast<uint32_t>(i));
+            labelLineWidthAnimator_->pixelSize.push_back(std::max(lines[i].widthDash.x, 1.5f));
+        }
+
         auto drawCommands = vsg::Commands::create();
         drawCommands->addChild(vsg::BindVertexBuffers::create(0, vsg::DataList{quadCorners, p0p1Array, widthDashArray, colorArray}));
         drawCommands->addChild(vsg::BindIndexBuffer::create(quadIndices));
@@ -828,6 +902,17 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
 
         stateGroup->addChild(drawCommands);
         root->addChild(stateGroup);
+
+        // Label variant: lines.frag already has no AA (only a hard dash
+        // discard), so it's reused as-is; just swap in labelColor, the
+        // widened labelWidthDashArray (see above), and disable blending.
+        auto labelStateGroup = makePipeline(shaderDir, "lines.vert.spv", "lines.frag.spv", bindings, attributes, /*blend=*/false);
+        auto labelDrawCommands = vsg::Commands::create();
+        labelDrawCommands->addChild(vsg::BindVertexBuffers::create(0, vsg::DataList{quadCorners, p0p1Array, labelWidthDashArray, labelColorArray}));
+        labelDrawCommands->addChild(vsg::BindIndexBuffer::create(quadIndices));
+        labelDrawCommands->addChild(vsg::DrawIndexed::create(6, static_cast<uint32_t>(lines.size()), 0, 0, 0));
+        labelStateGroup->addChild(labelDrawCommands);
+        labelRoot->addChild(labelStateGroup);
     }
 
     // -------------------------------------------------------------
@@ -847,10 +932,12 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
 
         auto posArray = vsg::vec2Array::create(static_cast<uint32_t>(fillTris.size()));
         auto colorArray = vsg::vec4Array::create(static_cast<uint32_t>(fillTris.size()));
+        auto labelColorArray = vsg::vec4Array::create(static_cast<uint32_t>(fillTris.size()));
         for (size_t i = 0; i < fillTris.size(); ++i)
         {
             posArray->set(i, fillTris[i].pos);
             colorArray->set(i, fillTris[i].color);
+            labelColorArray->set(i, fillTris[i].labelColor);
         }
         // Arrowhead vertices must stay pixel-constant in size as the view
         // zooms (see addArrowHead's doc comment) - mark the position buffer
@@ -872,9 +959,22 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
 
         stateGroup->addChild(drawCommands);
         root->addChild(stateGroup);
+
+        // Label variant: fill.frag has no AA already; swap in labelColor and
+        // disable blending. Reuses `posArray` directly, so arrowVertexAnimator_
+        // rewriting arrowhead positions on zoom (it holds a ref to this same
+        // array) keeps this batch in sync automatically.
+        auto labelStateGroup = makePipeline(shaderDir, "fill.vert.spv", "fill.frag.spv", bindings, attributes, /*blend=*/false);
+        auto labelDrawCommands = vsg::Commands::create();
+        labelDrawCommands->addChild(vsg::BindVertexBuffers::create(0, vsg::DataList{posArray, labelColorArray}));
+        labelDrawCommands->addChild(vsg::Draw::create(static_cast<uint32_t>(fillTris.size()), 1, 0, 0));
+        labelStateGroup->addChild(labelDrawCommands);
+        labelRoot->addChild(labelStateGroup);
     }
 
     if (textGroup->children.size() > 0) root->addChild(textGroup);
+
+    labelGraph_ = labelRoot;
 
     return root;
 }

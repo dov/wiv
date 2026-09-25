@@ -6,6 +6,8 @@
 //
 #include <vsg/all.h>
 
+#include <functional>
+
 namespace giv
 {
 
@@ -18,6 +20,11 @@ public:
     void apply(vsg::ButtonReleaseEvent& event) override;
     void apply(vsg::MoveEvent& event) override;
     void apply(vsg::ScrollWheelEvent& event) override;
+
+    // Called (if set) from every MoveEvent with the cursor's current world-
+    // space (x,y) position, for a status-bar readout - purely observational,
+    // no effect on pan/zoom behavior.
+    std::function<void(double, double)> onCursorMove;
 
 private:
     vsg::ref_ptr<vsg::Camera> camera_;
