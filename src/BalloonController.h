@@ -24,6 +24,11 @@ public:
     void apply(vsg::MoveEvent& event) override;
 
     bool enabled() const { return enabled_; }
+    void setEnabled(bool enabled)
+    {
+        enabled_ = enabled;
+        if (!enabled_) overlay_->hide();
+    }
 
     // Call once per frame, after present(): reads back this frame's label
     // render at the last known mouse position (see LabelPicker::pick's

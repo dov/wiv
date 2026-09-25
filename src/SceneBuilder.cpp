@@ -140,6 +140,37 @@ vsg::ref_ptr<vsg::StateGroup> makePipeline(const std::string& shaderDir,
     return stateGroup;
 }
 
+// vsg::createTextShaderSet()'s built-in pipeline states fall back to
+// vsg::DepthStencilState's default (depthTestEnable/depthWriteEnable both
+// true), unlike every other batch here (see makePipeline()'s "no depth
+// test (flat 2D scene)" above) - since giv's balloon-tooltip overlay is a
+// second vsg::View sharing the same window RenderGraph and painted with
+// depth testing disabled (so it always wins the fragments it touches
+// regardless of submission order relative to that depth buffer's
+// contents), a text glyph that passed *its own* depth test and wrote a
+// depth value earlier in the same frame can still show back through the
+// overlay's non-depth-tested box/label afterwards. Appending a disabled
+// DepthStencilState - appended, not replacing in place, so
+// GraphicsPipelineConfigurator's "last DepthStencilState of this type
+// wins" merge (see AssignGraphicsPipelineStates::apply(DepthStencilState&))
+// picks it over the shaderSet's own built-in one - keeps text flat/2D like
+// every other mark/line/fill batch. Only called when options_->shaderSets
+// has no "text" entry yet, so createTextShaderSet() here returns a fresh,
+// uniquely-owned ShaderSet (freshly deserialized from vsg's embedded
+// binary, not a shared/cached singleton) - safe to mutate directly. Once
+// cached into options_->shaderSets["text"] below, this same flattened
+// instance is what BalloonOverlay's own tooltip text resolves too, since
+// it looks up its shaderSet through the same vsg::createTextShaderSet(options_).
+vsg::ref_ptr<vsg::ShaderSet> makeFlatTextShaderSet(vsg::ref_ptr<vsg::Options> options)
+{
+    auto shaderSet = vsg::createTextShaderSet(options);
+    auto depthStencil = vsg::DepthStencilState::create();
+    depthStencil->depthTestEnable = VK_FALSE;
+    depthStencil->depthWriteEnable = VK_FALSE;
+    shaderSet->defaultGraphicsPipelineStates.push_back(depthStencil);
+    return shaderSet;
+}
+
 // ---------------------------------------------------------------------
 // Per-batch instance/vertex records (match the shader vertex layouts)
 // ---------------------------------------------------------------------
@@ -480,7 +511,7 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     // label, so avoid it too: populate the cache once up front so every
     // Text::setup() call below hits it.
     if (options_ && options_->shaderSets.find("text") == options_->shaderSets.end())
-        options_->shaderSets["text"] = vsg::createTextShaderSet(options_);
+        options_->shaderSets["text"] = makeFlatTextShaderSet(options_);
 
     for (size_t dsIdx = 0; dsIdx < scene.datasets.size(); ++dsIdx)
     {

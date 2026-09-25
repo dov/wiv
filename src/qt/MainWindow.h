@@ -1,7 +1,8 @@
 #pragma once
 //
-// MainWindow.h - the wiv application shell: menu bar, toolbar, dataset dock
-// panel, status bar, wrapping a central VulkanViewport.
+// MainWindow.h - the wiv application shell: menu bar, status bar, wrapping
+// a central VulkanViewport. Deliberately no toolbar or side panel - wiv
+// aims to match giv's own look/behavior, which has neither.
 //
 #include <QMainWindow>
 
@@ -16,7 +17,6 @@ namespace givqt
 {
 
 class VulkanViewport;
-class DatasetPanel;
 
 class MainWindow : public QMainWindow
 {
@@ -31,7 +31,6 @@ public:
 
 private:
     VulkanViewport* viewport_ = nullptr;
-    DatasetPanel* datasetPanel_ = nullptr;
 
     QLabel* fpsLabel_ = nullptr;
     QLabel* cursorLabel_ = nullptr;
@@ -40,8 +39,7 @@ private:
     QAction* balloonAction_ = nullptr;
     QMenu* recentFilesMenu_ = nullptr;
 
-    void buildMenusAndToolbar();
-    void buildDockPanel();
+    void buildMenus();
     void buildStatusBar();
 
     void openFiles();

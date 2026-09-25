@@ -183,9 +183,9 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
 
     labelPicker_ = giv::LabelPicker::create(window_->windowAdapter, camera_, builder.labelGraph());
     balloonOverlay_ = giv::BalloonOverlay::create(options_, shaderDir_);
-    auto balloonController = giv::BalloonController::create(&scene_, labelPicker_, balloonOverlay_);
-    viewer_->addEventHandler(balloonController);
-    viewer_->balloonController = balloonController;
+    balloonController_ = giv::BalloonController::create(&scene_, labelPicker_, balloonOverlay_);
+    viewer_->addEventHandler(balloonController_);
+    viewer_->balloonController = balloonController_;
     viewer_->balloonOverlay = balloonOverlay_;
 
     viewer_->markSizeAnimator = builder.markSizeAnimator();
@@ -202,6 +202,7 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     viewer_->compile();
 
     balloonEnabled_ = false;
+    balloonController_->setEnabled(false);
     labelPicker_->setEnabled(false);
     balloonOverlay_->hide();
 
@@ -268,21 +269,6 @@ void VulkanViewport::fitToWindow()
     fitToBounds(minX, minY, maxX, maxY);
 }
 
-void VulkanViewport::focusDataset(const giv::Dataset& dataset)
-{
-    if (dataset.x.empty()) return;
-    double minX = 1e30, maxX = -1e30, minY = 1e30, maxY = -1e30;
-    for (size_t i = 0; i < dataset.x.size(); ++i)
-    {
-        minX = std::min(minX, static_cast<double>(dataset.x[i]));
-        maxX = std::max(maxX, static_cast<double>(dataset.x[i]));
-        minY = std::min(minY, static_cast<double>(dataset.y[i]));
-        maxY = std::max(maxY, static_cast<double>(dataset.y[i]));
-    }
-    // Match SceneBuilder's Y-negation convention (see fitToWindow above).
-    fitToBounds(minX, -maxY, maxX, -minY);
-}
-
 void VulkanViewport::zoomIn()
 {
     if (!projection_) return;
@@ -311,10 +297,9 @@ void VulkanViewport::zoomOut()
 
 void VulkanViewport::toggleBalloon()
 {
-    if (!labelPicker_ || !balloonOverlay_) return;
+    if (!labelPicker_ || !balloonOverlay_ || !balloonController_) return;
     balloonEnabled_ = !balloonEnabled_;
-    labelPicker_->setEnabled(balloonEnabled_);
-    if (!balloonEnabled_) balloonOverlay_->hide();
+    balloonController_->setEnabled(balloonEnabled_);
     viewer_->request();
 }
 

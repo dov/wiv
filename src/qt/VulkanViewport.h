@@ -47,10 +47,6 @@ public:
     void toggleBalloon();
     bool balloonEnabled() const;
 
-    // Refits the camera to `dataset`'s own bounds (used by DatasetPanel's
-    // double-click-to-focus).
-    void focusDataset(const giv::Dataset& dataset);
-
     void setBackgroundColor(const QColor& color);
     void setAutoFitMarginPx(double px);
 
@@ -78,6 +74,7 @@ private:
     vsg::ref_ptr<giv::PanZoomHandler> panZoom_;
     vsg::ref_ptr<giv::LabelPicker> labelPicker_;
     vsg::ref_ptr<giv::BalloonOverlay> balloonOverlay_;
+    vsg::ref_ptr<giv::BalloonController> balloonController_;
 
     double autoFitMarginPx_ = 10.0;
     bool balloonEnabled_ = false;

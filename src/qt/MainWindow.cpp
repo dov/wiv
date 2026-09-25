@@ -1,12 +1,10 @@
 #include "MainWindow.h"
 
-#include "DatasetPanel.h"
 #include "PreferencesDialog.h"
 #include "VulkanViewport.h"
 
 #include <QAction>
 #include <QApplication>
-#include <QDockWidget>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QLabel>
@@ -15,8 +13,6 @@
 #include <QMessageBox>
 #include <QSettings>
 #include <QStatusBar>
-#include <QStyle>
-#include <QToolBar>
 
 namespace givqt
 {
@@ -37,12 +33,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     viewport_->setBackgroundColor(PreferencesDialog::loadBackgroundColor());
     viewport_->setAutoFitMarginPx(PreferencesDialog::loadAutoFitMarginPx());
 
-    buildDockPanel();
-    buildMenusAndToolbar();
+    buildMenus();
     buildStatusBar();
 
     connect(viewport_, &VulkanViewport::sceneLoaded, this, [this]() {
-        datasetPanel_->setScene(viewport_->sceneData());
         const auto& scene = viewport_->sceneData();
         size_t points = 0;
         for (const auto& ds : scene.datasets) points += ds.pointCount();
@@ -54,26 +48,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     connect(viewport_, &VulkanViewport::frameStats, this, [this](double fps) {
         fpsLabel_->setText(QString("%1 fps").arg(fps, 0, 'f', 1));
     });
-    connect(datasetPanel_, &DatasetPanel::datasetFocused, this, [this](int index) {
-        const auto& scene = viewport_->sceneData();
-        if (index >= 0 && static_cast<size_t>(index) < scene.datasets.size()) viewport_->focusDataset(scene.datasets[index]);
-    });
 }
 
-void MainWindow::buildDockPanel()
-{
-    auto dock = new QDockWidget("Datasets", this);
-    datasetPanel_ = new DatasetPanel(dock);
-    dock->setWidget(datasetPanel_);
-    dock->setObjectName("DatasetsDock");
-    addDockWidget(Qt::RightDockWidgetArea, dock);
-
-    auto toggleAction = dock->toggleViewAction();
-    toggleAction->setText("Dataset Panel");
-    menuBar(); // ensure created before View menu below references it
-}
-
-void MainWindow::buildMenusAndToolbar()
+void MainWindow::buildMenus()
 {
     // Force an in-window menu bar rather than letting Qt route it through a
     // platform "global menu" integration (e.g. appmenu-qt6/dbusmenu on some
@@ -83,7 +60,7 @@ void MainWindow::buildMenusAndToolbar()
     menuBar()->setNativeMenuBar(false);
 
     auto fileMenu = menuBar()->addMenu("&File");
-    auto openAction = fileMenu->addAction(style()->standardIcon(QStyle::SP_DialogOpenButton), "&Open...", this, &MainWindow::openFiles);
+    auto openAction = fileMenu->addAction("&Open...", this, &MainWindow::openFiles);
     openAction->setShortcut(QKeySequence::Open);
 
     recentFilesMenu_ = fileMenu->addMenu("Recent Files");
@@ -94,19 +71,16 @@ void MainWindow::buildMenusAndToolbar()
     quitAction->setShortcut(QKeySequence::Quit);
 
     auto viewMenu = menuBar()->addMenu("&View");
-    auto zoomInAction = viewMenu->addAction(style()->standardIcon(QStyle::SP_ArrowUp), "Zoom In", viewport_, &VulkanViewport::zoomIn);
+    auto zoomInAction = viewMenu->addAction("Zoom In", viewport_, &VulkanViewport::zoomIn);
     zoomInAction->setShortcut(QKeySequence::ZoomIn);
-    auto zoomOutAction = viewMenu->addAction(style()->standardIcon(QStyle::SP_ArrowDown), "Zoom Out", viewport_, &VulkanViewport::zoomOut);
+    auto zoomOutAction = viewMenu->addAction("Zoom Out", viewport_, &VulkanViewport::zoomOut);
     zoomOutAction->setShortcut(QKeySequence::ZoomOut);
-    auto fitAction = viewMenu->addAction(style()->standardIcon(QStyle::SP_TitleBarNormalButton), "Fit to Window", viewport_, &VulkanViewport::fitToWindow);
+    auto fitAction = viewMenu->addAction("Fit to Window", viewport_, &VulkanViewport::fitToWindow);
     fitAction->setShortcut(QKeySequence("Ctrl+0"));
 
     balloonAction_ = viewMenu->addAction("Balloon Tooltips", viewport_, &VulkanViewport::toggleBalloon);
     balloonAction_->setCheckable(true);
     balloonAction_->setShortcut(QKeySequence("B"));
-
-    viewMenu->addSeparator();
-    for (auto* dock : findChildren<QDockWidget*>()) viewMenu->addAction(dock->toggleViewAction());
 
     auto editMenu = menuBar()->addMenu("&Edit");
     editMenu->addAction("Preferences...", this, [this]() {
@@ -120,15 +94,6 @@ void MainWindow::buildMenusAndToolbar()
     helpMenu->addAction("About wiv", this, [this]() {
         QMessageBox::about(this, "About wiv", "wiv - Vulkan-based, giv-format-compatible 2D vector viewer.");
     });
-
-    auto toolbar = addToolBar("Main");
-    toolbar->addAction(openAction);
-    toolbar->addSeparator();
-    toolbar->addAction(zoomInAction);
-    toolbar->addAction(zoomOutAction);
-    toolbar->addAction(fitAction);
-    toolbar->addSeparator();
-    toolbar->addAction(balloonAction_);
 }
 
 void MainWindow::buildStatusBar()
