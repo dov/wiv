@@ -2,33 +2,49 @@
 
 #include <QCoreApplication>
 
+#include <cstdlib>
+#include <iostream>
+
 namespace givqt
 {
+
+namespace
+{
+// WIV_TIMING=1 breaks each frame down into its per-phase CPU cost and
+// prints the per-frame averages alongside the fps line - benchmarking only.
+const bool kTiming = std::getenv("WIV_TIMING") != nullptr;
+using Clock = std::chrono::steady_clock;
+inline double msSince(Clock::time_point t) { return std::chrono::duration<double, std::milli>(Clock::now() - t).count(); }
+} // namespace
 
 void GivViewer::render(double simulationTime)
 {
     if (!continuousUpdate && requests.load() == 0) return;
+    auto tPhase = Clock::now();
 
-    // Keep pixel-constant mark/line sizes in sync with the current zoom
-    // level - see SceneBuilder.h's PixelSizeAnimator doc comment. Mirrors
-    // the old main.cpp's updateMarkSizes() lambda, called once per frame.
+    // Hand this frame's zoom level to the vertex shaders, which size
+    // pixel-constant marks/lines/arrowheads from it - see giv::ViewParams -
+    // and pick each $image's nearest/linear sampler from it.
     if (worldPerPixel)
     {
         float wpp = worldPerPixel();
-        if (markSizeAnimator) markSizeAnimator->update(wpp);
-        if (lineWidthAnimator) lineWidthAnimator->update(wpp);
-        if (labelLineWidthAnimator) labelLineWidthAnimator->update(wpp);
-        if (arrowVertexAnimator) arrowVertexAnimator->update(wpp);
+        if (viewParams) viewParams->update(wpp);
         if (imageFilterAnimator) imageFilterAnimator->update(wpp);
     }
 
+    if (kTiming) { tAnimate_ += msSince(tPhase); tPhase = Clock::now(); }
+
     if (advanceToNextFrame(simulationTime))
     {
+        if (kTiming) { tAdvance_ += msSince(tPhase); tPhase = Clock::now(); }
         handleEvents();
         update();
         if (balloonOverlay && !windows().empty()) balloonOverlay->updateExtent(windows().front()->extent2D());
+        if (kTiming) { tUpdate_ += msSince(tPhase); tPhase = Clock::now(); }
         recordAndSubmit();
+        if (kTiming) { tRecord_ += msSince(tPhase); tPhase = Clock::now(); }
         present();
+        if (kTiming) { tPresent_ += msSince(tPhase); tPhase = Clock::now(); }
 
         // Reads back this frame's off-screen label render (if the balloon
         // is toggled on) and updates the overlay for the *next* frame - see
@@ -47,6 +63,13 @@ void GivViewer::render(double simulationTime)
     if (elapsed >= 1.0)
     {
         if (onFrameStats) onFrameStats(frameCount_ / elapsed);
+        if (kTiming && frameCount_ > 0)
+        {
+            double n = static_cast<double>(frameCount_);
+            std::cerr << "wiv: per-frame ms: animate=" << tAnimate_ / n << " advance=" << tAdvance_ / n
+                      << " update=" << tUpdate_ / n << " record=" << tRecord_ / n << " present=" << tPresent_ / n << "\n";
+            tAnimate_ = tAdvance_ = tUpdate_ = tRecord_ = tPresent_ = 0.0;
+        }
         frameCount_ = 0;
         fpsWindowStart_ = now;
     }

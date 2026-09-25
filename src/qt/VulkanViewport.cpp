@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <iostream>
 
@@ -50,7 +51,10 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
     // needs an extra nudge; this just stops GivViewer::render() from
     // recording/submitting/presenting a frame when nothing has requested
     // one (see its `!continuousUpdate && requests.load() == 0` check).
-    viewer_->continuousUpdate = false;
+    // WIV_CONTINUOUS=1 forces a frame every timer tick regardless of
+    // requests - only for benchmarking the render path (the fps readout is
+    // meaningless in the default on-demand mode, which idles at 0 fps).
+    viewer_->continuousUpdate = std::getenv("WIV_CONTINUOUS") != nullptr;
 
     viewer_->worldPerPixel = [this]() -> float {
         if (!projection_ || !window_ || !window_->windowAdapter) return 1.0f;
@@ -277,10 +281,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     viewer_->balloonController = balloonController_;
     viewer_->balloonOverlay = balloonOverlay_;
 
-    viewer_->markSizeAnimator = builder.markSizeAnimator();
-    viewer_->lineWidthAnimator = builder.lineWidthAnimator();
-    viewer_->labelLineWidthAnimator = builder.labelLineWidthAnimator();
-    viewer_->arrowVertexAnimator = builder.arrowVertexAnimator();
+    viewer_->viewParams = builder.viewParams();
     viewer_->imageFilterAnimator = builder.imageFilterAnimator();
 
     imageSwitch_ = builder.imageSwitch();

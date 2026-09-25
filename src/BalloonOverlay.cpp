@@ -23,13 +23,15 @@ vsg::ref_ptr<vsg::ShaderStage> loadShader(VkShaderStageFlagBits stage, const std
     return shader;
 }
 
-// Minimal flat-colored-triangle pipeline for the balloon's background box -
-// same vertex layout/shaders as SceneBuilder's fill batch (posArray +
-// colorArray, both per-vertex), just built standalone here since
-// SceneBuilder's makePipeline() is private to that translation unit.
+// Minimal flat-colored-triangle pipeline for the balloon's background box:
+// posArray + colorArray, both per-vertex, in plain world coordinates.
+// overlay.vert is what SceneBuilder's fill batch used to share with this
+// one, before that batch grew a pixel-constant arrowhead offset attribute
+// and the view-scale uniform that resolves it (see giv::ViewParams) -
+// neither of which the balloon box has any use for.
 vsg::ref_ptr<vsg::StateGroup> makeBoxPipeline(const std::string& shaderDir)
 {
-    auto vertexShader = loadShader(VK_SHADER_STAGE_VERTEX_BIT, shaderDir, "fill.vert.spv");
+    auto vertexShader = loadShader(VK_SHADER_STAGE_VERTEX_BIT, shaderDir, "overlay.vert.spv");
     auto fragmentShader = loadShader(VK_SHADER_STAGE_FRAGMENT_BIT, shaderDir, "fill.frag.spv");
 
     vsg::PushConstantRanges pushConstantRanges{{VK_SHADER_STAGE_VERTEX_BIT, 0, 128}};

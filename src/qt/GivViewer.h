@@ -1,7 +1,7 @@
 #pragma once
 //
 // GivViewer.h - vsgQt::Viewer subclass that layers wiv's per-frame work
-// (pixel-constant mark/line-size animation, balloon-tooltip readback, fps
+// (per-frame view-scale uniform update, balloon-tooltip readback, fps
 // accounting) onto vsgQt's QTimer-driven render() loop, replacing the manual
 // while(viewer->advanceToNextFrame()) loop wiv used before it had a Qt
 // event loop to drive it (see the old src/main.cpp).
@@ -26,10 +26,7 @@ public:
     // Re-pointed by VulkanViewport every time a new file is loaded.
     vsg::ref_ptr<giv::BalloonController> balloonController;
     vsg::ref_ptr<giv::BalloonOverlay> balloonOverlay;
-    vsg::ref_ptr<giv::PixelSizeAnimator> markSizeAnimator;
-    vsg::ref_ptr<giv::PixelSizeAnimator> lineWidthAnimator;
-    vsg::ref_ptr<giv::PixelSizeAnimator> labelLineWidthAnimator;
-    vsg::ref_ptr<giv::ArrowVertexAnimator> arrowVertexAnimator;
+    vsg::ref_ptr<giv::ViewParams> viewParams;
     vsg::ref_ptr<giv::ImageFilterAnimator> imageFilterAnimator;
 
     // Called once per frame with the current world-units-per-pixel scale, to
@@ -45,6 +42,7 @@ public:
 
 private:
     size_t frameCount_ = 0;
+    double tAnimate_ = 0.0, tAdvance_ = 0.0, tUpdate_ = 0.0, tRecord_ = 0.0, tPresent_ = 0.0;
     std::chrono::steady_clock::time_point fpsWindowStart_ = std::chrono::steady_clock::now();
 };
 

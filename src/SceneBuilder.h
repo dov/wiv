@@ -27,62 +27,35 @@
 namespace giv
 {
 
-// Keeps a chosen vec4 component of selected instances at a constant
-// on-screen (pixel) size as the view zooms. Marks and lines are both
-// expanded in *world* space by their vertex shaders (marks.vert reads
-// posSizeMode.z as a world half-size; lines.vert reads widthDash.x as a
-// world half-width), but giv itself sizes them in constant device pixels
-// (see giv-data.cc default_mark_size/default_line_width and
-// GivPainterCairo::set_line_width - cairo's CTM is left at identity, so
-// pixel/device units, not world units). So every time the view's world-
-// units-per-pixel changes (i.e. on zoom) we recompute the world-space
-// value that currently corresponds to the desired fixed pixel size and
-// re-upload just the affected component of just the affected instances.
+// Carries the view's current world-units-per-screen-pixel scale to the
+// marks/lines/fill vertex shaders, as a one-vec4 uniform buffer bound (as
+// descriptor set 0) by every batch this builder produces.
 //
-// Used for: (a) marks whose dataset did not set `$scale_marks 1` -
-// giv's default do_scale_marks == FALSE (giv-data.cc: default_scale_marks)
-// - component z of posSizeModeArray; marks with `$scale_marks 1` are
-// excluded (left growing/shrinking with zoom, using their world-space
-// mark_size directly). (b) line/outline/quiver half-width - component x
-// of widthDashArray; giv has no scale-with-zoom option for line width at
-// all, so *every* line instance is included.
-class PixelSizeAnimator : public vsg::Inherit<vsg::Object, PixelSizeAnimator>
+// giv sizes marks, line widths and arrowheads in constant *device pixels*,
+// not world units (see giv-data.cc default_mark_size/default_line_width and
+// GivPainterCairo::set_line_width - cairo's CTM is left at identity), while
+// our vertex shaders expand all of those in world space. Rather than
+// recomputing every affected instance's world-space size on the CPU and
+// re-uploading the instance buffers whenever the view zooms - O(number of
+// marks/segments) work plus a full buffer transfer per zoom step, which
+// dominated frame time on multi-million-point files - the buffers store the
+// sizes in pixels and the shaders multiply by this single per-frame scalar.
+//
+// Marks with `$scale_marks 1` (giv's non-default do_scale_marks == TRUE) are
+// excluded from that conversion: they keep a world-space size and grow and
+// shrink with zoom. They're distinguished in the shader by the sign of the
+// stored half-size - see marks.vert and SceneBuilder::build().
+class ViewParams : public vsg::Inherit<vsg::Object, ViewParams>
 {
 public:
-    vsg::ref_ptr<vsg::vec4Array> array;
-    int component = 2; // 0=x,1=y,2=z,3=w
-    std::vector<uint32_t> indices;    // indices into `array`
-    std::vector<float> pixelSize;     // desired size in screen pixels, parallel to `indices`
+    // .x = world units per screen pixel; y/z/w unused (a vec4 because
+    // std140 pads a uniform block's members to 16 bytes anyway).
+    vsg::ref_ptr<vsg::vec4Value> value;
 
-    // Call once per frame (or whenever the view may have zoomed) with the
-    // current world-units-per-pixel scale (assumed isotropic - x and y
+    // Call once per frame - not just on zoom, see the implementation - with
+    // the current world-units-per-pixel scale (assumed isotropic: x and y
     // scale equally since the view is always fit to the window aspect).
     void update(float worldPerPixel);
-
-private:
-    float lastWorldPerPixel_ = -1.0f;
-};
-
-// Like PixelSizeAnimator, but for the arrowhead triangle-soup vertices in
-// the fill batch (posArray, see SceneBuilder::build's "Fill batch"
-// section): each arrowhead's shape is defined relative to its tip as an
-// offset in constant screen pixels (matching giv's line-width-relative,
-// pixel-constant arrow sizing - see addArrowHead in SceneBuilder.cpp), so
-// on zoom we recompute each vertex as `tip + offsetPixels * worldPerPixel`
-// and re-upload the affected positions, the same way PixelSizeAnimator
-// keeps mark/line sizes pixel-constant.
-class ArrowVertexAnimator : public vsg::Inherit<vsg::Object, ArrowVertexAnimator>
-{
-public:
-    vsg::ref_ptr<vsg::vec2Array> posArray;
-    std::vector<uint32_t> indices;        // indices into `posArray`
-    std::vector<vsg::vec2> tip;           // parallel to `indices`: world-space anchor point
-    std::vector<vsg::vec2> offsetPixels;  // parallel to `indices`: local offset, in "1 screen pixel" world-units
-
-    void update(float worldPerPixel);
-
-private:
-    float lastWorldPerPixel_ = -1.0f;
 };
 
 // Switches every loaded $image's texture sampler between nearest and
@@ -131,19 +104,9 @@ public:
     // Valid after build(); non-null only if `images` was non-empty.
     vsg::ref_ptr<ImageFilterAnimator> imageFilterAnimator() const { return imageFilterAnimator_; }
 
-    // Valid after build(); non-null only if the scene contains marks/lines
-    // respectively.
-    vsg::ref_ptr<PixelSizeAnimator> markSizeAnimator() const { return markSizeAnimator_; }
-    vsg::ref_ptr<PixelSizeAnimator> lineWidthAnimator() const { return lineWidthAnimator_; }
-    vsg::ref_ptr<ArrowVertexAnimator> arrowVertexAnimator() const { return arrowVertexAnimator_; }
-
-    // Drives the label-pass lines batch's half-width, which - like giv's own
-    // do_paint_by_index picking pass (GivPainterAgg::set_line_width /
-    // GivPainterCairo::set_line_width: `if (do_paint_by_index && line_width
-    // < 3) line_width = 3;`) - is floored to a wider minimum than the real
-    // line width so thin lines stay easy to hover. Non-null only if the
-    // scene contains lines.
-    vsg::ref_ptr<PixelSizeAnimator> labelLineWidthAnimator() const { return labelLineWidthAnimator_; }
+    // Valid after build(); never null. Must be updated once per frame with
+    // the view's current world-units-per-pixel scale.
+    vsg::ref_ptr<ViewParams> viewParams() const { return viewParams_; }
 
     // A second scene graph geometrically identical to the one returned by
     // build(), but painted with one flat, non-antialiased "label color" per
@@ -160,10 +123,7 @@ public:
 private:
     vsg::ref_ptr<vsg::Options> options_;
     std::unordered_map<std::string, vsg::ref_ptr<vsg::Font>> fontCache_;
-    vsg::ref_ptr<PixelSizeAnimator> markSizeAnimator_;
-    vsg::ref_ptr<PixelSizeAnimator> lineWidthAnimator_;
-    vsg::ref_ptr<ArrowVertexAnimator> arrowVertexAnimator_;
-    vsg::ref_ptr<PixelSizeAnimator> labelLineWidthAnimator_;
+    vsg::ref_ptr<ViewParams> viewParams_;
     vsg::ref_ptr<vsg::Group> labelGraph_;
     vsg::ref_ptr<vsg::Switch> imageSwitch_;
     vsg::ref_ptr<ImageFilterAnimator> imageFilterAnimator_;

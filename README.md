@@ -43,8 +43,17 @@ phase - `--remote`, `--port`, `--export`, etc. are Phase 2):
 Mouse: drag with the left button to pan, scroll wheel to zoom at the cursor.
 Escape or the window close button exits.
 
-Parse time, scene-build time, and periodic FPS/`recordAndSubmit` timing are
-printed to stderr.
+Parse time, scene-build time and a once-a-second FPS figure are printed to
+stderr (the FPS figure also appears in the status bar).
+
+Two environment variables help when benchmarking the render path:
+
+- `WIV_CONTINUOUS=1` - render every timer tick instead of only when
+  something requests a frame. The FPS figure is meaningless without it,
+  since an idle viewer renders nothing.
+- `WIV_TIMING=1` - also print the average per-frame cost of each stage of
+  `GivViewer::render()` (view-scale update, `advanceToNextFrame`, `update`,
+  `recordAndSubmit`, `present`) alongside the FPS line.
 
 ## Design summary
 

@@ -17,18 +17,17 @@
 namespace giv
 {
 
-void ArrowVertexAnimator::update(float worldPerPixel)
+void ViewParams::update(float worldPerPixel)
 {
-    if (indices.empty() || !posArray) return;
-    if (std::abs(worldPerPixel - lastWorldPerPixel_) < 1e-9f) return;
-    lastWorldPerPixel_ = worldPerPixel;
-
-    for (size_t k = 0; k < indices.size(); ++k)
-    {
-        uint32_t idx = indices[k];
-        posArray->set(idx, tip[k] + offsetPixels[k] * worldPerPixel);
-    }
-    posArray->dirty();
+    if (!value) return;
+    value->value().x = worldPerPixel;
+    // Written (16 bytes, whatever the scene's size) and dirtied on *every*
+    // frame, not just when the value actually changes: vsg::TransferTask
+    // keeps one GPU copy of a DYNAMIC_DATA buffer per in-flight frame and
+    // refreshes only the copy belonging to the frame being recorded, so a
+    // one-off dirty() leaves the other copies holding a stale scale and the
+    // rendered mark/line sizes flicker between the old and new zoom.
+    value->dirty();
 }
 
 void ImageFilterAnimator::update(float worldPerPixel)
@@ -42,22 +41,6 @@ void ImageFilterAnimator::update(float worldPerPixel)
     unsigned int idx = worldPerPixel <= 1.0f ? 0 : 1;
     for (auto& sw : filterSwitches)
         sw->setSingleChildOn(idx);
-}
-
-void PixelSizeAnimator::update(float worldPerPixel)
-{
-    if (indices.empty() || !array) return;
-    if (std::abs(worldPerPixel - lastWorldPerPixel_) < 1e-9f) return;
-    lastWorldPerPixel_ = worldPerPixel;
-
-    for (size_t k = 0; k < indices.size(); ++k)
-    {
-        uint32_t idx = indices[k];
-        vsg::vec4 v = array->at(idx);
-        v[component] = pixelSize[k] * worldPerPixel;
-        array->set(idx, v);
-    }
-    array->dirty();
 }
 
 namespace
@@ -123,14 +106,11 @@ vsg::ref_ptr<vsg::BindGraphicsPipeline> makePipeline(const std::string& shaderDi
                                             const std::string& fragFile,
                                             const vsg::VertexInputState::Bindings& bindings,
                                             const vsg::VertexInputState::Attributes& attributes,
+                                            vsg::ref_ptr<vsg::PipelineLayout> pipelineLayout,
                                             bool blend = true)
 {
     auto vertexShader = loadShader(VK_SHADER_STAGE_VERTEX_BIT, shaderDir, vertFile);
     auto fragmentShader = loadShader(VK_SHADER_STAGE_FRAGMENT_BIT, shaderDir, fragFile);
-
-    vsg::PushConstantRanges pushConstantRanges{
-        {VK_SHADER_STAGE_VERTEX_BIT, 0, 128} // projection + modelview, auto-supplied by RecordTraversal
-    };
 
     auto rasterization = vsg::RasterizationState::create();
     rasterization->cullMode = VK_CULL_MODE_NONE;
@@ -154,7 +134,6 @@ vsg::ref_ptr<vsg::BindGraphicsPipeline> makePipeline(const std::string& shaderDi
         colorBlend,
         depthStencil};
 
-    auto pipelineLayout = vsg::PipelineLayout::create(vsg::DescriptorSetLayouts{}, pushConstantRanges);
     auto graphicsPipeline = vsg::GraphicsPipeline::create(pipelineLayout, vsg::ShaderStages{vertexShader, fragmentShader}, pipelineStates);
 
     return vsg::BindGraphicsPipeline::create(graphicsPipeline);
@@ -375,7 +354,7 @@ void addLineSegment(std::vector<LineInstance>& lines, const vsg::vec2& p0, const
 // Appends a filled arrowhead at `tip`, pointing along direction `dir` (unit
 // vector, direction of travel - i.e. the arrow points *along* `dir`), sized
 // relative to `hw` (== the same pixel-constant `lineHalfWidth` value lines
-// are built with - see ArrowVertexAnimator/PixelSizeAnimator).
+// are built with - see giv::ViewParams).
 //
 // Shape/sizing matches giv's AGG arrowhead (giv_agg_arrowhead.cc, driven
 // from GivPainterAgg::set_arrow with the default d1..d5 = 0,3,2,2,1 scaled
@@ -400,10 +379,10 @@ void addLineSegment(std::vector<LineInstance>& lines, const vsg::vec2& p0, const
 // the view zooms (matching giv's device-pixel line/arrow sizing), so rather
 // than baking final world-space positions here, each vertex is recorded as
 // (tip, offset-in-pixel-units) into `arrowTip`/`arrowOffsetPixels` (parallel
-// to the newly-appended `tris` entries) for ArrowVertexAnimator to resolve
-// to world space whenever the view's world-per-pixel scale changes. The
-// position written into `tris` here is just a same-scale-as-lines initial
-// placeholder, good enough until the first update() call.
+// to the newly-appended `tris` entries); build() feeds those to the fill
+// batch's position/offset vertex buffers and fill.vert resolves them to
+// world space against the current zoom - see giv::ViewParams. The position
+// written into `tris` here is overwritten with the tip by that same code.
 void addArrowHead(std::vector<FillVertex>& tris, std::vector<uint32_t>& arrowIndex, std::vector<vsg::vec2>& arrowTip,
                    std::vector<vsg::vec2>& arrowOffsetPixels, const vsg::vec2& tip, const vsg::vec2& dir,
                    float hw, const vsg::vec4& color, const vsg::vec4& labelColor)
@@ -692,7 +671,31 @@ vsg::ref_ptr<vsg::Font> SceneBuilder::resolveFont(const std::string& fontSpec, d
 vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::string& shaderDir,
                                               const std::vector<LoadedImage>& images)
 {
-    auto root = vsg::Group::create();
+    // The one per-frame uniform every marks/lines/fill batch below reads its
+    // pixel-to-world scale from - see giv::ViewParams. All six of those
+    // pipelines (three batches x display/label variant) share one pipeline
+    // layout, so one vkCmdBindDescriptorSets at the root of each scene graph
+    // covers every draw under it instead of one per dataset - which matters
+    // for files with hundreds of thousands of tiny datasets, where per-draw
+    // recording cost is what limits the frame rate.
+    viewParams_ = ViewParams::create();
+    viewParams_->value = vsg::vec4Value::create(vsg::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+    viewParams_->value->properties.dataVariance = vsg::DYNAMIC_DATA;
+    auto viewParamsLayout = vsg::DescriptorSetLayout::create(
+        vsg::DescriptorSetLayoutBindings{{0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr}});
+    auto viewParamsSet = vsg::DescriptorSet::create(
+        viewParamsLayout, vsg::Descriptors{vsg::DescriptorBuffer::create(viewParams_->value, 0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)});
+    auto vectorPipelineLayout = vsg::PipelineLayout::create(
+        vsg::DescriptorSetLayouts{viewParamsLayout},
+        vsg::PushConstantRanges{{VK_SHADER_STAGE_VERTEX_BIT, 0, 128}}); // projection + modelview, auto-supplied by RecordTraversal
+    auto bindViewParams = vsg::BindDescriptorSet::create(VK_PIPELINE_BIND_POINT_GRAPHICS, vectorPipelineLayout, 0, viewParamsSet);
+
+    // Both scene graphs are StateGroups purely to carry that one bind; the
+    // image/sprite and text draws below bind descriptor sets of their own,
+    // and vsg::StateGroup's state stack re-binds this one after each such
+    // subtree.
+    auto root = vsg::StateGroup::create();
+    root->add(bindViewParams);
 
     // -------------------------------------------------------------
     // Image batch ($image references) - added first so vector data
@@ -797,7 +800,7 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     }
 
     std::vector<MarkInstance> marks;
-    std::vector<bool> markScalesWithZoom; // parallel to `marks`; see PixelSizeAnimator
+    std::vector<bool> markScalesWithZoom; // parallel to `marks`; see giv::ViewParams
     std::vector<LineInstance> lines;
     std::vector<FillVertex> fillTris;
 
@@ -824,7 +827,7 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     // Indices into `fillTris` of just the arrowhead vertices (polygon-fill
     // vertices are not pixel-constant and have no entry here), with
     // `arrowTip`/`arrowOffsetPixels` parallel to `arrowIndex`; see
-    // addArrowHead's doc comment and ArrowVertexAnimator.
+    // addArrowHead's doc comment and giv::ViewParams.
     std::vector<uint32_t> arrowIndex;
     std::vector<vsg::vec2> arrowTip;
     std::vector<vsg::vec2> arrowOffsetPixels;
@@ -1124,7 +1127,8 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     // painted with each vertex's labelColor instead of its color, using
     // hard-edged (no blend, no AA) pipelines - see labelGraph()'s doc
     // comment in SceneBuilder.h and marks_label.frag.
-    auto labelRoot = vsg::Group::create();
+    auto labelRoot = vsg::StateGroup::create();
+    labelRoot->add(bindViewParams);
 
     // -------------------------------------------------------------
     // Marks batch - build the pipeline binds and full vertex/instance
@@ -1148,43 +1152,30 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             VkVertexInputAttributeDescription{1, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 0},
             VkVertexInputAttributeDescription{2, 2, VK_FORMAT_R32G32B32A32_SFLOAT, 0}};
 
-        marksBind = makePipeline(shaderDir, "marks.vert.spv", "marks.frag.spv", bindings, attributes);
+        marksBind = makePipeline(shaderDir, "marks.vert.spv", "marks.frag.spv", bindings, attributes, vectorPipelineLayout);
 
         markPosSizeModeArray = vsg::vec4Array::create(static_cast<uint32_t>(marks.size()));
-        // Marked dynamic: fixed-pixel-size marks (do_scale_marks == false,
-        // giv's default) have their z (half-size) component rewritten every
-        // time the view zoom changes - see PixelSizeAnimator::update() and
-        // its call site in main.cpp's render loop.
-        markPosSizeModeArray->properties.dataVariance = vsg::DYNAMIC_DATA;
         markColorArray = vsg::vec4Array::create(static_cast<uint32_t>(marks.size()));
         markLabelColorArray = vsg::vec4Array::create(static_cast<uint32_t>(marks.size()));
         for (size_t i = 0; i < marks.size(); ++i)
         {
-            markPosSizeModeArray->set(i, marks[i].posSizeMode);
+            vsg::vec4 posSizeMode = marks[i].posSizeMode;
+            // marks[i].posSizeMode.z holds ds.markSize * 0.5, which is a
+            // *pixel* half-size unless the dataset asked for $scale_marks 1
+            // (giv's non-default do_scale_marks == TRUE). marks.vert reads a
+            // negative half-size as "this many screen pixels" and converts
+            // it with the per-frame ViewParams scale, so the whole buffer
+            // stays static no matter how the view zooms - see ViewParams.
+            if (!markScalesWithZoom[i]) posSizeMode.z = -posSizeMode.z;
+            markPosSizeModeArray->set(i, posSizeMode);
             markColorArray->set(i, marks[i].color);
             markLabelColorArray->set(i, marks[i].labelColor);
-        }
-
-        markSizeAnimator_ = PixelSizeAnimator::create();
-        markSizeAnimator_->array = markPosSizeModeArray;
-        markSizeAnimator_->component = 2; // z = half size
-        for (size_t i = 0; i < marks.size(); ++i)
-        {
-            if (!markScalesWithZoom[i])
-            {
-                markSizeAnimator_->indices.push_back(static_cast<uint32_t>(i));
-                // marks[i].posSizeMode.z currently holds ds.markSize * 0.5
-                // interpreted as a *pixel* half-size (giv's do_scale_marks
-                // == false semantics); PixelSizeAnimator converts this to
-                // world units on the first update() call.
-                markSizeAnimator_->pixelSize.push_back(marks[i].posSizeMode.z);
-            }
         }
 
         // Label variant: same quad/position/mode buffers (marks_label.frag
         // reads fragMode/fragCorner exactly like marks.frag), labelColor in
         // place of color, hard edges, no blending.
-        marksLabelBind = makePipeline(shaderDir, "marks.vert.spv", "marks_label.frag.spv", bindings, attributes, /*blend=*/false);
+        marksLabelBind = makePipeline(shaderDir, "marks.vert.spv", "marks_label.frag.spv", bindings, attributes, vectorPipelineLayout, /*blend=*/false);
     }
 
     // -------------------------------------------------------------
@@ -1196,49 +1187,47 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     // fill instead of being covered by it.
     // -------------------------------------------------------------
     vsg::ref_ptr<vsg::BindGraphicsPipeline> fillBind, fillLabelBind;
-    vsg::ref_ptr<vsg::vec2Array> fillPosArray;
+    vsg::ref_ptr<vsg::vec2Array> fillPosArray, fillOffsetPixelsArray;
     vsg::ref_ptr<vsg::vec4Array> fillColorArray, fillLabelColorArray;
     if (!fillTris.empty())
     {
         vsg::VertexInputState::Bindings bindings{
             VkVertexInputBindingDescription{0, sizeof(vsg::vec2), VK_VERTEX_INPUT_RATE_VERTEX},
-            VkVertexInputBindingDescription{1, sizeof(vsg::vec4), VK_VERTEX_INPUT_RATE_VERTEX}};
-        // posArray/colorArray are separate tightly-packed buffers; see note above.
+            VkVertexInputBindingDescription{1, sizeof(vsg::vec4), VK_VERTEX_INPUT_RATE_VERTEX},
+            VkVertexInputBindingDescription{2, sizeof(vsg::vec2), VK_VERTEX_INPUT_RATE_VERTEX}};
+        // pos/color/offset are separate tightly-packed buffers; see note above.
         vsg::VertexInputState::Attributes attributes{
             VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32_SFLOAT, 0},
-            VkVertexInputAttributeDescription{1, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 0}};
+            VkVertexInputAttributeDescription{1, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 0},
+            VkVertexInputAttributeDescription{2, 2, VK_FORMAT_R32G32_SFLOAT, 0}};
 
-        fillBind = makePipeline(shaderDir, "fill.vert.spv", "fill.frag.spv", bindings, attributes);
+        fillBind = makePipeline(shaderDir, "fill.vert.spv", "fill.frag.spv", bindings, attributes, vectorPipelineLayout);
 
         fillPosArray = vsg::vec2Array::create(static_cast<uint32_t>(fillTris.size()));
         fillColorArray = vsg::vec4Array::create(static_cast<uint32_t>(fillTris.size()));
         fillLabelColorArray = vsg::vec4Array::create(static_cast<uint32_t>(fillTris.size()));
+        fillOffsetPixelsArray = vsg::vec2Array::create(static_cast<uint32_t>(fillTris.size()));
         for (size_t i = 0; i < fillTris.size(); ++i)
         {
             fillPosArray->set(i, fillTris[i].pos);
             fillColorArray->set(i, fillTris[i].color);
             fillLabelColorArray->set(i, fillTris[i].labelColor);
+            fillOffsetPixelsArray->set(i, vsg::vec2(0.0f, 0.0f));
         }
         // Arrowhead vertices must stay pixel-constant in size as the view
-        // zooms (see addArrowHead's doc comment) - mark the position buffer
-        // dynamic and hand ArrowVertexAnimator what it needs to rewrite
-        // just those vertices whenever the view's world-per-pixel changes.
-        if (!arrowIndex.empty())
+        // zooms (see addArrowHead's doc comment), so instead of a world-space
+        // position each one stores its arrow's tip plus a screen-pixel
+        // offset, which fill.vert resolves against the current ViewParams
+        // scale - leaving this buffer static across zooms too.
+        for (size_t k = 0; k < arrowIndex.size(); ++k)
         {
-            fillPosArray->properties.dataVariance = vsg::DYNAMIC_DATA;
-            arrowVertexAnimator_ = ArrowVertexAnimator::create();
-            arrowVertexAnimator_->posArray = fillPosArray;
-            arrowVertexAnimator_->indices = arrowIndex;
-            arrowVertexAnimator_->tip = arrowTip;
-            arrowVertexAnimator_->offsetPixels = arrowOffsetPixels;
+            fillPosArray->set(arrowIndex[k], arrowTip[k]);
+            fillOffsetPixelsArray->set(arrowIndex[k], arrowOffsetPixels[k]);
         }
 
         // Label variant: fill.frag has no AA already; swap in labelColor and
-        // disable blending. Reuses `fillPosArray` directly, so
-        // arrowVertexAnimator_ rewriting arrowhead positions on zoom (it
-        // holds a ref to this same array) keeps this batch in sync
-        // automatically.
-        fillLabelBind = makePipeline(shaderDir, "fill.vert.spv", "fill.frag.spv", bindings, attributes, /*blend=*/false);
+        // disable blending.
+        fillLabelBind = makePipeline(shaderDir, "fill.vert.spv", "fill.frag.spv", bindings, attributes, vectorPipelineLayout, /*blend=*/false);
     }
 
     // -------------------------------------------------------------
@@ -1260,7 +1249,7 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             VkVertexInputAttributeDescription{2, 2, VK_FORMAT_R32G32B32A32_SFLOAT, 0},
             VkVertexInputAttributeDescription{3, 3, VK_FORMAT_R32G32B32A32_SFLOAT, 0}};
 
-        linesBind = makePipeline(shaderDir, "lines.vert.spv", "lines.frag.spv", bindings, attributes);
+        linesBind = makePipeline(shaderDir, "lines.vert.spv", "lines.frag.spv", bindings, attributes, vectorPipelineLayout);
 
         linesP0p1Array = vsg::vec4Array::create(static_cast<uint32_t>(lines.size()));
         linesWidthDashArray = vsg::vec4Array::create(static_cast<uint32_t>(lines.size()));
@@ -1268,9 +1257,8 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
         // device pixels regardless of zoom (GivPainterCairo::set_line_width
         // sets cairo's line width directly with no CTM scale applied, and
         // there's no $scale_marks-equivalent toggle for line width - see
-        // giv-data.cc default_line_width). lines.vert expands half-width in
-        // world space, so keep it dynamic and recompute every zoom change.
-        linesWidthDashArray->properties.dataVariance = vsg::DYNAMIC_DATA;
+        // giv-data.cc default_line_width), so widthDash.x stays in pixels
+        // here and lines.vert scales it by the per-frame ViewParams value.
         linesColorArray = vsg::vec4Array::create(static_cast<uint32_t>(lines.size()));
         linesLabelColorArray = vsg::vec4Array::create(static_cast<uint32_t>(lines.size()));
         for (size_t i = 0; i < lines.size(); ++i)
@@ -1281,18 +1269,6 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             linesLabelColorArray->set(i, lines[i].labelColor);
         }
 
-        lineWidthAnimator_ = PixelSizeAnimator::create();
-        lineWidthAnimator_->array = linesWidthDashArray;
-        lineWidthAnimator_->component = 0; // x = half width
-        for (size_t i = 0; i < lines.size(); ++i)
-        {
-            lineWidthAnimator_->indices.push_back(static_cast<uint32_t>(i));
-            // lines[i].widthDash.x currently holds lineHalfWidth interpreted
-            // as a *pixel* half-width; PixelSizeAnimator converts it to
-            // world units on the first update() call.
-            lineWidthAnimator_->pixelSize.push_back(lines[i].widthDash.x);
-        }
-
         // Label-pass copy of widthDashArray, but with the half-width
         // widened to a 1.5px floor (3px total) - matches giv's own
         // do_paint_by_index picking pass (GivPainterAgg::set_line_width /
@@ -1301,22 +1277,17 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
         // bigger hit area to hover without changing how thick they actually
         // look on screen. giv applies no equivalent widening to marks.
         linesLabelWidthDashArray = vsg::vec4Array::create(static_cast<uint32_t>(lines.size()));
-        linesLabelWidthDashArray->properties.dataVariance = vsg::DYNAMIC_DATA;
-        for (size_t i = 0; i < lines.size(); ++i) linesLabelWidthDashArray->set(i, lines[i].widthDash);
-
-        labelLineWidthAnimator_ = PixelSizeAnimator::create();
-        labelLineWidthAnimator_->array = linesLabelWidthDashArray;
-        labelLineWidthAnimator_->component = 0;
         for (size_t i = 0; i < lines.size(); ++i)
         {
-            labelLineWidthAnimator_->indices.push_back(static_cast<uint32_t>(i));
-            labelLineWidthAnimator_->pixelSize.push_back(std::max(lines[i].widthDash.x, 1.5f));
+            vsg::vec4 widthDash = lines[i].widthDash;
+            widthDash.x = std::max(widthDash.x, 1.5f);
+            linesLabelWidthDashArray->set(i, widthDash);
         }
 
         // Label variant: lines.frag already has no AA (only a hard dash
         // discard), so it's reused as-is; just swap in labelColor, the
         // widened linesLabelWidthDashArray (see above), and disable blending.
-        linesLabelBind = makePipeline(shaderDir, "lines.vert.spv", "lines.frag.spv", bindings, attributes, /*blend=*/false);
+        linesLabelBind = makePipeline(shaderDir, "lines.vert.spv", "lines.frag.spv", bindings, attributes, vectorPipelineLayout, /*blend=*/false);
     }
 
     // -------------------------------------------------------------
@@ -1363,8 +1334,8 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     }
     if (fillBind)
     {
-        fillVertexBind = vsg::BindVertexBuffers::create(0, vsg::DataList{fillPosArray, fillColorArray});
-        fillLabelVertexBind = vsg::BindVertexBuffers::create(0, vsg::DataList{fillPosArray, fillLabelColorArray});
+        fillVertexBind = vsg::BindVertexBuffers::create(0, vsg::DataList{fillPosArray, fillColorArray, fillOffsetPixelsArray});
+        fillLabelVertexBind = vsg::BindVertexBuffers::create(0, vsg::DataList{fillPosArray, fillLabelColorArray, fillOffsetPixelsArray});
     }
     if (linesBind)
     {
@@ -1373,6 +1344,91 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             vsg::BindVertexBuffers::create(0, vsg::DataList{quadCorners, linesP0p1Array, linesLabelWidthDashArray, linesLabelColorArray});
         if (!quadIndexBind) quadIndexBind = vsg::BindIndexBuffer::create(quadIndices);
     }
+
+    // Consecutive datasets very often contribute to the same batch and
+    // nothing else (a run of mark-only datasets, say), and their sub-ranges
+    // are contiguous by construction - so instead of one draw each they are
+    // grown into a single wider draw, which is what the `lastKind`/`lastEnd`
+    // bookkeeping below is for. Files built out of hundreds of thousands of
+    // one- or two-point datasets are recording-bound (one pipeline bind,
+    // vertex/index binds and draw per dataset, every frame), and this cuts
+    // that per-frame work by the length of each run.
+    enum class BatchKind
+    {
+        None,
+        Marks,
+        Fill,
+        Lines
+    };
+    BatchKind lastKind = BatchKind::None;
+    uint32_t lastEnd = 0;
+    vsg::ref_ptr<vsg::DrawIndexed> lastDrawIndexed, lastLabelDrawIndexed;
+    vsg::ref_ptr<vsg::Draw> lastDraw, lastLabelDraw;
+
+    // A sprite draw has to keep its exact place in submission order, so it
+    // ends any run that a following dataset could otherwise have joined.
+    auto breakRun = [&]() { lastKind = BatchKind::None; };
+
+    auto continuesRun = [&](BatchKind kind, const Range& r) { return kind == lastKind && r.start == lastEnd; };
+
+    auto emitIndexed = [&](BatchKind kind, const Range& r, vsg::ref_ptr<vsg::BindGraphicsPipeline> bind,
+                            vsg::ref_ptr<vsg::BindGraphicsPipeline> labelBind, vsg::ref_ptr<vsg::BindVertexBuffers> vertexBind,
+                            vsg::ref_ptr<vsg::BindVertexBuffers> labelVertexBind) {
+        if (!bind || r.count == 0) return;
+        if (continuesRun(kind, r))
+        {
+            lastDrawIndexed->instanceCount += r.count;
+            lastLabelDrawIndexed->instanceCount += r.count;
+        }
+        else
+        {
+            lastDrawIndexed = vsg::DrawIndexed::create(6, r.count, 0, 0, r.start);
+            lastLabelDrawIndexed = vsg::DrawIndexed::create(6, r.count, 0, 0, r.start);
+
+            auto drawCommands = vsg::Commands::create();
+            drawCommands->addChild(vertexBind);
+            drawCommands->addChild(quadIndexBind);
+            drawCommands->addChild(lastDrawIndexed);
+            root->addChild(wrapDraw(bind, drawCommands));
+
+            auto labelDrawCommands = vsg::Commands::create();
+            labelDrawCommands->addChild(labelVertexBind);
+            labelDrawCommands->addChild(quadIndexBind);
+            labelDrawCommands->addChild(lastLabelDrawIndexed);
+            labelRoot->addChild(wrapDraw(labelBind, labelDrawCommands));
+            lastKind = kind;
+        }
+        lastEnd = r.start + r.count;
+    };
+
+    auto emitMarks = [&](const Range& r) { emitIndexed(BatchKind::Marks, r, marksBind, marksLabelBind, marksVertexBind, marksLabelVertexBind); };
+    auto emitLines = [&](const Range& r) { emitIndexed(BatchKind::Lines, r, linesBind, linesLabelBind, linesVertexBind, linesLabelVertexBind); };
+
+    auto emitFill = [&](const Range& r) {
+        if (!fillBind || r.count == 0) return;
+        if (continuesRun(BatchKind::Fill, r))
+        {
+            lastDraw->vertexCount += r.count;
+            lastLabelDraw->vertexCount += r.count;
+        }
+        else
+        {
+            lastDraw = vsg::Draw::create(r.count, 1, r.start, 0);
+            lastLabelDraw = vsg::Draw::create(r.count, 1, r.start, 0);
+
+            auto drawCommands = vsg::Commands::create();
+            drawCommands->addChild(fillVertexBind);
+            drawCommands->addChild(lastDraw);
+            root->addChild(wrapDraw(fillBind, drawCommands));
+
+            auto labelDrawCommands = vsg::Commands::create();
+            labelDrawCommands->addChild(fillLabelVertexBind);
+            labelDrawCommands->addChild(lastLabelDraw);
+            labelRoot->addChild(wrapDraw(fillLabelBind, labelDrawCommands));
+            lastKind = BatchKind::Fill;
+        }
+        lastEnd = r.start + r.count;
+    };
 
     for (size_t dsIdx = 0; dsIdx < scene.datasets.size(); ++dsIdx)
     {
@@ -1405,53 +1461,12 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             drawCommands->addChild(vsg::BindIndexBuffer::create(spriteQuadIndices));
             drawCommands->addChild(vsg::DrawIndexed::create(6, 1, 0, 0, 0));
             root->addChild(wrapImageDraw(spriteBind, bindDescriptorSet, drawCommands));
+            breakRun();
         }
 
-        const Range& mr = markRanges[dsIdx];
-        if (marksBind && mr.count > 0)
-        {
-            auto drawCommands = vsg::Commands::create();
-            drawCommands->addChild(marksVertexBind);
-            drawCommands->addChild(quadIndexBind);
-            drawCommands->addChild(vsg::DrawIndexed::create(6, mr.count, 0, 0, mr.start));
-            root->addChild(wrapDraw(marksBind, drawCommands));
-
-            auto labelDrawCommands = vsg::Commands::create();
-            labelDrawCommands->addChild(marksLabelVertexBind);
-            labelDrawCommands->addChild(quadIndexBind);
-            labelDrawCommands->addChild(vsg::DrawIndexed::create(6, mr.count, 0, 0, mr.start));
-            labelRoot->addChild(wrapDraw(marksLabelBind, labelDrawCommands));
-        }
-
-        const Range& fr = fillRanges[dsIdx];
-        if (fillBind && fr.count > 0)
-        {
-            auto drawCommands = vsg::Commands::create();
-            drawCommands->addChild(fillVertexBind);
-            drawCommands->addChild(vsg::Draw::create(fr.count, 1, fr.start, 0));
-            root->addChild(wrapDraw(fillBind, drawCommands));
-
-            auto labelDrawCommands = vsg::Commands::create();
-            labelDrawCommands->addChild(fillLabelVertexBind);
-            labelDrawCommands->addChild(vsg::Draw::create(fr.count, 1, fr.start, 0));
-            labelRoot->addChild(wrapDraw(fillLabelBind, labelDrawCommands));
-        }
-
-        const Range& lr = lineRanges[dsIdx];
-        if (linesBind && lr.count > 0)
-        {
-            auto drawCommands = vsg::Commands::create();
-            drawCommands->addChild(linesVertexBind);
-            drawCommands->addChild(quadIndexBind);
-            drawCommands->addChild(vsg::DrawIndexed::create(6, lr.count, 0, 0, lr.start));
-            root->addChild(wrapDraw(linesBind, drawCommands));
-
-            auto labelDrawCommands = vsg::Commands::create();
-            labelDrawCommands->addChild(linesLabelVertexBind);
-            labelDrawCommands->addChild(quadIndexBind);
-            labelDrawCommands->addChild(vsg::DrawIndexed::create(6, lr.count, 0, 0, lr.start));
-            labelRoot->addChild(wrapDraw(linesLabelBind, labelDrawCommands));
-        }
+        emitMarks(markRanges[dsIdx]);
+        emitFill(fillRanges[dsIdx]);
+        emitLines(lineRanges[dsIdx]);
     }
 
     if (textGroup->children.size() > 0) root->addChild(textGroup);

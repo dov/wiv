@@ -7,7 +7,7 @@
 
 layout(location = 0) in vec2 inCorner;        // base quad corner: x in [-1,1] along segment, y in [-1,1] across
 layout(location = 1) in vec4 inP0P1;          // xy = segment start, zw = segment end
-layout(location = 2) in vec4 inWidthDash;     // x = half width, y = dash-on length, z = dash-off length, w = cumulative length at p0
+layout(location = 2) in vec4 inWidthDash;     // x = half width in screen pixels, y = dash-on length, z = dash-off length, w = cumulative length at p0
 layout(location = 3) in vec4 inColor;
 
 layout(push_constant) uniform PushConstants
@@ -15,6 +15,17 @@ layout(push_constant) uniform PushConstants
     mat4 projection;
     mat4 modelview;
 } pc;
+
+// Set once per frame by GivViewer::render() (see giv::ViewParams): the
+// current world-units-per-screen-pixel scale of the orthographic view.
+// Sizes that giv specifies in constant device pixels (mark sizes, line
+// widths, arrowhead geometry) are stored in *pixels* in the vertex/
+// instance buffers and converted to world units here, so zooming never
+// has to rewrite and re-upload a single byte of per-primitive data.
+layout(set = 0, binding = 0) uniform ViewParams
+{
+    vec4 params; // x = world units per screen pixel; yzw unused
+} vp;
 
 layout(location = 0) out vec4 fragColor;
 layout(location = 1) out float fragAlong;
@@ -24,7 +35,9 @@ void main()
 {
     vec2 p0 = inP0P1.xy;
     vec2 p1 = inP0P1.zw;
-    float halfWidth = inWidthDash.x;
+    // giv draws every line/outline/quiver shaft at a constant device-pixel
+    // width regardless of zoom, so inWidthDash.x is a *pixel* half-width.
+    float halfWidth = inWidthDash.x * vp.params.x;
 
     vec2 dir = p1 - p0;
     float segLen = length(dir);

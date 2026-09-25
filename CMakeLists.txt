@@ -32,6 +32,7 @@ set(WIV_SHADER_SOURCES
   ${CMAKE_SOURCE_DIR}/shaders/lines.frag
   ${CMAKE_SOURCE_DIR}/shaders/fill.vert
   ${CMAKE_SOURCE_DIR}/shaders/fill.frag
+  ${CMAKE_SOURCE_DIR}/shaders/overlay.vert
   ${CMAKE_SOURCE_DIR}/shaders/image.vert
   ${CMAKE_SOURCE_DIR}/shaders/image.frag
 )
