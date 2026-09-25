@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <memory>
 #include <sstream>
@@ -27,6 +28,19 @@ void ArrowVertexAnimator::update(float worldPerPixel)
         posArray->set(idx, tip[k] + offsetPixels[k] * worldPerPixel);
     }
     posArray->dirty();
+}
+
+void ImageFilterAnimator::update(float worldPerPixel)
+{
+    if (filterSwitches.empty()) return;
+    if (std::abs(worldPerPixel - lastWorldPerPixel_) < 1e-9f) return;
+    lastWorldPerPixel_ = worldPerPixel;
+
+    // 0 = nearest branch, 1 = linear branch - see ImageFilterAnimator's doc
+    // comment in SceneBuilder.h for the worldPerPixel <= 1 threshold.
+    unsigned int idx = worldPerPixel <= 1.0f ? 0 : 1;
+    for (auto& sw : filterSwitches)
+        sw->setSingleChildOn(idx);
 }
 
 void PixelSizeAnimator::update(float worldPerPixel)
@@ -138,6 +152,62 @@ vsg::ref_ptr<vsg::StateGroup> makePipeline(const std::string& shaderDir,
     auto stateGroup = vsg::StateGroup::create();
     stateGroup->add(vsg::BindGraphicsPipeline::create(graphicsPipeline));
     return stateGroup;
+}
+
+struct ImagePipeline
+{
+    vsg::ref_ptr<vsg::StateGroup> stateGroup;
+    vsg::ref_ptr<vsg::PipelineLayout> pipelineLayout;
+};
+
+// Like makePipeline(), but with one combined-image-sampler descriptor set
+// binding (fragment stage) - needed for textured $image quads, which no
+// other batch in this file uses. Returns the pipelineLayout alongside the
+// stateGroup since each image's per-filter vsg::DescriptorSet is built
+// against it (see the "Image batch" section of build()).
+ImagePipeline makeImagePipeline(const std::string& shaderDir)
+{
+    auto vertexShader = loadShader(VK_SHADER_STAGE_VERTEX_BIT, shaderDir, "image.vert.spv");
+    auto fragmentShader = loadShader(VK_SHADER_STAGE_FRAGMENT_BIT, shaderDir, "image.frag.spv");
+
+    vsg::PushConstantRanges pushConstantRanges{
+        {VK_SHADER_STAGE_VERTEX_BIT, 0, 128} // projection + modelview, auto-supplied by RecordTraversal
+    };
+
+    auto descriptorSetLayout = vsg::DescriptorSetLayout::create(vsg::DescriptorSetLayoutBindings{
+        {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}});
+
+    auto rasterization = vsg::RasterizationState::create();
+    rasterization->cullMode = VK_CULL_MODE_NONE;
+
+    auto depthStencil = vsg::DepthStencilState::create();
+    depthStencil->depthTestEnable = VK_FALSE;
+    depthStencil->depthWriteEnable = VK_FALSE;
+
+    auto colorBlend = vsg::ColorBlendState::create();
+    colorBlend->configureAttachments(true);
+
+    vsg::VertexInputState::Bindings bindings{
+        VkVertexInputBindingDescription{0, sizeof(vsg::vec2), VK_VERTEX_INPUT_RATE_VERTEX},
+        VkVertexInputBindingDescription{1, sizeof(vsg::vec2), VK_VERTEX_INPUT_RATE_VERTEX}};
+    vsg::VertexInputState::Attributes attributes{
+        VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32_SFLOAT, 0},
+        VkVertexInputAttributeDescription{1, 1, VK_FORMAT_R32G32_SFLOAT, 0}};
+
+    vsg::GraphicsPipelineStates pipelineStates{
+        vsg::VertexInputState::create(bindings, attributes),
+        vsg::InputAssemblyState::create(),
+        rasterization,
+        vsg::MultisampleState::create(),
+        colorBlend,
+        depthStencil};
+
+    auto pipelineLayout = vsg::PipelineLayout::create(vsg::DescriptorSetLayouts{descriptorSetLayout}, pushConstantRanges);
+    auto graphicsPipeline = vsg::GraphicsPipeline::create(pipelineLayout, vsg::ShaderStages{vertexShader, fragmentShader}, pipelineStates);
+
+    auto stateGroup = vsg::StateGroup::create();
+    stateGroup->add(vsg::BindGraphicsPipeline::create(graphicsPipeline));
+    return {stateGroup, pipelineLayout};
 }
 
 // vsg::createTextShaderSet()'s built-in pipeline states fall back to
@@ -481,9 +551,85 @@ vsg::ref_ptr<vsg::Font> SceneBuilder::resolveFont(const std::string& fontSpec, d
     return font;
 }
 
-vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::string& shaderDir)
+vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::string& shaderDir,
+                                              const std::vector<LoadedImage>& images)
 {
     auto root = vsg::Group::create();
+
+    // -------------------------------------------------------------
+    // Image batch ($image references) - added first so vector data
+    // (marks/lines/fill/text, appended to root below) always draws on
+    // top of any background image.
+    // -------------------------------------------------------------
+    if (!images.empty())
+    {
+        auto [imageStateGroup, imagePipelineLayout] = makeImagePipeline(shaderDir);
+
+        auto nearestSampler = vsg::Sampler::create();
+        nearestSampler->minFilter = VK_FILTER_NEAREST;
+        nearestSampler->magFilter = VK_FILTER_NEAREST;
+        nearestSampler->addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        nearestSampler->addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+
+        auto linearSampler = vsg::Sampler::create();
+        linearSampler->minFilter = VK_FILTER_LINEAR;
+        linearSampler->magFilter = VK_FILTER_LINEAR;
+        linearSampler->addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        linearSampler->addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+
+        auto imageQuadIndices = vsg::ushortArray::create({0, 1, 2, 2, 3, 0});
+
+        imageSwitch_ = vsg::Switch::create();
+        imageFilterAnimator_ = ImageFilterAnimator::create();
+
+        for (const LoadedImage& li : images)
+        {
+            const float w = static_cast<float>(li.width);
+            const float h = static_cast<float>(li.height);
+            // Top-left at world (0,0), extending to (w,-h): giv's $image has
+            // no placement/calibration args (one image pixel == one world
+            // unit, anchored at the origin), and -h applies the same
+            // Y-negation convention as every other primitive (see the main
+            // dataset loop below).
+            auto positions = vsg::vec2Array::create({{0.0f, 0.0f}, {w, 0.0f}, {w, -h}, {0.0f, -h}});
+            auto uvs = vsg::vec2Array::create({{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}});
+
+            auto textureData =
+                vsg::ubvec4Array2D::create(static_cast<uint32_t>(li.width), static_cast<uint32_t>(li.height),
+                                            vsg::Data::Properties{VK_FORMAT_R8G8B8A8_UNORM});
+            std::memcpy(textureData->dataPointer(), li.rgba.data(), li.rgba.size());
+
+            auto innerSwitch = vsg::Switch::create(); // child 0 = nearest, child 1 = linear
+            for (auto& sampler : {nearestSampler, linearSampler})
+            {
+                auto descriptorImage = vsg::DescriptorImage::create(sampler, textureData, 0, 0,
+                                                                      VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+                auto descriptorSet =
+                    vsg::DescriptorSet::create(imagePipelineLayout->setLayouts[0], vsg::Descriptors{descriptorImage});
+                auto bindDescriptorSet = vsg::BindDescriptorSet::create(VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                                                         imagePipelineLayout, 0, descriptorSet);
+
+                auto variantGroup = vsg::StateGroup::create();
+                variantGroup->add(bindDescriptorSet);
+
+                auto drawCommands = vsg::Commands::create();
+                drawCommands->addChild(vsg::BindVertexBuffers::create(0, vsg::DataList{positions, uvs}));
+                drawCommands->addChild(vsg::BindIndexBuffer::create(imageQuadIndices));
+                drawCommands->addChild(vsg::DrawIndexed::create(6, 1, 0, 0, 0));
+                variantGroup->addChild(drawCommands);
+
+                innerSwitch->addChild(true, variantGroup);
+            }
+            innerSwitch->setSingleChildOn(0); // default: nearest (worldPerPixel unknown until first update())
+            imageFilterAnimator_->filterSwitches.push_back(innerSwitch);
+
+            imageSwitch_->addChild(true, innerSwitch);
+        }
+        imageSwitch_->setSingleChildOn(0); // default: first image
+
+        imageStateGroup->addChild(imageSwitch_);
+        root->addChild(imageStateGroup);
+    }
 
     std::vector<MarkInstance> marks;
     std::vector<bool> markScalesWithZoom; // parallel to `marks`; see PixelSizeAnimator

@@ -48,6 +48,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     connect(viewport_, &VulkanViewport::frameStats, this, [this](double fps) {
         fpsLabel_->setText(QString("%1 fps").arg(fps, 0, 'f', 1));
     });
+    connect(viewport_, &VulkanViewport::imageChanged, this, [this](int index, int count, QString filename) {
+        nextImageAction_->setEnabled(count > 1);
+        previousImageAction_->setEnabled(count > 1);
+        if (count == 0)
+        {
+            imageLabel_->clear();
+            return;
+        }
+        imageLabel_->setText(QString("image %1/%2: %3").arg(index + 1).arg(count).arg(QFileInfo(filename).fileName()));
+    });
 }
 
 void MainWindow::buildMenus()
@@ -82,6 +92,14 @@ void MainWindow::buildMenus()
     balloonAction_->setCheckable(true);
     balloonAction_->setShortcut(QKeySequence("B"));
 
+    viewMenu->addSeparator();
+    nextImageAction_ = viewMenu->addAction("Next Image", viewport_, &VulkanViewport::nextImage);
+    nextImageAction_->setShortcut(QKeySequence("Shift+Up"));
+    nextImageAction_->setEnabled(false);
+    previousImageAction_ = viewMenu->addAction("Previous Image", viewport_, &VulkanViewport::previousImage);
+    previousImageAction_->setShortcut(QKeySequence("Shift+Down"));
+    previousImageAction_->setEnabled(false);
+
     auto editMenu = menuBar()->addMenu("&Edit");
     editMenu->addAction("Preferences...", this, [this]() {
         PreferencesDialog dlg(this);
@@ -101,7 +119,9 @@ void MainWindow::buildStatusBar()
     fpsLabel_ = new QLabel(this);
     cursorLabel_ = new QLabel(this);
     countsLabel_ = new QLabel(this);
+    imageLabel_ = new QLabel(this);
     statusBar()->addPermanentWidget(countsLabel_);
+    statusBar()->addPermanentWidget(imageLabel_);
     statusBar()->addPermanentWidget(cursorLabel_);
     statusBar()->addPermanentWidget(fpsLabel_);
 }

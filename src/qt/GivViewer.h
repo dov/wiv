@@ -30,6 +30,7 @@ public:
     vsg::ref_ptr<giv::PixelSizeAnimator> lineWidthAnimator;
     vsg::ref_ptr<giv::PixelSizeAnimator> labelLineWidthAnimator;
     vsg::ref_ptr<giv::ArrowVertexAnimator> arrowVertexAnimator;
+    vsg::ref_ptr<giv::ImageFilterAnimator> imageFilterAnimator;
 
     // Called once per frame with the current world-units-per-pixel scale, to
     // drive updateMarkSizes()'s callers - set by VulkanViewport since only it

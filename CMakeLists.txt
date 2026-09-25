@@ -32,6 +32,8 @@ set(WIV_SHADER_SOURCES
   ${CMAKE_SOURCE_DIR}/shaders/lines.frag
   ${CMAKE_SOURCE_DIR}/shaders/fill.vert
   ${CMAKE_SOURCE_DIR}/shaders/fill.frag
+  ${CMAKE_SOURCE_DIR}/shaders/image.vert
+  ${CMAKE_SOURCE_DIR}/shaders/image.frag
 )
 
 set(WIV_SPIRV_BINARIES)
@@ -62,6 +64,7 @@ add_executable(wiv
   src/LabelPicker.cpp
   src/BalloonOverlay.cpp
   src/BalloonController.cpp
+  src/ImagePluginHost.cpp
   src/qt/GivViewer.cpp
   src/qt/VulkanViewport.cpp
   src/qt/PreferencesDialog.cpp
@@ -75,11 +78,17 @@ target_link_libraries(wiv PRIVATE vsg::vsg vsgXchange::vsgXchange vsgQt::vsgQt Q
 
 target_compile_definitions(wiv PRIVATE
   WIV_SHADER_DIR="${CMAKE_BINARY_DIR}/shaders"
+  WIV_PLUGIN_DIR="${CMAKE_BINARY_DIR}/plugins"
 )
 
 if(UNIX AND NOT APPLE)
-  target_link_libraries(wiv PRIVATE pthread)
+  target_link_libraries(wiv PRIVATE pthread ${CMAKE_DL_LIBS})
 endif()
 
 install(TARGETS wiv RUNTIME DESTINATION bin)
 install(DIRECTORY ${CMAKE_BINARY_DIR}/shaders DESTINATION share/wiv)
+
+# ---------------------------------------------------------------------------
+# Image-format plugins (dlopen-loaded .so files, see src/ImagePluginHost)
+# ---------------------------------------------------------------------------
+add_subdirectory(src/plugins)

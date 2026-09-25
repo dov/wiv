@@ -19,6 +19,7 @@ void GivViewer::render(double simulationTime)
         if (lineWidthAnimator) lineWidthAnimator->update(wpp);
         if (labelLineWidthAnimator) labelLineWidthAnimator->update(wpp);
         if (arrowVertexAnimator) arrowVertexAnimator->update(wpp);
+        if (imageFilterAnimator) imageFilterAnimator->update(wpp);
     }
 
     if (advanceToNextFrame(simulationTime))

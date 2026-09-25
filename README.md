@@ -73,7 +73,24 @@ printed to stderr.
   - **Text**: `vsg::Text` + `StandardLayout` (CPU layout technique), font
     resolved per `$font` spec via `fc-match` (Linux), mapping giv's
     numeric-keypad `text_align` (1-9) to horizontal/vertical alignment.
+  - **Images**: `$image <filename>` references are rendered as a textured
+    quad (one image pixel = one world unit, top-left anchored at the
+    origin, matching giv's own convention). Texture filtering switches
+    between nearest-neighbor (zoomed in/at 1:1) and bilinear (zoomed out),
+    matching giv's `gtk_image_viewer` zoom-dependent filter. Multiple
+    `$image` lines in one file can be cycled with Shift+Up/Shift+Down (View
+    menu), matching giv's own image cycling.
   - Camera: orthographic, auto-fit to the parsed scene bounds.
+- **Image plugins** (`src/plugins/`, `src/ImagePluginHost.h/.cpp`): image
+  formats are loaded via real runtime-`dlopen`ed `.so` plugins, mirroring
+  giv's own plugin architecture (`givplugin.h`/`.cc`) rather than a
+  compiled-in format table. Built-in plugins: `stbimage` (PNG/JPEG/BMP/
+  TGA/GIF/PSD via vendored `third_party/stb_image.h`), `pgm` (binary
+  PGM/PPM, no dependency), `tiff` (libtiff), `webp` (libwebp). Plugins are
+  discovered from `WIV_PLUGIN_DIR` (env var override) or else the
+  compile-time default `<build-dir>/plugins` - set `WIV_PLUGIN_DIR`
+  explicitly if running a `wiv` binary copied out of its build tree, or a
+  packaged/installed one (`<prefix>/lib/wiv/plugins`).
 - **`PanZoomHandler`** (`src/PanZoomHandler.h/.cpp`): a custom `vsg::Visitor`
   for drag-to-pan and scroll-to-zoom-at-cursor against the `Orthographic` +
   `LookAt` camera. No rotation.
@@ -96,12 +113,11 @@ printed to stderr.
 
 ## Known limitations / Phase 1 simplifications
 
-- No images, colormap/pseudo-color, calibration dialog, mark-tree sidebar,
-  or remote JSON-RPC control (all explicitly deferred to Phase 2 per the
-  plan).
-- `$svg`/`$svgmarks`/`$image`/`$marks_file`/`$low_contrast`/`$vflip`/
-  `$hflip`/(their `no*` counterparts)/`$pixelsize`/`$shadow_*` directives are
-  accepted and ignored (parsed for compatibility, not rendered).
+- No colormap/pseudo-color, calibration dialog, mark-tree sidebar, or remote
+  JSON-RPC control (all explicitly deferred to Phase 2 per the plan).
+- `$svg`/`$svgmarks`/`$marks_file`/`$low_contrast`/`$vflip`/`$hflip`/(their
+  `no*` counterparts)/`$pixelsize`/`$shadow_*` directives are accepted and
+  ignored (parsed for compatibility, not rendered).
 - Polygon fill uses a simple fan triangulation from vertex 0, not a full
   earcut - concave polygons may triangulate incorrectly.
 - Dash patterns use only the first on/off pair; patterns with more than two

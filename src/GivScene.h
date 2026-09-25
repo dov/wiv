@@ -124,6 +124,15 @@ struct SceneData
 {
     std::vector<Dataset> datasets;
 
+    // $image reference filenames, in file order, as written in the .giv
+    // file (not yet resolved to an absolute path - see
+    // VulkanViewport::loadFiles, which resolves each one relative to the
+    // .giv file's directory if it doesn't exist as given, mirroring giv's
+    // own cb_image_reference). Whole-file/whole-view concept in giv (one
+    // currently-displayed image, cycled by the user), not geometry
+    // attached to a particular dataset.
+    std::vector<std::string> images;
+
     double minX = 1e30, minY = 1e30;
     double maxX = -1e30, maxY = -1e30;
 

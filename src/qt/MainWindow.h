@@ -35,8 +35,11 @@ private:
     QLabel* fpsLabel_ = nullptr;
     QLabel* cursorLabel_ = nullptr;
     QLabel* countsLabel_ = nullptr;
+    QLabel* imageLabel_ = nullptr;
 
     QAction* balloonAction_ = nullptr;
+    QAction* nextImageAction_ = nullptr;
+    QAction* previousImageAction_ = nullptr;
     QMenu* recentFilesMenu_ = nullptr;
 
     void buildMenus();

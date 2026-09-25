@@ -17,6 +17,7 @@
 //    resolved via `fc-match` (Linux) from the giv $font spec.
 //
 #include "GivScene.h"
+#include "ImagePluginHost.h"
 
 #include <vsg/all.h>
 
@@ -84,6 +85,29 @@ private:
     float lastWorldPerPixel_ = -1.0f;
 };
 
+// Switches every loaded $image's texture sampler between nearest and
+// linear filtering based on the current world-units-per-pixel scale,
+// matching giv's own gtk_image_viewer zoom-dependent filter switch
+// (gtk-image-viewer.c's view_changed(): scale_x < 1.0 -> bilinear, else
+// -> nearest - "0-order interpolation" on zoom-in). Since a VkSampler's
+// filter mode is baked in at creation, the switch is done by picking
+// between two pre-built descriptor-set variants (one per sampler) via a
+// vsg::Switch per image, rather than mutating a sampler in place. One
+// world unit == one image pixel (giv's $image has no placement/
+// calibration directives), so worldPerPixel <= 1 means each image pixel
+// covers at least one screen pixel (zoomed in or at 1:1) -> nearest;
+// worldPerPixel > 1 means the image is minified -> linear.
+class ImageFilterAnimator : public vsg::Inherit<vsg::Object, ImageFilterAnimator>
+{
+public:
+    std::vector<vsg::ref_ptr<vsg::Switch>> filterSwitches; // one per loaded image
+
+    void update(float worldPerPixel);
+
+private:
+    float lastWorldPerPixel_ = -1.0f;
+};
+
 class SceneBuilder
 {
 public:
@@ -91,7 +115,21 @@ public:
 
     // Builds the full scene graph for `scene`. `shaderDir` is the directory
     // containing the precompiled marks/lines/fill .vert.spv/.frag.spv files.
-    vsg::ref_ptr<vsg::Group> build(const SceneData& scene, const std::string& shaderDir);
+    // `images` are the already-resolved-and-decoded $image references (see
+    // ImagePluginHost), in the same order as `scene.images`; entries that
+    // failed to load should simply be omitted by the caller. Each is drawn
+    // as a textured quad, added to the scene graph *before* marks/lines/
+    // fill/text so vector data always draws on top.
+    vsg::ref_ptr<vsg::Group> build(const SceneData& scene, const std::string& shaderDir,
+                                    const std::vector<LoadedImage>& images = {});
+
+    // Valid after build(); non-null only if `images` was non-empty. Has one
+    // child per loaded image (vsg::Switch::setSingleChildOn to cycle which
+    // one is displayed - see giv's shift-Up/shift-Down image cycling).
+    vsg::ref_ptr<vsg::Switch> imageSwitch() const { return imageSwitch_; }
+
+    // Valid after build(); non-null only if `images` was non-empty.
+    vsg::ref_ptr<ImageFilterAnimator> imageFilterAnimator() const { return imageFilterAnimator_; }
 
     // Valid after build(); non-null only if the scene contains marks/lines
     // respectively.
@@ -127,6 +165,8 @@ private:
     vsg::ref_ptr<ArrowVertexAnimator> arrowVertexAnimator_;
     vsg::ref_ptr<PixelSizeAnimator> labelLineWidthAnimator_;
     vsg::ref_ptr<vsg::Group> labelGraph_;
+    vsg::ref_ptr<vsg::Switch> imageSwitch_;
+    vsg::ref_ptr<ImageFilterAnimator> imageFilterAnimator_;
 
     vsg::ref_ptr<vsg::Font> resolveFont(const std::string& fontSpec, double& outSize);
 };

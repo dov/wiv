@@ -385,9 +385,15 @@ void GivParser::parseLine(Dataset& ds, const char* line, size_t len, SceneData& 
         }
         else if (w0 == "$nomark") ds.doDrawMarks = false;
         else if (w0 == "$line") ds.doDrawLines = true;
-        else if (w0 == "$image" || w0 == "$marks_file" || w0 == "$svg" || w0 == "$svgmarks")
+        else if (w0 == "$image")
         {
-            // Phase 1 scope excludes images/SVG references; accept-and-ignore.
+            std::string filename = tok.getRest(1);
+            if (!filename.empty())
+                scene.images.push_back(filename);
+        }
+        else if (w0 == "$marks_file" || w0 == "$svg" || w0 == "$svgmarks")
+        {
+            // Phase 1 scope excludes marks-file/SVG references; accept-and-ignore.
         }
         else if (w0 == "$polygon") ds.doDrawPolygon = true;
         else if (w0 == "$low_contrast")
@@ -570,7 +576,10 @@ bool GivParser::parseFile(const std::string& filename, SceneData& scene, std::st
             {
                 scene.datasets.emplace_back();
                 current = &scene.datasets.back();
-                current->color = kDefaultColors[scene.datasets.size() % 6];
+                // size()-1: the dataset just emplaced is already counted in
+                // size(), so the first dataset must index kDefaultColors[0]
+                // (red, matching giv - see gallery-cat-contour.jpg), not [1].
+                current->color = kDefaultColors[(scene.datasets.size() - 1) % 6];
                 needNewDataset = false;
             }
             parseLine(*current, data + lineStart, len, scene);

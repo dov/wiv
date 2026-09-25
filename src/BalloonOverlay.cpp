@@ -1,6 +1,7 @@
 #include "BalloonOverlay.h"
 
 #include <cstdio>
+#include <future>
 #include <sstream>
 
 namespace giv
@@ -71,28 +72,32 @@ vsg::ref_ptr<vsg::StateGroup> makeBoxPipeline(const std::string& shaderDir)
 // always uses one fixed font.
 // Building a glyph atlas for an entire system "Sans" font (typically a
 // large, many-thousand-glyph file like NotoSans-Regular.ttf) via freetype
-// takes on the order of ~2 seconds - too slow to pay on every dataset load
-// (BalloonOverlay is recreated per VulkanViewport::loadFiles() call) or
-// before the balloon feature has even been used once. Cache the resolved
-// font for the lifetime of the process, keyed on nothing (the balloon
-// always resolves the same fixed "Sans" query), and resolve it lazily (see
-// BalloonOverlay::show()) rather than eagerly in the constructor.
-vsg::ref_ptr<vsg::Font> resolveBalloonFont(vsg::ref_ptr<vsg::Options> options)
+// takes on the order of ~2 seconds. This used to be paid synchronously on
+// the render thread the first time BalloonOverlay::show() ran (i.e. as a
+// ~1-2s stall the first time a user pressed 'b' and hovered over data) -
+// noticeably laggy in practice. Instead, kick the resolution off on a
+// background thread as soon as the first BalloonOverlay exists (well
+// before the balloon feature could plausibly be used), cached for the
+// lifetime of the process (keyed on nothing - the balloon always resolves
+// the same fixed "Sans" query) via a shared_future so every BalloonOverlay
+// instance (one per VulkanViewport::loadFiles() call) reuses the same
+// in-flight or completed resolution. show() only blocks on it if the
+// background resolution genuinely hasn't finished yet by the time it's
+// needed.
+std::shared_future<vsg::ref_ptr<vsg::Font>>& balloonFontFuture(vsg::ref_ptr<vsg::Options> options)
 {
-    static vsg::ref_ptr<vsg::Font> cached;
-    static bool attempted = false;
-    if (attempted) return cached;
-    attempted = true;
-
-    std::string path;
-    if (FILE* p = popen("fc-match -f '%{file}' Sans 2>/dev/null", "r"))
-    {
-        char buf[1024] = {0};
-        if (fgets(buf, sizeof(buf), p)) path = buf;
-        pclose(p);
-    }
-    if (!path.empty()) cached = vsg::read_cast<vsg::Font>(path, options);
-    return cached;
+    static std::shared_future<vsg::ref_ptr<vsg::Font>> future = std::async(std::launch::async, [options]() -> vsg::ref_ptr<vsg::Font> {
+                                                                     std::string path;
+                                                                     if (FILE* p = popen("fc-match -f '%{file}' Sans 2>/dev/null", "r"))
+                                                                     {
+                                                                         char buf[1024] = {0};
+                                                                         if (fgets(buf, sizeof(buf), p)) path = buf;
+                                                                         pclose(p);
+                                                                     }
+                                                                     if (path.empty()) return {};
+                                                                     return vsg::read_cast<vsg::Font>(path, options);
+                                                                 }).share();
+    return future;
 }
 
 } // namespace
@@ -100,9 +105,11 @@ vsg::ref_ptr<vsg::Font> resolveBalloonFont(vsg::ref_ptr<vsg::Options> options)
 BalloonOverlay::BalloonOverlay(vsg::ref_ptr<vsg::Options> options, const std::string& shaderDir) :
     options_(options), shaderDir_(shaderDir)
 {
-    // font_ is resolved lazily on first show() (see resolveBalloonFont's doc
-    // comment) rather than here, so opening a file doesn't pay for a full
-    // font-atlas build before the balloon/tooltip feature has ever been used.
+    // Kick off font resolution on a background thread now (see
+    // balloonFontFuture's doc comment) - font_ itself is only assigned
+    // lazily on first show(), once the (by then likely-already-finished)
+    // background resolution is available.
+    balloonFontFuture(options_);
 
     // Screen-space HUD camera: window-pixel coordinates directly (origin
     // top-left, y-down), matching vsg::MoveEvent's x/y and giv's own pixel
@@ -174,7 +181,7 @@ void BalloonOverlay::hide()
 
 void BalloonOverlay::show(vsg::Viewer* viewer, const std::string& text, int32_t x, int32_t y)
 {
-    if (!font_) font_ = resolveBalloonFont(options_);
+    if (!font_) font_ = balloonFontFuture(options_).get();
 
     if (!visible_ || text != currentText_)
     {

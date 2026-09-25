@@ -1,6 +1,7 @@
 #include "VulkanViewport.h"
 
 #include "GivParser.h"
+#include "ImagePluginHost.h"
 
 #include <vsg/all.h>
 #include <vsgXchange/all.h>
@@ -10,6 +11,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <filesystem>
 #include <iostream>
 
 namespace givqt
@@ -141,12 +143,41 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     double parseMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - parseStart).count();
     std::cerr << "wiv: parsed " << newScene.datasets.size() << " dataset(s), " << totalPoints << " points in " << parseMs << " ms\n";
 
+    // Resolve and load $image references. Mirrors giv's own
+    // cb_image_reference: a filename is used as-is if it already resolves
+    // (absolute, or relative to the current working directory); otherwise
+    // it's retried relative to the directory of the first loaded .giv file.
+    std::vector<giv::LoadedImage> loadedImages;
+    std::vector<std::string> newLoadedImageNames;
+    std::filesystem::path givDir = paths.empty() ? std::filesystem::path() : std::filesystem::path(paths.front()).parent_path();
+    for (const auto& imgRef : newScene.images)
+    {
+        std::filesystem::path resolved(imgRef);
+        if (!std::filesystem::exists(resolved) && !givDir.empty())
+            resolved = givDir / imgRef;
+
+        auto loaded = giv::ImagePluginHost::load(resolved.string());
+        if (!loaded)
+            continue;
+
+        // A pure-$image .giv file has no dataset points to derive bounds
+        // from; include every loaded image's pixel rect so auto-fit still
+        // works. Un-negated (giv/image y-down) coordinates, matching how
+        // GivParser tracks dataset point bounds - SceneBuilder applies the
+        // Y-negation once, at world-space geometry-build time.
+        newScene.updateBounds(0.0, 0.0);
+        newScene.updateBounds(loaded->width, loaded->height);
+
+        newLoadedImageNames.push_back(resolved.string());
+        loadedImages.push_back(std::move(*loaded));
+    }
+
     giv::SceneBuilder builder(options_);
     vsg::ref_ptr<vsg::Group> sceneGraph;
     auto buildStart = std::chrono::steady_clock::now();
     try
     {
-        sceneGraph = builder.build(newScene, shaderDir_);
+        sceneGraph = builder.build(newScene, shaderDir_, loadedImages);
     }
     catch (const std::exception& e)
     {
@@ -192,6 +223,12 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     viewer_->lineWidthAnimator = builder.lineWidthAnimator();
     viewer_->labelLineWidthAnimator = builder.labelLineWidthAnimator();
     viewer_->arrowVertexAnimator = builder.arrowVertexAnimator();
+    viewer_->imageFilterAnimator = builder.imageFilterAnimator();
+
+    imageSwitch_ = builder.imageSwitch();
+    loadedImageNames_ = std::move(newLoadedImageNames);
+    currentImageIndex_ = 0;
+    if (imageSwitch_) imageSwitch_->setSingleChildOn(0);
 
     auto renderGraph = vsg::createRenderGraphForView(window_->windowAdapter, camera_, sceneGraph);
     renderGraph->addChild(balloonOverlay_->view());
@@ -218,7 +255,32 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     viewer_->render();
 
     emit sceneLoaded();
+    emit imageChanged(currentImageIndex_, imageCount(), QString::fromStdString(currentImageName()));
     return true;
+}
+
+std::string VulkanViewport::currentImageName() const
+{
+    if (currentImageIndex_ < 0 || currentImageIndex_ >= static_cast<int>(loadedImageNames_.size())) return {};
+    return loadedImageNames_[currentImageIndex_];
+}
+
+void VulkanViewport::nextImage()
+{
+    if (loadedImageNames_.size() < 2 || !imageSwitch_) return;
+    currentImageIndex_ = (currentImageIndex_ + 1) % static_cast<int>(loadedImageNames_.size());
+    imageSwitch_->setSingleChildOn(static_cast<size_t>(currentImageIndex_));
+    viewer_->request();
+    emit imageChanged(currentImageIndex_, imageCount(), QString::fromStdString(currentImageName()));
+}
+
+void VulkanViewport::previousImage()
+{
+    if (loadedImageNames_.size() < 2 || !imageSwitch_) return;
+    currentImageIndex_ = (currentImageIndex_ - 1 + static_cast<int>(loadedImageNames_.size())) % static_cast<int>(loadedImageNames_.size());
+    imageSwitch_->setSingleChildOn(static_cast<size_t>(currentImageIndex_));
+    viewer_->request();
+    emit imageChanged(currentImageIndex_, imageCount(), QString::fromStdString(currentImageName()));
 }
 
 void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double maxY)

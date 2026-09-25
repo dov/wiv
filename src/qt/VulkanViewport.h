@@ -47,6 +47,14 @@ public:
     void toggleBalloon();
     bool balloonEnabled() const;
 
+    // $image cycling (giv's shift-Up/shift-Down). No-ops if there are fewer
+    // than 2 successfully-loaded images.
+    void nextImage();
+    void previousImage();
+    int imageCount() const { return static_cast<int>(loadedImageNames_.size()); }
+    int currentImageIndex() const { return currentImageIndex_; }
+    std::string currentImageName() const;
+
     void setBackgroundColor(const QColor& color);
     void setAutoFitMarginPx(double px);
 
@@ -57,6 +65,7 @@ signals:
     void sceneLoaded();
     void cursorWorldPosition(double x, double y);
     void frameStats(double fps);
+    void imageChanged(int index, int count, QString filename);
 
 private:
     vsg::ref_ptr<vsg::WindowTraits> traits_;
@@ -75,6 +84,10 @@ private:
     vsg::ref_ptr<giv::LabelPicker> labelPicker_;
     vsg::ref_ptr<giv::BalloonOverlay> balloonOverlay_;
     vsg::ref_ptr<giv::BalloonController> balloonController_;
+
+    vsg::ref_ptr<vsg::Switch> imageSwitch_;
+    std::vector<std::string> loadedImageNames_; // resolved paths of successfully-loaded $image refs
+    int currentImageIndex_ = 0;
 
     double autoFitMarginPx_ = 10.0;
     bool balloonEnabled_ = false;
