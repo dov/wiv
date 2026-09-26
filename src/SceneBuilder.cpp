@@ -308,22 +308,59 @@ float markModeFor(MarkType type)
     return 0.0f;
 }
 
-// Tessellates a cubic bezier (p0..p3) into `segments` line pieces, appended
-// to `out` (p0 assumed already present as the current path point).
+// Largest world-space distance a flattened curve is allowed to deviate from
+// the true curve. Fixed (not zoom-dependent - the mesh is built once, not
+// per-frame/per-zoom), but small enough that segment corners stay well
+// below a screen pixel across the zoom range these files are actually
+// viewed at.
+constexpr float kCurveFlatness = 0.05f;
+constexpr int kCurveMaxDepth = 24;
+
+// Recursively subdivides a cubic bezier (de Casteljau) until each piece is
+// flat within `tolerance` (max distance of its two control points from the
+// p0-p3 chord), appending sampled points to `out` (p0 assumed already
+// present as the current path point). Depth-capped to bound recursion on
+// degenerate/near-cusp control points where the flatness test can stall.
 void tessellateCubic(const vsg::vec2& p0, const vsg::vec2& p1, const vsg::vec2& p2, const vsg::vec2& p3,
-                      int segments, std::vector<vsg::vec2>& out)
+                      std::vector<vsg::vec2>& out, float tolerance = kCurveFlatness, int depth = 0)
 {
-    for (int i = 1; i <= segments; ++i)
+    vsg::vec2 chord = p3 - p0;
+    float chordLenSq = vsg::dot(chord, chord);
+    auto distFromChord = [&](const vsg::vec2& p) {
+        if (chordLenSq < 1e-12f) return vsg::length(p - p0);
+        float t = ((p.x - p0.x) * chord.x + (p.y - p0.y) * chord.y) / chordLenSq;
+        return vsg::length(p - (p0 + chord * t));
+    };
+
+    if (depth >= kCurveMaxDepth ||
+        (distFromChord(p1) <= tolerance && distFromChord(p2) <= tolerance))
     {
-        float t = static_cast<float>(i) / static_cast<float>(segments);
-        float u = 1.0f - t;
-        vsg::vec2 pt = p0 * (u * u * u) + p1 * (3 * u * u * t) + p2 * (3 * u * t * t) + p3 * (t * t * t);
-        out.push_back(pt);
+        out.push_back(p3);
+        return;
     }
+
+    vsg::vec2 p01 = (p0 + p1) * 0.5f;
+    vsg::vec2 p12 = (p1 + p2) * 0.5f;
+    vsg::vec2 p23 = (p2 + p3) * 0.5f;
+    vsg::vec2 p012 = (p01 + p12) * 0.5f;
+    vsg::vec2 p123 = (p12 + p23) * 0.5f;
+    vsg::vec2 p0123 = (p012 + p123) * 0.5f;
+
+    tessellateCubic(p0, p01, p012, p0123, out, tolerance, depth + 1);
+    tessellateCubic(p0123, p123, p23, p3, out, tolerance, depth + 1);
 }
 
-std::vector<vsg::vec2> tessellateEllipse(const vsg::vec2& center, float rx, float ry, float angleDeg, int segments)
+std::vector<vsg::vec2> tessellateEllipse(const vsg::vec2& center, float rx, float ry, float angleDeg)
 {
+    // Segment count from the same flatness tolerance as tessellateCubic:
+    // for a regular n-gon approximating a circle of radius r, the sagitta
+    // (max chord deviation) s ~= r * (2*pi/n)^2 / 8, so n ~= pi*sqrt(r/(2*s)).
+    float maxR = std::max(rx, ry);
+    int segments = (maxR > 0.0f)
+        ? static_cast<int>(std::ceil(kPi * std::sqrt(maxR / (2.0f * kCurveFlatness))))
+        : 24;
+    segments = std::clamp(segments, 24, 256);
+
     std::vector<vsg::vec2> out;
     out.reserve(segments + 1);
     float angleRad = angleDeg * kPi / 180.0f;
@@ -966,7 +1003,7 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
                 {
                     vsg::vec2 start = cur.empty() ? currentPoint : cur.back();
                     if (cur.empty()) cur.push_back(start);
-                    tessellateCubic(start, c1, c2, end, 16, cur);
+                    tessellateCubic(start, c1, c2, end, cur);
                 }
                 currentPoint = end;
                 i += 2; // consumed two Cont points
@@ -991,7 +1028,7 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
                         subpathClosed.push_back(false);
                         cur.clear();
                     }
-                    subpaths.push_back(tessellateEllipse(center, wh.x, wh.y, angle, 48));
+                    subpaths.push_back(tessellateEllipse(center, wh.x, wh.y, angle));
                     subpathClosed.push_back(true); // tessellated ellipse loop has no "real" last point to special-case
                 }
                 currentPoint = center;
