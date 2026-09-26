@@ -101,6 +101,10 @@ void MainWindow::buildMenus()
     balloonAction_->setCheckable(true);
     balloonAction_->setShortcut(QKeySequence("B"));
 
+    forceOpaqueAction_ = viewMenu->addAction("Force Opaque", viewport_, &VulkanViewport::toggleForceOpaque);
+    forceOpaqueAction_->setCheckable(true);
+    forceOpaqueAction_->setShortcut(QKeySequence("A"));
+
     viewMenu->addSeparator();
     showMarksAction_ = viewMenu->addAction("Show Marks", viewport_, &VulkanViewport::toggleShowMarks);
     showMarksAction_->setCheckable(true);

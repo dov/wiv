@@ -41,6 +41,7 @@ private:
     QLabel* imageLabel_ = nullptr;
 
     QAction* balloonAction_ = nullptr;
+    QAction* forceOpaqueAction_ = nullptr;
     QAction* nextImageAction_ = nullptr;
     QAction* previousImageAction_ = nullptr;
     QAction* showMarksAction_ = nullptr;

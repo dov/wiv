@@ -48,14 +48,25 @@ namespace giv
 class ViewParams : public vsg::Inherit<vsg::Object, ViewParams>
 {
 public:
-    // .x = world units per screen pixel; y/z/w unused (a vec4 because
-    // std140 pads a uniform block's members to 16 bytes anyway).
+    // .x = world units per screen pixel; .y = force-opaque flag (giv's 'a'
+    // key, do_no_transparency: forces every mark/line/fill color's alpha to
+    // 1.0 in the shaders rather than its $color/alpha value); z/w unused (a
+    // vec4 because std140 pads a uniform block's members to 16 bytes
+    // anyway).
     vsg::ref_ptr<vsg::vec4Value> value;
 
     // Call once per frame - not just on zoom, see the implementation - with
     // the current world-units-per-pixel scale (assumed isotropic: x and y
     // scale equally since the view is always fit to the window aspect).
     void update(float worldPerPixel);
+
+    // Toggled by the 'A' shortcut / View menu; takes effect on the next
+    // update() call.
+    void setForceOpaque(bool forceOpaque) { forceOpaque_ = forceOpaque; }
+    bool forceOpaque() const { return forceOpaque_; }
+
+private:
+    bool forceOpaque_ = false;
 };
 
 // Switches every loaded $image's texture sampler between nearest and

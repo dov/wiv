@@ -21,6 +21,7 @@ void ViewParams::update(float worldPerPixel)
 {
     if (!value) return;
     value->value().x = worldPerPixel;
+    value->value().y = forceOpaque_ ? 1.0f : 0.0f;
     // Written (16 bytes, whatever the scene's size) and dirtied on *every*
     // frame, not just when the value actually changes: vsg::TransferTask
     // keeps one GPU copy of a DYNAMIC_DATA buffer per in-flight frame and

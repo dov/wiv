@@ -24,7 +24,8 @@ layout(push_constant) uniform PushConstants
 // has to rewrite and re-upload a single byte of per-primitive data.
 layout(set = 0, binding = 0) uniform ViewParams
 {
-    vec4 params; // x = world units per screen pixel; yzw unused
+    vec4 params; // x = world units per screen pixel; y = force-opaque (giv's
+                 // 'a' toggle, do_no_transparency); zw unused
 } vp;
 
 layout(location = 0) out vec4 fragColor;
@@ -48,7 +49,7 @@ void main()
     vec2 worldPos = mix(p0, p1, t) + normal * (inCorner.y * halfWidth);
 
     gl_Position = pc.projection * pc.modelview * vec4(worldPos, 0.0, 1.0);
-    fragColor = inColor;
+    fragColor = vec4(inColor.rgb, vp.params.y > 0.5 ? 1.0 : inColor.a);
     fragAlong = inWidthDash.w + t * segLen;
     fragDash = inWidthDash.yz;
 }
