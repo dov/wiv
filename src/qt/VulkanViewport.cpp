@@ -41,6 +41,14 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
     // slow/stuck compositor handshake can't freeze rendering.
     traits_->swapchainPreferences.presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
 
+    // WIV_VALIDATE=1 turns on VK_LAYER_KHRONOS_validation (requires the
+    // vulkan-validation-layers package) - for tracking down invalid Vulkan
+    // API usage (bad descriptor/pipeline bindings, sync errors, etc.), which
+    // is one plausible explanation for an otherwise-unexplained
+    // VK_ERROR_DEVICE_LOST. Off by default: the validation layer adds
+    // significant per-call overhead.
+    if (std::getenv("WIV_VALIDATE") != nullptr) traits_->debugLayer = true;
+
     viewer_ = GivViewer::create(8);
 
     // Render on demand rather than unconditionally on every timer tick:
@@ -247,7 +255,43 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     // but the Qt event loop stopped servicing input). Only needed once the
     // viewer has actually presented a frame before (i.e. never on the very
     // first build).
-    if (!isInitialLoad) viewer_->deviceWaitIdle();
+    //
+    // This used to call viewer_->deviceWaitIdle(), which waits unconditionally
+    // (no timeout) for every device to go idle, including the outstanding
+    // present of the frame the GPU is mid-flight on. That present's
+    // completion is itself signalled through the X11/DRI3 handshake with the
+    // compositor - and was observed (proprietary NVIDIA driver) to never wake
+    // up if the window was transiently occluded/not yet composited at that
+    // exact moment, permanently wedging *this* thread inside the driver, and
+    // with it the whole GUI (menus, Mark Browser, everything) since this
+    // runs on the Qt GUI thread. Waiting on the specific frame fences instead
+    // - with a timeout - bounds the wait: on timeout we just skip this
+    // rebuild (old graph stays in place, nothing gets destroyed out from
+    // under the GPU) rather than hanging forever. Triple buffering
+    // (WindowTraits::swapchainPreferences.imageCount, see the constructor)
+    // means up to 2 prior frames can still be in flight, on top of the one
+    // just submitted - per RecordAndSubmitTask::fence()'s doc comment,
+    // relativeFrameIndex 0 is *not* "nothing submitted yet", it's the most
+    // recently submitted frame, quite possibly still in flight; starting
+    // this loop at 1 (skipping 0) was exactly the bug the Vulkan validation
+    // layer caught - vkDestroyPipeline/vkDestroyFence/vkFreeCommandBuffers
+    // all firing on objects "currently in use by VkQueue/VkCommandBuffer".
+    if (!isInitialLoad)
+    {
+        constexpr uint64_t kFenceTimeoutNs = 2'000'000'000; // 2 seconds
+        for (size_t relativeFrameIndex = 0; relativeFrameIndex <= 2; ++relativeFrameIndex)
+        {
+            VkResult result = viewer_->waitForFences(relativeFrameIndex, kFenceTimeoutNs);
+            if (result != VK_SUCCESS)
+            {
+                std::cerr << "wiv: GPU didn't finish frame -" << relativeFrameIndex
+                          << " within " << (kFenceTimeoutNs / 1000000) << " ms (VkResult=" << result
+                          << "); skipping this scene rebuild rather than risking a hang or destroying in-flight GPU resources\n";
+                if (error) *error = "GPU is not responding; try again";
+                return false;
+            }
+        }
+    }
 
     // Drop the previous build's event handlers (pan/zoom + balloon) but keep
     // the CloseHandler added once in the constructor.
@@ -274,20 +318,64 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
 
     bool wasBalloonEnabled = isInitialLoad ? false : balloonEnabled_;
 
-    labelPicker_ = giv::LabelPicker::create(window_->windowAdapter, camera_, builder.labelGraph());
-    balloonOverlay_ = giv::BalloonOverlay::create(options_, shaderDir_);
+    // labelPicker_/balloonOverlay_ each own a vsg::View (LabelPicker for its
+    // off-screen pick render, BalloonOverlay for its on-screen HUD layer),
+    // and vsg::View hands out viewIDs from a free-list that only grows if
+    // the previous holder hasn't been destructed yet (see the mainView_
+    // comment below) - recreating these every rebuild was one more source of
+    // that growth, and unlike the main scene they don't actually need it:
+    // BalloonOverlay's content is driven entirely by show()/hide() calls,
+    // and LabelPicker now takes the freshly-built label graph via
+    // updateScene() instead of being rebuilt from scratch. Construct each
+    // once and keep reusing them.
+    if (!labelPicker_)
+        labelPicker_ = giv::LabelPicker::create(window_->windowAdapter, camera_, builder.labelGraph());
+    else
+        labelPicker_->updateScene(builder.labelGraph());
+    if (!balloonOverlay_) balloonOverlay_ = giv::BalloonOverlay::create(options_, shaderDir_);
     balloonController_ = giv::BalloonController::create(&scene_, labelPicker_, balloonOverlay_);
     viewer_->addEventHandler(balloonController_);
     viewer_->balloonController = balloonController_;
     viewer_->balloonOverlay = balloonOverlay_;
 
     viewer_->viewParams = builder.viewParams();
+    viewer_->viewParams->setForceOpaque(forceOpaque_);
     viewer_->imageFilterAnimator = builder.imageFilterAnimator();
 
     imageSwitch_ = builder.imageSwitch();
     if (imageSwitch_) imageSwitch_->setSingleChildOn(static_cast<size_t>(currentImageIndex_));
 
-    auto renderGraph = vsg::createRenderGraphForView(window_->windowAdapter, camera_, sceneGraph);
+    if (!isInitialLoad)
+    {
+        viewer_->recordAndSubmitTasks.clear();
+        viewer_->presentations.clear();
+    }
+
+    // Reuse the same vsg::View across rebuilds instead of calling
+    // vsg::createRenderGraphForView() (which always makes a fresh one).
+    // vsg::View hands out viewIDs from a free-list, reusing a slot only once
+    // every ref_ptr to the View that held it is gone - and every per-view GPU
+    // resource (notably vsg::GraphicsPipeline::_implementation, indexed by
+    // viewID with no bounds check in release builds) is sized against that
+    // ID at compile time. Recreating the View on every Mark Browser toggle
+    // meant the counter only ever grew - even the clear() above didn't help,
+    // since it runs before this point, not after the old View's last
+    // reference actually drops - and after enough toggles this crashed
+    // inside GraphicsPipeline::vk(), indexing past the end of a vector sized
+    // for a smaller viewID. Keeping one persistent View (viewID always 0)
+    // sidesteps the lifetime question entirely: just swap its children.
+    if (!mainView_)
+    {
+        mainView_ = vsg::View::create(camera_);
+    }
+    else
+    {
+        mainView_->children.clear();
+    }
+    mainView_->addChild(vsg::createHeadlight());
+    mainView_->addChild(sceneGraph);
+
+    auto renderGraph = vsg::RenderGraph::create(window_->windowAdapter, mainView_);
     renderGraph->addChild(balloonOverlay_->view());
     auto commandGraph = vsg::CommandGraph::create(window_->windowAdapter);
     commandGraph->addChild(renderGraph);
@@ -336,14 +424,19 @@ void VulkanViewport::setDatasetsVisible(const std::vector<size_t>& indices, bool
         }
     }
     if (!changed) return;
-    rebuildSceneGraph(nullptr, /*isInitialLoad=*/false);
+    QString error;
+    if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
+        std::cerr << "wiv: " << error.toStdString() << "\n";
 }
 
 void VulkanViewport::setShowMarks(bool show)
 {
     if (globalShowMarks_ == show) return;
     globalShowMarks_ = show;
-    if (hasScene_) rebuildSceneGraph(nullptr, /*isInitialLoad=*/false);
+    if (!hasScene_) return;
+    QString error;
+    if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
+        std::cerr << "wiv: " << error.toStdString() << "\n";
 }
 
 void VulkanViewport::toggleShowMarks()
@@ -484,6 +577,13 @@ void VulkanViewport::toggleBalloon()
 bool VulkanViewport::balloonEnabled() const
 {
     return balloonEnabled_;
+}
+
+void VulkanViewport::toggleForceOpaque()
+{
+    forceOpaque_ = !forceOpaque_;
+    if (viewer_->viewParams) viewer_->viewParams->setForceOpaque(forceOpaque_);
+    viewer_->request();
 }
 
 void VulkanViewport::setBackgroundColor(const QColor& color)

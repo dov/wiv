@@ -53,6 +53,13 @@ public:
     // ones - see the comment in rebuild().
     void syncExtent(vsg::Viewer* viewer);
 
+    // Swaps in a freshly-built label graph (e.g. after a Mark Browser
+    // visibility change) without discarding this LabelPicker's vsg::View -
+    // reusing it keeps its viewID stable instead of leaking a new one on
+    // every rebuild (see rebuild()). Caller must still call viewer->compile()
+    // afterwards.
+    void updateScene(vsg::ref_ptr<vsg::Node> labelScene);
+
 private:
     vsg::ref_ptr<vsg::Window> window_;
     vsg::ref_ptr<vsg::Device> device_;

@@ -76,6 +76,12 @@ public:
     // the Mark Browser tree.
     void setDatasetsVisible(const std::vector<size_t>& indices, bool visible);
 
+    // giv's 'a' key (do_no_transparency): forces every mark/line/fill
+    // color's alpha to 1.0, ignoring its $color/alpha value. Takes effect
+    // immediately, no scene rebuild needed.
+    void toggleForceOpaque();
+    bool forceOpaque() const { return forceOpaque_; }
+
 signals:
     void sceneLoaded();
     void cursorWorldPosition(double x, double y);
@@ -94,9 +100,11 @@ private:
     bool hasScene_ = false;
     std::vector<giv::LoadedImage> loadedImages_; // kept around so visibility-only rebuilds can redraw $image quads too
     bool globalShowMarks_ = true;
+    bool forceOpaque_ = false;
 
     vsg::ref_ptr<vsg::Camera> camera_;
     vsg::ref_ptr<vsg::Orthographic> projection_;
+    vsg::ref_ptr<vsg::View> mainView_; // persists across rebuilds - see rebuildSceneGraph()
     vsg::ref_ptr<giv::PanZoomHandler> panZoom_;
     vsg::ref_ptr<giv::LabelPicker> labelPicker_;
     vsg::ref_ptr<giv::BalloonOverlay> balloonOverlay_;

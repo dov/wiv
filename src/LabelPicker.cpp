@@ -189,7 +189,22 @@ void LabelPicker::rebuild(const VkExtent2D& extent)
     // gdk_pixbuf_fill(w_label_image, 0x000000ff).
     renderGraph_->setClearValues(VkClearColorValue{{0.0f, 0.0f, 0.0f, 1.0f}});
 
-    view_ = vsg::View::create(camera_); // shares the main camera, so the label render always matches what's on screen
+    // Reused across calls (resize *and* updateScene()) rather than recreated
+    // every time: vsg::View hands out viewIDs from a free-list that only
+    // grows if the previous holder hasn't been destructed yet, and every
+    // per-view GPU resource (vsg::GraphicsPipeline::_implementation) is
+    // sized against that ID at compile time - recreating this View on every
+    // resize/rebuild was observed to eventually run the counter past what an
+    // already-compiled pipeline elsewhere was sized for, crashing inside
+    // GraphicsPipeline::vk(). Keeping one persistent View sidesteps that.
+    if (!view_)
+    {
+        view_ = vsg::View::create(camera_); // shares the main camera, so the label render always matches what's on screen
+    }
+    else
+    {
+        view_->children.clear();
+    }
     view_->addChild(labelScene_);
     renderGraph_->addChild(view_);
 
@@ -218,6 +233,12 @@ void LabelPicker::syncExtent(vsg::Viewer* viewer)
     // silently produces empty draws).
     viewer->compile();
     setEnabled(wasEnabled);
+}
+
+void LabelPicker::updateScene(vsg::ref_ptr<vsg::Node> labelScene)
+{
+    labelScene_ = labelScene;
+    rebuild(extent_);
 }
 
 void LabelPicker::setEnabled(bool enabled)
