@@ -396,11 +396,13 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
         }
     }
 
-    // Drop the previous build's event handlers (pan/zoom + balloon) but keep
-    // the CloseHandler added once in the constructor.
+    // Drop the previous build's event handlers (pan/zoom + balloon + caliper)
+    // but keep the CloseHandler added once in the constructor.
     auto& handlers = viewer_->getEventHandlers();
     handlers.erase(std::remove_if(handlers.begin(), handlers.end(),
-                                   [](const vsg::ref_ptr<vsg::Visitor>& h) { return h.cast<giv::PanZoomHandler>() || h.cast<giv::BalloonController>(); }),
+                                   [](const vsg::ref_ptr<vsg::Visitor>& h) {
+                                       return h.cast<giv::PanZoomHandler>() || h.cast<giv::BalloonController>() || h.cast<giv::CaliperTool>();
+                                   }),
                    handlers.end());
 
     if (isInitialLoad)
@@ -436,6 +438,22 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     balloonController_ = giv::BalloonController::create(&scene_, labelPicker_, balloonLabel_, window_);
     viewer_->addEventHandler(balloonController_);
     viewer_->balloonController = balloonController_;
+
+    // Tools > Measure Distance Diagonal: recreated every rebuild (its camera_
+    // ref must track a fresh camera_ on isInitialLoad), preserving whether it
+    // was toggled on across the rebuild - mirrors wasBalloonEnabled above.
+    bool wasMeasureEnabled = isInitialLoad ? false : measureEnabled_;
+    if (!caliperFont_)
+    {
+        double unusedSize = -1.0;
+        caliperFont_ = builder.resolveFont("Sans Bold 12", unusedSize);
+    }
+    caliperTool_ = giv::CaliperTool::create(camera_, options_, caliperFont_);
+    caliperTool_->onNeedsCompile = [this]() { viewer_->compile(); viewer_->request(); };
+    caliperTool_->onMeasurementText = [this](const std::string& text) { emit measurementChanged(QString::fromStdString(text)); };
+    caliperTool_->setEnabled(wasMeasureEnabled);
+    viewer_->addEventHandler(caliperTool_);
+    measureEnabled_ = wasMeasureEnabled;
 
     viewer_->viewParams = builder.viewParams();
     viewer_->viewParams->setForceOpaque(forceOpaque_);
@@ -473,6 +491,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     }
     mainView_->addChild(vsg::createHeadlight());
     mainView_->addChild(sceneGraph);
+    mainView_->addChild(caliperTool_->root());
 
     auto renderGraph = vsg::RenderGraph::create(window_->windowAdapter, mainView_);
     auto commandGraph = vsg::CommandGraph::create(window_->windowAdapter);
@@ -642,6 +661,13 @@ void VulkanViewport::currentFitBoundsYDown(double& minX, double& minY, double& m
 
 void VulkanViewport::updateScrollBars()
 {
+    // Every zoom/pan/resize/fit path in this file ends by calling
+    // updateScrollBars(), so this is the one hook that keeps the caliper's
+    // on-screen size pixel-constant even when the view changes without the
+    // mouse moving (e.g. the Zoom In/Out menu, scroll-wheel zoom, a window
+    // resize) - see CaliperTool::refresh().
+    if (caliperTool_) caliperTool_->refresh();
+
     if (!hScrollBar_ || !vScrollBar_) return;
     if (!hasScene_ || !camera_ || !projection_ || !window_ || !window_->windowAdapter)
     {
@@ -718,6 +744,13 @@ void VulkanViewport::toggleForceOpaque()
 {
     forceOpaque_ = !forceOpaque_;
     if (viewer_->viewParams) viewer_->viewParams->setForceOpaque(forceOpaque_);
+    viewer_->request();
+}
+
+void VulkanViewport::toggleMeasureDistance()
+{
+    measureEnabled_ = !measureEnabled_;
+    if (caliperTool_) caliperTool_->setEnabled(measureEnabled_);
     viewer_->request();
 }
 

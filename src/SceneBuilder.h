@@ -131,6 +131,13 @@ public:
     // scene has no markable geometry.
     vsg::ref_ptr<vsg::Group> labelGraph() const { return labelGraph_; }
 
+    // Resolves a giv/Pango-style font spec ("Sans Bold 18") to a vsg::Font
+    // (via fc-match, with an on-disk .vsgb cache - see the .cpp) plus its
+    // trailing point size, if any (else outSize is left at -1). Exposed
+    // publicly so callers other than build() (e.g. the caliper measurement
+    // tool's overlay label) can share the same font resolution/caching path.
+    vsg::ref_ptr<vsg::Font> resolveFont(const std::string& fontSpec, double& outSize);
+
 private:
     vsg::ref_ptr<vsg::Options> options_;
     std::unordered_map<std::string, vsg::ref_ptr<vsg::Font>> fontCache_;
@@ -138,8 +145,6 @@ private:
     vsg::ref_ptr<vsg::Group> labelGraph_;
     vsg::ref_ptr<vsg::Switch> imageSwitch_;
     vsg::ref_ptr<ImageFilterAnimator> imageFilterAnimator_;
-
-    vsg::ref_ptr<vsg::Font> resolveFont(const std::string& fontSpec, double& outSize);
 };
 
 } // namespace giv

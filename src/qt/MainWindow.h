@@ -46,7 +46,10 @@ private:
     QAction* previousImageAction_ = nullptr;
     QAction* showMarksAction_ = nullptr;
     QAction* markBrowserPanelAction_ = nullptr;
+    QAction* measureDistanceAction_ = nullptr;
     QMenu* recentFilesMenu_ = nullptr;
+
+    QLabel* measureLabel_ = nullptr;
 
     // Mark Browser: one shared MarkTreeView content widget, hosted in either
     // a standalone (non-modal) window or a docked side panel - see

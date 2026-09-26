@@ -61,6 +61,7 @@ add_executable(wiv
   src/GivParser.cpp
   src/SvgLoader.cpp
   src/SceneBuilder.cpp
+  src/CaliperTool.cpp
   src/PanZoomHandler.cpp
   src/LabelPicker.cpp
   src/BalloonController.cpp

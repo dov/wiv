@@ -8,6 +8,7 @@
 // at startup.
 //
 #include "BalloonController.h"
+#include "CaliperTool.h"
 #include "GivScene.h"
 #include "GivViewer.h"
 #include "ImagePluginHost.h"
@@ -83,11 +84,17 @@ public:
     void toggleForceOpaque();
     bool forceOpaque() const { return forceOpaque_; }
 
+    // Tools > Measure Distance Diagonal (giv's caliper tool) - see
+    // CaliperTool.h.
+    void toggleMeasureDistance();
+    bool measureDistanceEnabled() const { return measureEnabled_; }
+
 signals:
     void sceneLoaded();
     void cursorWorldPosition(double x, double y);
     void frameStats(double fps);
     void imageChanged(int index, int count, QString filename);
+    void measurementChanged(QString text);
 
 private:
     vsg::ref_ptr<vsg::WindowTraits> traits_;
@@ -110,6 +117,10 @@ private:
     vsg::ref_ptr<giv::LabelPicker> labelPicker_;
     QLabel* balloonLabel_ = nullptr; // top-level Qt::ToolTip popup, see BalloonController.h
     vsg::ref_ptr<giv::BalloonController> balloonController_;
+
+    vsg::ref_ptr<giv::CaliperTool> caliperTool_;
+    vsg::ref_ptr<vsg::Font> caliperFont_;
+    bool measureEnabled_ = false;
 
     // giv-style scrollbars around the render surface: horizontal/vertical
     // pan controls, ranged over the current content bounds and disabled

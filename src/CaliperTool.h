@@ -1,0 +1,125 @@
+#pragma once
+//
+// CaliperTool.h - Tools > Measure Distance Diagonal: giv's caliper tool
+// (giv-win.cc's MEASURE_TYPE_DIAGONAL), styled after the reference application's CaliperView
+// (src/CaliperView.cpp there): a bar between two bracket-shaped jaws, each of
+// the three parts independently pick-sensitive.
+//
+// Press-drag-release on empty space places a brand new caliper: the press
+// point drops the first jaw, dragging positions the second jaw live, release
+// fixes it (a release back at the press point - no drag at all - discards
+// the degenerate 0-length caliper, matching CaliperView's
+// isDegenerateCaliper() handling). Once a caliper exists, pressing on a jaw
+// drags just that jaw; pressing on the bar translates both jaws together;
+// pressing on empty space again starts a brand new measurement. The caliper
+// stays on screen until the tool is toggled off.
+//
+// Implemented as a small self-contained overlay subgraph (bar + two
+// jaw-bracket outlines + a distance label rotated parallel to the bar),
+// rebuilt via vsg::Builder on every button-press/move/zoom rather than
+// SceneBuilder's instanced mark/line batches: those are optimized for
+// whole-file redraw cost, not per-move updates, and the caliper is always
+// just a handful of quads. Every size is expressed in screen pixels and
+// re-baked from the current zoom on every rebuild, so the caliper's on-screen
+// size stays constant as the view zooms (matching giv/the reference application) even
+// though the underlying geometry is plain world-space triangles.
+//
+#include <vsg/all.h>
+
+#include <functional>
+#include <string>
+
+namespace giv
+{
+
+class CaliperTool : public vsg::Inherit<vsg::Visitor, CaliperTool>
+{
+public:
+    // `camera` supplies the current Orthographic projection + LookAt used to
+    // map window pixels to world coordinates (see PanZoomHandler, whose
+    // window-to-world math this mirrors). `font` (may be null, in which case
+    // no label is drawn) is used for the floating distance label.
+    CaliperTool(vsg::ref_ptr<vsg::Camera> camera, vsg::ref_ptr<vsg::Options> options, vsg::ref_ptr<vsg::Font> font);
+
+    // The overlay subgraph - add as a child of the main view alongside the
+    // regular scene graph.
+    vsg::ref_ptr<vsg::Group> root() const { return root_; }
+
+    void setEnabled(bool enabled);
+    bool enabled() const { return enabled_; }
+
+    void apply(vsg::ButtonPressEvent& event) override;
+    void apply(vsg::ButtonReleaseEvent& event) override;
+    void apply(vsg::MoveEvent& event) override;
+
+    // Re-bakes the current caliper (if any) against the camera's current
+    // zoom - call after anything that changes the projection (zoom in/out,
+    // scroll-wheel zoom, fit-to-window, resize) so the caliper's on-screen
+    // size stays pixel-constant even when nothing dragged it. No-op if
+    // there's no caliper to redraw.
+    void refresh();
+
+    // Fired whenever the live/fixed measurement text changes (empty once
+    // disabled or before any caliper exists) - for a status-bar readout.
+    std::function<void(const std::string&)> onMeasurementText;
+
+    // Called after root_'s children change, so the owner can push the new
+    // geometry to the GPU (vsg::Viewer::compile()).
+    std::function<void()> onNeedsCompile;
+
+private:
+    // Which part a press landed on - mirrors CaliperView::getIntersection's
+    // caliper_part_id (0/1 = jaw at p0_/p1_, 2 = bar); -1 = no hit/none.
+    enum : int
+    {
+        kNoPart = -1,
+        kJaw0 = 0,
+        kJaw1 = 1,
+        kBar = 2
+    };
+
+    vsg::ref_ptr<vsg::Camera> camera_;
+    vsg::ref_ptr<vsg::Options> options_;
+    vsg::ref_ptr<vsg::Font> font_;
+    vsg::ref_ptr<vsg::Group> root_;
+
+    // Kept alive across a single in-progress gesture (a whole drag's worth of
+    // mouse-move calls) so its shader/pipeline cache is reused instead of
+    // rebuilding a GraphicsPipeline on every mouse move; reset (dropped) at
+    // the start of every new press, to bound how many per-position quad
+    // entries its internal cache accumulates.
+    vsg::ref_ptr<vsg::Builder> builder_;
+
+    // Both jaws' filled triangle mesh (see CaliperJawShape.h) shares this one
+    // StateGroup/pipeline, built once in the constructor and reused for the
+    // tool's entire lifetime - only its child geometry (a fresh
+    // vsg::VertexIndexDraw with the two jaws' current vertex positions) is
+    // replaced on every rebuild. Builder::createStateGroup() itself builds a
+    // brand new GraphicsPipeline every call (no internal cache like its
+    // createQuad()), so doing that per mouse-move would recompile a pipeline
+    // on every drag step.
+    vsg::ref_ptr<vsg::StateGroup> jawStateGroup_;
+
+    bool enabled_ = false;
+    bool haveCaliper_ = false;    // a *completed* (released) diagonal exists
+    int draggingPart_ = kNoPart;  // part being dragged, or kNoPart
+    vsg::dvec2 p0_{0.0, 0.0};
+    vsg::dvec2 p1_{0.0, 0.0};
+    vsg::dvec2 dragStartMouse_{0.0, 0.0};
+    vsg::dvec2 dragStartP0_{0.0, 0.0};
+    vsg::dvec2 dragStartP1_{0.0, 0.0};
+    VkExtent2D lastExtent_{0, 0};
+
+    vsg::dvec2 windowToWorld(int32_t x, int32_t y) const;
+    double worldPerPixel() const;
+
+    // Hit-tests `world` against the current caliper's three parts (jaw
+    // circles at p0_/p1_, else the bar rectangle between them), in world
+    // units derived from the current zoom - see CaliperView::getIntersection.
+    int hitTest(const vsg::dvec2& world) const;
+
+    void rebuildGeometry();
+    void clearGeometry();
+};
+
+} // namespace giv

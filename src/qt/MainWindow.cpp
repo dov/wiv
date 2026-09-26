@@ -53,6 +53,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     connect(viewport_, &VulkanViewport::frameStats, this, [this](double fps) {
         fpsLabel_->setText(QString("%1 fps").arg(fps, 0, 'f', 1));
     });
+    connect(viewport_, &VulkanViewport::measurementChanged, this, [this](QString text) {
+        measureLabel_->setText(text);
+    });
     connect(viewport_, &VulkanViewport::imageChanged, this, [this](int index, int count, QString filename) {
         nextImageAction_->setEnabled(count > 1);
         previousImageAction_->setEnabled(count > 1);
@@ -126,6 +129,11 @@ void MainWindow::buildMenus()
     previousImageAction_->setShortcuts({QKeySequence("Shift+Down"), QKeySequence("Backspace"), QKeySequence("Left")});
     previousImageAction_->setEnabled(false);
 
+    auto toolsMenu = menuBar()->addMenu("&Tools");
+    measureDistanceAction_ = toolsMenu->addAction("Measure Distance Diagonal", viewport_, &VulkanViewport::toggleMeasureDistance);
+    measureDistanceAction_->setCheckable(true);
+    measureDistanceAction_->setShortcut(QKeySequence("Z"));
+
     auto editMenu = menuBar()->addMenu("&Edit");
     editMenu->addAction("Preferences...", this, [this]() {
         PreferencesDialog dlg(this);
@@ -146,8 +154,10 @@ void MainWindow::buildStatusBar()
     cursorLabel_ = new QLabel(this);
     countsLabel_ = new QLabel(this);
     imageLabel_ = new QLabel(this);
+    measureLabel_ = new QLabel(this);
     statusBar()->addPermanentWidget(countsLabel_);
     statusBar()->addPermanentWidget(imageLabel_);
+    statusBar()->addPermanentWidget(measureLabel_);
     statusBar()->addPermanentWidget(cursorLabel_);
     statusBar()->addPermanentWidget(fpsLabel_);
 }
@@ -185,6 +195,7 @@ void MainWindow::loadFilesInternal(const std::vector<std::string>& paths)
     }
     lastPaths_ = paths;
     balloonAction_->setChecked(false);
+    measureDistanceAction_->setChecked(false);
 }
 
 void MainWindow::reloadFiles()
