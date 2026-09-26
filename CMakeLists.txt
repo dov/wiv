@@ -32,7 +32,6 @@ set(WIV_SHADER_SOURCES
   ${CMAKE_SOURCE_DIR}/shaders/lines.frag
   ${CMAKE_SOURCE_DIR}/shaders/fill.vert
   ${CMAKE_SOURCE_DIR}/shaders/fill.frag
-  ${CMAKE_SOURCE_DIR}/shaders/overlay.vert
   ${CMAKE_SOURCE_DIR}/shaders/image.vert
   ${CMAKE_SOURCE_DIR}/shaders/image.frag
 )
@@ -64,7 +63,6 @@ add_executable(wiv
   src/SceneBuilder.cpp
   src/PanZoomHandler.cpp
   src/LabelPicker.cpp
-  src/BalloonOverlay.cpp
   src/BalloonController.cpp
   src/ImagePluginHost.cpp
   src/qt/GivViewer.cpp

@@ -1,5 +1,10 @@
 #include "BalloonController.h"
 
+#include <QLabel>
+#include <QPoint>
+#include <QString>
+#include <QWindow>
+
 namespace giv
 {
 
@@ -30,17 +35,22 @@ std::string unescapeNewlines(const std::string& s)
 
 } // namespace
 
-BalloonController::BalloonController(const SceneData* scene, vsg::ref_ptr<LabelPicker> picker, vsg::ref_ptr<BalloonOverlay> overlay) :
-    scene_(scene), picker_(picker), overlay_(overlay)
+BalloonController::BalloonController(const SceneData* scene, vsg::ref_ptr<LabelPicker> picker, QLabel* label, QWindow* originWindow) :
+    scene_(scene), picker_(picker), label_(label), originWindow_(originWindow)
 {
+}
+
+void BalloonController::setEnabled(bool enabled)
+{
+    enabled_ = enabled;
+    if (!enabled_) label_->hide();
 }
 
 void BalloonController::apply(vsg::KeyPressEvent& event)
 {
     if (event.keyBase == 'b')
     {
-        enabled_ = !enabled_;
-        if (!enabled_) overlay_->hide();
+        setEnabled(!enabled_);
         event.handled = true;
     }
 }
@@ -59,14 +69,14 @@ void BalloonController::update(vsg::Viewer* viewer)
 
     if (!enabled_ || !haveMouse_)
     {
-        overlay_->hide();
+        label_->hide();
         return;
     }
 
     int label = picker_->pick(viewer, mouseX_, mouseY_);
     if (label < 0 || static_cast<size_t>(label) >= scene_->datasets.size())
     {
-        overlay_->hide();
+        label_->hide();
         return;
     }
 
@@ -80,7 +90,25 @@ void BalloonController::update(vsg::Viewer* viewer)
     std::string text = !ds.balloon.empty() ? ds.balloon : ds.pathName;
     if (text.empty()) text = "label = " + std::to_string(label);
 
-    overlay_->show(viewer, unescapeNewlines(text), mouseX_, mouseY_);
+    label_->setText(QString::fromStdString(unescapeNewlines(text)));
+    label_->adjustSize();
+
+    // mouseX_/mouseY_ (from vsg::MoveEvent) are *device* pixels - wiv's
+    // pixel-space math throughout matches extent2D(), the swapchain's
+    // device-pixel size, not the QWidget/QWindow logical size (see
+    // VulkanViewport::resizeEvent's doc comment on that same distinction).
+    // QWindow::mapToGlobal()/QLabel::move() work in logical (device-
+    // independent) pixels, so on a scaled (HiDPI) screen using the device
+    // pixel position directly would place the popup a multiple of the
+    // cursor's distance away instead of right next to it.
+    qreal dpr = originWindow_->devicePixelRatio();
+    QPoint localLogical(static_cast<int>(mouseX_ / dpr) + 20, static_cast<int>(mouseY_ / dpr) - 20);
+
+    // Matches giv_widget_show_balloon's balloon_x = px+20, balloon_y = py-20
+    // (the box's top-left corner, in window-pixel space); label_ is a
+    // top-level window, so that local point needs mapping to the screen.
+    label_->move(originWindow_->mapToGlobal(localLogical));
+    label_->show();
 }
 
 } // namespace giv

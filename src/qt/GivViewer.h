@@ -7,7 +7,6 @@
 // event loop to drive it (see the old src/main.cpp).
 //
 #include "BalloonController.h"
-#include "BalloonOverlay.h"
 #include "SceneBuilder.h"
 
 #include <vsgQt/Viewer.h>
@@ -25,7 +24,6 @@ public:
 
     // Re-pointed by VulkanViewport every time a new file is loaded.
     vsg::ref_ptr<giv::BalloonController> balloonController;
-    vsg::ref_ptr<giv::BalloonOverlay> balloonOverlay;
     vsg::ref_ptr<giv::ViewParams> viewParams;
     vsg::ref_ptr<giv::ImageFilterAnimator> imageFilterAnimator;
 

@@ -7,6 +7,7 @@
 #include <vsgXchange/all.h>
 #include <vsgXchange/freetype.h>
 
+#include <QLabel>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -75,6 +76,19 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
         emit frameStats(fps);
     };
     viewer_->addEventHandler(vsg::CloseHandler::create(viewer_));
+
+    // Top-level (Qt::ToolTip) popup for the balloon tooltip - see
+    // BalloonController.h for why this can't be a vsg scene node or a plain
+    // child QWidget: wiv's Vulkan surface below is a native child window
+    // (createWindowContainer()), which always composites above any sibling
+    // QWidget regardless of z-order. `this` is passed only for Qt's
+    // parent/child lifetime management; Qt::ToolTip still makes it an
+    // independent top-level window, positioned in global screen coordinates
+    // by BalloonController::update().
+    balloonLabel_ = new QLabel(this, Qt::ToolTip | Qt::FramelessWindowHint);
+    balloonLabel_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    balloonLabel_->setStyleSheet("QLabel { background-color: rgba(255, 255, 0, 230); color: black; padding: 6px; }");
+    balloonLabel_->hide();
 
     window_ = new vsgQt::Window(viewer_, traits_, static_cast<QWindow*>(nullptr));
     window_->setTitle("wiv");
@@ -318,25 +332,20 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
 
     bool wasBalloonEnabled = isInitialLoad ? false : balloonEnabled_;
 
-    // labelPicker_/balloonOverlay_ each own a vsg::View (LabelPicker for its
-    // off-screen pick render, BalloonOverlay for its on-screen HUD layer),
-    // and vsg::View hands out viewIDs from a free-list that only grows if
-    // the previous holder hasn't been destructed yet (see the mainView_
-    // comment below) - recreating these every rebuild was one more source of
-    // that growth, and unlike the main scene they don't actually need it:
-    // BalloonOverlay's content is driven entirely by show()/hide() calls,
-    // and LabelPicker now takes the freshly-built label graph via
-    // updateScene() instead of being rebuilt from scratch. Construct each
-    // once and keep reusing them.
+    // labelPicker_ owns a vsg::View (its off-screen pick render), and
+    // vsg::View hands out viewIDs from a free-list that only grows if the
+    // previous holder hasn't been destructed yet (see the mainView_ comment
+    // below) - recreating it every rebuild was one more source of that
+    // growth, and unlike the main scene it doesn't actually need it: it now
+    // takes the freshly-built label graph via updateScene() instead of being
+    // rebuilt from scratch. Construct it once and keep reusing it.
     if (!labelPicker_)
         labelPicker_ = giv::LabelPicker::create(window_->windowAdapter, camera_, builder.labelGraph());
     else
         labelPicker_->updateScene(builder.labelGraph());
-    if (!balloonOverlay_) balloonOverlay_ = giv::BalloonOverlay::create(options_, shaderDir_);
-    balloonController_ = giv::BalloonController::create(&scene_, labelPicker_, balloonOverlay_);
+    balloonController_ = giv::BalloonController::create(&scene_, labelPicker_, balloonLabel_, window_);
     viewer_->addEventHandler(balloonController_);
     viewer_->balloonController = balloonController_;
-    viewer_->balloonOverlay = balloonOverlay_;
 
     viewer_->viewParams = builder.viewParams();
     viewer_->viewParams->setForceOpaque(forceOpaque_);
@@ -376,7 +385,6 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     mainView_->addChild(sceneGraph);
 
     auto renderGraph = vsg::RenderGraph::create(window_->windowAdapter, mainView_);
-    renderGraph->addChild(balloonOverlay_->view());
     auto commandGraph = vsg::CommandGraph::create(window_->windowAdapter);
     commandGraph->addChild(renderGraph);
 
@@ -386,7 +394,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     balloonEnabled_ = wasBalloonEnabled;
     balloonController_->setEnabled(wasBalloonEnabled);
     labelPicker_->setEnabled(wasBalloonEnabled);
-    if (!wasBalloonEnabled) balloonOverlay_->hide();
+    if (!wasBalloonEnabled) balloonLabel_->hide();
 
     if (isInitialLoad)
     {
@@ -568,7 +576,7 @@ void VulkanViewport::zoomOut()
 
 void VulkanViewport::toggleBalloon()
 {
-    if (!labelPicker_ || !balloonOverlay_ || !balloonController_) return;
+    if (!labelPicker_ || !balloonController_) return;
     balloonEnabled_ = !balloonEnabled_;
     balloonController_->setEnabled(balloonEnabled_);
     viewer_->request();

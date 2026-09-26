@@ -2,13 +2,12 @@
 //
 // VulkanViewport.h - QWidget embedding wiv's Vulkan/VSG rendering (via
 // vsgQt::Window + GivViewer) as the central widget of MainWindow. Owns the
-// full parse -> SceneBuilder -> camera-fit -> LabelPicker/BalloonOverlay/
-// BalloonController wiring that used to live inline in the old (pre-Qt)
-// src/main.cpp, now packaged as loadFiles() so it can be re-run from
-// File > Open as well as at startup.
+// full parse -> SceneBuilder -> camera-fit -> LabelPicker/BalloonController
+// wiring that used to live inline in the old (pre-Qt) src/main.cpp, now
+// packaged as loadFiles() so it can be re-run from File > Open as well as
+// at startup.
 //
 #include "BalloonController.h"
-#include "BalloonOverlay.h"
 #include "GivScene.h"
 #include "GivViewer.h"
 #include "ImagePluginHost.h"
@@ -25,6 +24,7 @@
 #include <string>
 #include <vector>
 
+class QLabel;
 class QVBoxLayout;
 
 namespace givqt
@@ -107,7 +107,7 @@ private:
     vsg::ref_ptr<vsg::View> mainView_; // persists across rebuilds - see rebuildSceneGraph()
     vsg::ref_ptr<giv::PanZoomHandler> panZoom_;
     vsg::ref_ptr<giv::LabelPicker> labelPicker_;
-    vsg::ref_ptr<giv::BalloonOverlay> balloonOverlay_;
+    QLabel* balloonLabel_ = nullptr; // top-level Qt::ToolTip popup, see BalloonController.h
     vsg::ref_ptr<giv::BalloonController> balloonController_;
 
     vsg::ref_ptr<vsg::Switch> imageSwitch_;

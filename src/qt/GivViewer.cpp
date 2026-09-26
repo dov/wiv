@@ -39,7 +39,6 @@ void GivViewer::render(double simulationTime)
         if (kTiming) { tAdvance_ += msSince(tPhase); tPhase = Clock::now(); }
         handleEvents();
         update();
-        if (balloonOverlay && !windows().empty()) balloonOverlay->updateExtent(windows().front()->extent2D());
         if (kTiming) { tUpdate_ += msSince(tPhase); tPhase = Clock::now(); }
         recordAndSubmit();
         if (kTiming) { tRecord_ += msSince(tPhase); tPhase = Clock::now(); }

@@ -242,9 +242,9 @@ ImagePipeline makeImagePipeline(const std::string& shaderDir)
 // has no "text" entry yet, so createTextShaderSet() here returns a fresh,
 // uniquely-owned ShaderSet (freshly deserialized from vsg's embedded
 // binary, not a shared/cached singleton) - safe to mutate directly. Once
-// cached into options_->shaderSets["text"] below, this same flattened
-// instance is what BalloonOverlay's own tooltip text resolves too, since
-// it looks up its shaderSet through the same vsg::createTextShaderSet(options_).
+// cached into options_->shaderSets["text"] below, any other caller looking
+// up "text" through the same vsg::createTextShaderSet(options_) resolves
+// this same flattened instance too.
 vsg::ref_ptr<vsg::ShaderSet> makeFlatTextShaderSet(vsg::ref_ptr<vsg::Options> options)
 {
     auto shaderSet = vsg::createTextShaderSet(options);
