@@ -26,6 +26,10 @@ public:
     // no effect on pan/zoom behavior.
     std::function<void(double, double)> onCursorMove;
 
+    // Called (if set) after a drag-pan or scroll-wheel-zoom actually changes
+    // the camera, so a caller can keep external UI (scrollbars) in sync.
+    std::function<void()> onViewChanged;
+
 private:
     vsg::ref_ptr<vsg::Camera> camera_;
     bool dragging_ = false;

@@ -25,6 +25,7 @@
 #include <vector>
 
 class QLabel;
+class QScrollBar;
 class QVBoxLayout;
 
 namespace givqt
@@ -110,6 +111,12 @@ private:
     QLabel* balloonLabel_ = nullptr; // top-level Qt::ToolTip popup, see BalloonController.h
     vsg::ref_ptr<giv::BalloonController> balloonController_;
 
+    // giv-style scrollbars around the render surface: horizontal/vertical
+    // pan controls, ranged over the current content bounds and disabled
+    // whenever the whole content already fits in the viewport.
+    QScrollBar* hScrollBar_ = nullptr;
+    QScrollBar* vScrollBar_ = nullptr;
+
     vsg::ref_ptr<vsg::Switch> imageSwitch_;
     std::vector<std::string> loadedImageNames_; // resolved paths of successfully-loaded $image refs
     std::vector<std::pair<double, double>> loadedImageSizes_; // (width, height) px, parallel to loadedImageNames_/loadedImages_
@@ -130,6 +137,15 @@ private:
     // sees the others). Falls back to a fixed -100..100 box if there's
     // nothing to fit at all.
     void currentFitBoundsYDown(double& minX, double& minY, double& maxX, double& maxY) const;
+
+    // Resyncs hScrollBar_/vScrollBar_'s range/page-step/thumb-position from
+    // the current content bounds and camera/projection state (giv's
+    // update_adjustments()). Disables (and zeroes the range of) a scrollbar
+    // whenever its axis already fits entirely in the viewport. Called after
+    // every operation that changes the content bounds or the visible extent:
+    // load, fit, zoom in/out, resize, and drag-pan/wheel-zoom (the latter via
+    // PanZoomHandler::onViewChanged).
+    void updateScrollBars();
 
     void resizeEvent(QResizeEvent* event) override;
 

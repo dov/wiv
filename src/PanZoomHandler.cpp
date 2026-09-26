@@ -58,6 +58,7 @@ void PanZoomHandler::apply(vsg::MoveEvent& event)
 
     if (dx == 0 && dy == 0) return;
     pan(dx, dy, window->extent2D());
+    if (onViewChanged) onViewChanged();
 }
 
 void PanZoomHandler::apply(vsg::ScrollWheelEvent& event)
@@ -78,6 +79,7 @@ void PanZoomHandler::apply(vsg::ScrollWheelEvent& event)
     // any move has ever been reported, which zooms around the top-left.
     auto extent = window->extent2D();
     zoom(factor, lastX_, lastY_, extent);
+    if (onViewChanged) onViewChanged();
 }
 
 void PanZoomHandler::pan(int32_t dxPix, int32_t dyPix, const VkExtent2D& extent)

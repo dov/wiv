@@ -7,18 +7,48 @@
 #include <vsgXchange/all.h>
 #include <vsgXchange/freetype.h>
 
+#include <QGridLayout>
 #include <QLabel>
-#include <QVBoxLayout>
+#include <QScrollBar>
+#include <QSignalBlocker>
 
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
 
 namespace givqt
 {
+
+namespace
+{
+// Shared 1-D scrollbar sync: contentLenPx/viewLenPx/posPx are all in the same
+// device-pixel-at-current-zoom units (see updateScrollBars() below for how
+// each axis maps world coordinates into these). posPx is the position of the
+// visible window's "start" edge (left edge for X, top edge for Y) measured
+// from the content's own start edge, in that same axis's scrollbar-value
+// direction. Disables (and zeroes) the bar whenever the content already fits.
+void applyScrollBarRange(QScrollBar* bar, double contentLenPx, double viewLenPx, double posPx)
+{
+    QSignalBlocker blocker(bar);
+    if (contentLenPx <= viewLenPx + 0.5)
+    {
+        bar->setEnabled(false);
+        bar->setRange(0, 0);
+        return;
+    }
+    int page = std::max(1, static_cast<int>(std::lround(viewLenPx)));
+    int maxVal = std::max(0, static_cast<int>(std::lround(contentLenPx - viewLenPx)));
+    bar->setEnabled(true);
+    bar->setPageStep(page);
+    bar->setSingleStep(std::max(1, page / 10));
+    bar->setRange(0, maxVal);
+    bar->setValue(std::clamp(static_cast<int>(std::lround(posPx)), 0, maxVal));
+}
+} // namespace
 
 VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
 {
@@ -103,11 +133,56 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
     // (main thread stuck forever in libnvidia-glcore.so's poll()).
     window_->initializeWindow();
 
-    auto layout = new QVBoxLayout(this);
+    auto layout = new QGridLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
     container_ = QWidget::createWindowContainer(window_, this);
-    layout->addWidget(container_);
+    layout->addWidget(container_, 0, 0);
+
+    hScrollBar_ = new QScrollBar(Qt::Horizontal, this);
+    vScrollBar_ = new QScrollBar(Qt::Vertical, this);
+    hScrollBar_->setEnabled(false);
+    vScrollBar_->setEnabled(false);
+    layout->addWidget(vScrollBar_, 0, 1);
+    layout->addWidget(hScrollBar_, 1, 0);
     setLayout(layout);
+
+    // Scrollbar -> camera: reposition the view's left/top edge to the
+    // dragged-to content-pixel offset, keeping the current zoom level fixed.
+    // Mirrors giv's hadjustment/vadjustment_value_changed handlers
+    // (gtk-image-viewer.c) but in Qt's plain int pixel-at-current-zoom units
+    // rather than giv's normalized [0,1] adjustment range.
+    connect(hScrollBar_, &QScrollBar::valueChanged, this, [this](int value) {
+        if (!camera_ || !projection_ || !window_ || !window_->windowAdapter) return;
+        auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
+        auto extent = window_->windowAdapter->extent2D();
+        if (!lookAt || extent.width == 0) return;
+        double halfW = (projection_->right - projection_->left) * 0.5;
+        double scaleX = extent.width / (2.0 * halfW);
+        double minXyd, minYyd, maxXyd, maxYyd;
+        currentFitBoundsYDown(minXyd, minYyd, maxXyd, maxYyd);
+        double newCenterX = minXyd + static_cast<double>(value) / scaleX + halfW;
+        double shift = newCenterX - lookAt->center.x;
+        lookAt->eye.x += shift;
+        lookAt->center.x += shift;
+        viewer_->request();
+    });
+    connect(vScrollBar_, &QScrollBar::valueChanged, this, [this](int value) {
+        if (!camera_ || !projection_ || !window_ || !window_->windowAdapter) return;
+        auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
+        auto extent = window_->windowAdapter->extent2D();
+        if (!lookAt || extent.height == 0) return;
+        double halfH = (projection_->top - projection_->bottom) * 0.5;
+        double scaleY = extent.height / (2.0 * halfH);
+        double minXyd, minYyd, maxXyd, maxYyd;
+        currentFitBoundsYDown(minXyd, minYyd, maxXyd, maxYyd);
+        double contentMaxY = -minYyd; // world-space top edge, see currentFitBoundsYDown()/fitToBounds()
+        double newCenterY = contentMaxY - static_cast<double>(value) / scaleY - halfH;
+        double shift = newCenterY - lookAt->center.y;
+        lookAt->eye.y += shift;
+        lookAt->center.y += shift;
+        viewer_->request();
+    });
 
     options_ = vsg::Options::create();
     options_->paths = vsg::getEnvPaths("VSG_FILE_PATH");
@@ -154,6 +229,7 @@ void VulkanViewport::resizeEvent(QResizeEvent* event)
     lastWidth_ = static_cast<int>(extent.width);
     lastHeight_ = static_cast<int>(extent.height);
     viewer_->request();
+    updateScrollBars();
 }
 
 bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* error)
@@ -328,6 +404,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
 
     panZoom_ = giv::PanZoomHandler::create(camera_);
     panZoom_->onCursorMove = [this](double x, double y) { emit cursorWorldPosition(x, y); };
+    panZoom_->onViewChanged = [this]() { updateScrollBars(); };
     viewer_->addEventHandler(panZoom_);
 
     bool wasBalloonEnabled = isInitialLoad ? false : balloonEnabled_;
@@ -415,6 +492,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
         viewer_->request();
     }
 
+    updateScrollBars();
     return true;
 }
 
@@ -512,6 +590,7 @@ void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double m
     lastHeight_ = static_cast<int>(extent.height);
 
     viewer_->request();
+    updateScrollBars();
 }
 
 void VulkanViewport::fitToWindow()
@@ -548,6 +627,39 @@ void VulkanViewport::currentFitBoundsYDown(double& minX, double& minY, double& m
     }
 }
 
+void VulkanViewport::updateScrollBars()
+{
+    if (!hScrollBar_ || !vScrollBar_) return;
+    if (!hasScene_ || !camera_ || !projection_ || !window_ || !window_->windowAdapter)
+    {
+        hScrollBar_->setEnabled(false);
+        vScrollBar_->setEnabled(false);
+        return;
+    }
+    auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
+    auto extent = window_->windowAdapter->extent2D();
+    if (!lookAt || extent.width == 0 || extent.height == 0) return;
+
+    double minXyd, minYyd, maxXyd, maxYyd;
+    currentFitBoundsYDown(minXyd, minYyd, maxXyd, maxYyd);
+    // World-space content bounds: X unchanged, Y negated (see fitToBounds()'s
+    // own call: fitToBounds(minXyd, -maxYyd, maxXyd, -minYyd)).
+    double contentMaxY = -minYyd;
+
+    double halfW = (projection_->right - projection_->left) * 0.5;
+    double halfH = (projection_->top - projection_->bottom) * 0.5;
+    double scaleX = extent.width / (2.0 * halfW);
+    double scaleY = extent.height / (2.0 * halfH);
+
+    double contentWidthPx = (maxXyd - minXyd) * scaleX;
+    double viewLeftPx = (lookAt->center.x - halfW - minXyd) * scaleX;
+    applyScrollBarRange(hScrollBar_, contentWidthPx, static_cast<double>(extent.width), viewLeftPx);
+
+    double contentHeightPx = (maxYyd - minYyd) * scaleY;
+    double viewTopPx = (contentMaxY - (lookAt->center.y + halfH)) * scaleY;
+    applyScrollBarRange(vScrollBar_, contentHeightPx, static_cast<double>(extent.height), viewTopPx);
+}
+
 void VulkanViewport::zoomIn()
 {
     if (!projection_) return;
@@ -559,6 +671,7 @@ void VulkanViewport::zoomIn()
     projection_->bottom = -halfH;
     projection_->top = halfH;
     viewer_->request();
+    updateScrollBars();
 }
 
 void VulkanViewport::zoomOut()
@@ -572,6 +685,7 @@ void VulkanViewport::zoomOut()
     projection_->bottom = -halfH;
     projection_->top = halfH;
     viewer_->request();
+    updateScrollBars();
 }
 
 void VulkanViewport::toggleBalloon()
