@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <string>
 
 namespace givqt
 {
@@ -68,9 +69,21 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
     // NVIDIA) that wait never wakes up if the window is occluded or not yet
     // fully composited at the moment of the first present, permanently
     // hanging the GUI thread inside the driver (window shows only its very
-    // first/cleared frame forever). MAILBOX never blocks the caller, so a
-    // slow/stuck compositor handshake can't freeze rendering.
-    traits_->swapchainPreferences.presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+    // first/cleared frame forever). FIFO_RELAXED still paces to vblank (so it
+    // doesn't tear) in the common case, but - unlike plain FIFO - drops the
+    // wait and presents immediately if a frame is running late, which is the
+    // scenario that produced the original hang. WIV_PRESENT_MODE lets this
+    // be overridden (mailbox/fifo/fifo_relaxed/immediate) in case a given
+    // driver still misbehaves with FIFO_RELAXED at startup.
+    traits_->swapchainPreferences.presentMode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+    if (const char* mode = std::getenv("WIV_PRESENT_MODE"))
+    {
+        std::string m(mode);
+        if (m == "mailbox") traits_->swapchainPreferences.presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+        else if (m == "fifo") traits_->swapchainPreferences.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+        else if (m == "fifo_relaxed") traits_->swapchainPreferences.presentMode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+        else if (m == "immediate") traits_->swapchainPreferences.presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+    }
 
     // WIV_VALIDATE=1 turns on VK_LAYER_KHRONOS_validation (requires the
     // vulkan-validation-layers package) - for tracking down invalid Vulkan
