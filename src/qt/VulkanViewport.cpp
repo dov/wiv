@@ -380,6 +380,23 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     return true;
 }
 
+bool VulkanViewport::waitForGpuIdle()
+{
+    constexpr uint64_t kFenceTimeoutNs = 2'000'000'000; // 2 seconds
+    for (size_t relativeFrameIndex = 0; relativeFrameIndex <= 2; ++relativeFrameIndex)
+    {
+        VkResult result = viewer_->waitForFences(relativeFrameIndex, kFenceTimeoutNs);
+        if (result != VK_SUCCESS)
+        {
+            spdlog::error(
+                "GPU didn't finish frame -{} within {} ms (VkResult={}); skipping this compile rather than risking a hang or destroying in-flight GPU resources",
+                relativeFrameIndex, kFenceTimeoutNs / 1000000, static_cast<int>(result));
+            return false;
+        }
+    }
+    return true;
+}
+
 bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
 {
     // The global "View Marks" switch hides every dataset without disturbing
@@ -441,21 +458,10 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     // this loop at 1 (skipping 0) was exactly the bug the Vulkan validation
     // layer caught - vkDestroyPipeline/vkDestroyFence/vkFreeCommandBuffers
     // all firing on objects "currently in use by VkQueue/VkCommandBuffer".
-    if (!isInitialLoad)
+    if (!isInitialLoad && !waitForGpuIdle())
     {
-        constexpr uint64_t kFenceTimeoutNs = 2'000'000'000; // 2 seconds
-        for (size_t relativeFrameIndex = 0; relativeFrameIndex <= 2; ++relativeFrameIndex)
-        {
-            VkResult result = viewer_->waitForFences(relativeFrameIndex, kFenceTimeoutNs);
-            if (result != VK_SUCCESS)
-            {
-                spdlog::error(
-                    "GPU didn't finish frame -{} within {} ms (VkResult={}); skipping this scene rebuild rather than risking a hang or destroying in-flight GPU resources",
-                    relativeFrameIndex, kFenceTimeoutNs / 1000000, static_cast<int>(result));
-                if (error) *error = "GPU is not responding; try again";
-                return false;
-            }
-        }
+        if (error) *error = "GPU is not responding; try again";
+        return false;
     }
 
     // Drop the previous build's event handlers (pan/zoom + balloon + caliper)
@@ -519,7 +525,11 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
         caliperFont_ = builder.resolveFont("Sans Bold 12", unusedSize);
     }
     caliperTool_ = giv::CaliperTool::create(camera_, options_, caliperFont_);
+    // CaliperTool itself waits for the GPU (via waitForGpuIdle_ below)
+    // before it ever drops the old geometry's GPU objects, so by the time
+    // this runs it's already safe to compile the replacement.
     caliperTool_->onNeedsCompile = [this]() { viewer_->compile(); viewer_->request(); };
+    caliperTool_->waitForGpuIdle = [this]() { return waitForGpuIdle(); };
     caliperTool_->onMeasurementText = [this](const std::string& text) { emit measurementChanged(QString::fromStdString(text)); };
     caliperTool_->setPixelSize(pixelSize_, pixelSizeUnit_);
     caliperTool_->setEnabled(wasMeasureEnabled);
