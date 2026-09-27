@@ -53,25 +53,31 @@ int main(int argc, char** argv)
         }
     }
 
+    // Shown before loading any command-line file(s) below (reversing the
+    // previous load-then-show order): VulkanViewport's constructor (run
+    // inside the givqt::MainWindow construction above) already compiles and
+    // presents one empty frame while the embedded viewport is still
+    // unmapped, which is what actually matters for the NVIDIA present hang
+    // this ordering used to work around (see VulkanViewport::loadFiles()'s
+    // doc comment on its render() call) - a driver present() call only ever
+    // hung on the *very first* present of the window's life, done while
+    // already mapped/visible; every present after that first one, mapped or
+    // not, is fine. So that invariant is already satisfied by the time we
+    // get here, and showing first means a command-line file that fails to
+    // load (bad path, parse error) pops its error dialog over an already-
+    // visible (empty-canvas) main window, instead of over one that's not
+    // shown yet - which otherwise left the dialog an orphaned, unresponsive
+    // top-level with no visible parent underneath it.
+    window.show();
+
     auto files = parser.positionalArguments();
     if (!files.isEmpty())
     {
         std::vector<std::string> paths;
         for (const auto& f : files) paths.push_back(f.toStdString());
         spdlog::info("Opening {} file(s) from command line: {}", paths.size(), files.join(", ").toStdString());
-        // Called before window.show() (matching the reference application's Widget3D
-        // construction order): the scene is parsed/built and the first
-        // Vulkan frame is compiled/recorded/presented while the embedded
-        // viewport is still unmapped, then show() reveals the
-        // already-rendered window in one shot. Doing this the other way
-        // around - showing the window first and presenting into it once
-        // already mapped/visible - reliably hung forever in the NVIDIA
-        // driver's present() path (see VulkanViewport::loadFiles()'s doc
-        // comment on the render() call it makes for this same reason).
         window.loadFiles(paths);
     }
-
-    window.show();
 
     spdlog::info("Main window shown, entering event loop");
     int rc = app.exec();
