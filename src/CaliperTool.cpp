@@ -63,6 +63,7 @@ void CaliperTool::setEnabled(bool enabled)
 void CaliperTool::clearGeometry()
 {
     if (root_->children.empty()) return;
+    if (waitForGpuIdle && !waitForGpuIdle()) return;
     root_->children.clear();
     if (onNeedsCompile) onNeedsCompile();
 }
@@ -225,6 +226,10 @@ void CaliperTool::rebuildGeometry()
 {
     double wpp = worldPerPixel();
     if (wpp <= 0.0) return;
+
+    // Must happen before jawStateGroup_->children.clear()/root_->children
+    // are touched below - see waitForGpuIdle's doc comment.
+    if (waitForGpuIdle && !waitForGpuIdle()) return;
 
     vsg::dvec2 d = p1_ - p0_;
     double dist = std::sqrt(d.x * d.x + d.y * d.y);

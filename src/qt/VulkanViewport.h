@@ -259,6 +259,14 @@ private:
     // untouched (a visibility-only rebuild), and whether the balloon overlay
     // is force-reset to hidden (new file) or kept as it was.
     bool rebuildSceneGraph(QString* error, bool isInitialLoad);
+
+    // Waits (bounded, see rebuildSceneGraph()'s doc comment on why not
+    // viewer_->deviceWaitIdle()) for the GPU to retire every frame that may
+    // still be in flight, so it's safe to destroy/replace pipelines,
+    // descriptor sets, etc. right after this returns true. Shared by
+    // rebuildSceneGraph() and caliperTool_->onNeedsCompile - both call
+    // viewer_->compile(), which does exactly that destroy/replace.
+    bool waitForGpuIdle();
 };
 
 } // namespace givqt

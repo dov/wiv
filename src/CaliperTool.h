@@ -82,6 +82,22 @@ public:
     // geometry to the GPU (vsg::Viewer::compile()).
     std::function<void()> onNeedsCompile;
 
+    // Called at the very start of rebuildGeometry()/clearGeometry(), before
+    // either touches jawStateGroup_'s children or replaces root_'s - both
+    // drop vsg::ref_ptrs to GPU objects (pipelines, vertex/index buffers)
+    // that a previous frame's VkCommandBuffer may still be executing on, and
+    // dropping the last ref synchronously destroys the underlying Vulkan
+    // object right then, out from under that in-flight command buffer. The
+    // owner should block (with a bounded timeout) until the GPU has actually
+    // retired those frames and return true, or return false to have this
+    // update skipped entirely for now (old geometry stays on screen one more
+    // frame) rather than risk that destroy-while-in-use. Mirrors
+    // VulkanViewport::rebuildSceneGraph()'s identical fence-wait, for the
+    // same reasoning/VUIDs - see its doc comment. A null callback means
+    // "always safe to proceed" (used only where the owner has no viewer to
+    // wait on, e.g. tests).
+    std::function<bool()> waitForGpuIdle;
+
 private:
     // Which part a press landed on - mirrors CaliperView::getIntersection's
     // caliper_part_id (0/1 = jaw at p0_/p1_, 2 = bar); -1 = no hit/none.
