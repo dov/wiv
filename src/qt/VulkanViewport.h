@@ -22,6 +22,8 @@
 #include <QResizeEvent>
 #include <QWidget>
 
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -37,6 +39,13 @@ class VulkanViewport : public QWidget
     Q_OBJECT
 
 public:
+    // How many decoded images (each a full-resolution RGBA buffer, plus its
+    // resident GPU textures) are kept around at once while paging through
+    // $image references with next/previousImage() - see ImageCache. Small on
+    // purpose: wiv only ever displays one at a time, this just avoids
+    // re-decoding on every step back and forth.
+    static constexpr size_t kImageCacheCapacity = 4;
+
     explicit VulkanViewport(QWidget* parent = nullptr);
 
     // Parses and displays `paths` (replacing whatever is currently shown).
@@ -59,7 +68,13 @@ public:
     std::string currentImageName() const;
 
     void setBackgroundColor(const QColor& color);
-    void setAutoFitMarginPx(double px);
+
+    // giv's do_auto_fit_marks: on (default) re-fits the view (fill, see
+    // fitContentToWindow()) to each new image on next/previousImage(); off
+    // preserves whatever zoom/pan the view was already at instead.
+    void setAutoFit(bool enable) { autoFit_ = enable; }
+    void toggleAutoFit() { setAutoFit(!autoFit_); }
+    bool autoFit() const { return autoFit_; }
 
     const giv::SceneData& sceneData() const { return scene_; }
     bool hasScene() const { return hasScene_; }
@@ -92,7 +107,6 @@ public:
 signals:
     void sceneLoaded();
     void cursorWorldPosition(double x, double y);
-    void frameStats(double fps);
     void imageChanged(int index, int count, QString filename);
     void measurementChanged(QString text);
 
@@ -103,10 +117,11 @@ private:
     QWidget* container_ = nullptr;
     vsg::ref_ptr<vsg::Options> options_;
     std::string shaderDir_;
+    std::unique_ptr<giv::SceneBuilder> sceneBuilder_; // persistent, not recreated per rebuild - see rebuildSceneGraph()
 
     giv::SceneData scene_;
     bool hasScene_ = false;
-    std::vector<giv::LoadedImage> loadedImages_; // kept around so visibility-only rebuilds can redraw $image quads too
+    std::vector<giv::LoadedImage> loadedImages_; // 0 or 1 entries: only the currently-displayed image is ever decoded/resident (see decodeCurrentImage())
     bool globalShowMarks_ = true;
     bool forceOpaque_ = false;
 
@@ -129,16 +144,54 @@ private:
     QScrollBar* vScrollBar_ = nullptr;
 
     vsg::ref_ptr<vsg::Switch> imageSwitch_;
-    std::vector<std::string> loadedImageNames_; // resolved paths of successfully-loaded $image refs
-    std::vector<std::pair<double, double>> loadedImageSizes_; // (width, height) px, parallel to loadedImageNames_/loadedImages_
+    std::vector<std::string> loadedImageNames_; // resolved paths of $image refs a plugin claims to support (not yet decoded - see ImagePluginHost::isSupported)
+    std::optional<std::pair<double, double>> currentImageSize_; // (width, height) px of loadedImageNames_[currentImageIndex_], once decoded
     int currentImageIndex_ = 0;
+    giv::ImageCache imageCache_{kImageCacheCapacity}; // bounds how many decoded images are resident at once while paging with next/previousImage()
 
-    double autoFitMarginPx_ = 10.0;
     bool balloonEnabled_ = false;
     int lastWidth_ = 0;
     int lastHeight_ = 0;
+    bool autoFit_ = true; // see setAutoFit()
 
-    void fitToBounds(double minX, double minY, double maxX, double maxY);
+    // Set whenever fitContentToWindow(/*fill=*/true) runs (initial load,
+    // $image cycling), cleared by any subsequent manual zoom/pan. "Fill"
+    // deliberately crops whichever axis doesn't match the window's aspect
+    // ratio - that's the point, not something to reveal a scrollbar for -
+    // so while this is set, updateScrollBars() hides both unconditionally
+    // rather than reporting the (intentional) overflow. A manual zoom/pan
+    // after the fact is a real departure from that resting fill state, so
+    // scrollbars should - and, once this is cleared, again do - reflect it.
+    bool fillFitActive_ = false;
+
+    // `fill` picks the fit mode: false ("contain") scales the content down
+    // to the smaller of scaleX/scaleY so the whole thing is visible, possibly
+    // with letterbox margins - true ("cover") scales up to the larger of the
+    // two so the content fills the window edge-to-edge, cropping whichever
+    // axis overflows.
+    void fitToBounds(double minX, double minY, double maxX, double maxY, bool fill);
+
+    // Shared tail of fitToWindow()/the initial-load and image-switch auto-fit:
+    // reads currentFitBoundsYDown() and calls fitToBounds() with it.
+    void fitContentToWindow(bool fill);
+
+    // Decodes loadedImageNames_[index] (via imageCache_) and, on success,
+    // updates currentImageIndex_/loadedImages_/currentImageSize_ to match.
+    // Does not rebuild the scene graph or touch the view - see
+    // switchToImage() for the full next/previousImage() path.
+    bool decodeImageAt(int index);
+
+    // Initial-load counterpart of decodeImageAt(): decodes
+    // loadedImageNames_[currentImageIndex_] (currently always 0), scanning
+    // forward through the rest of the list on failure so one unreadable
+    // file doesn't blank the whole load. Leaves loadedImages_/
+    // currentImageSize_ empty if every candidate fails.
+    void decodeCurrentImage();
+
+    // nextImage()/previousImage()'s shared tail: decodes `index`, rebuilds
+    // the scene graph so its texture actually replaces whatever was
+    // previously displayed, and re-fits the view.
+    void switchToImage(int index);
 
     // Fit bounds (in giv/image y-down space, i.e. before SceneBuilder's
     // Y-negation) for whatever should currently be visible: the parsed

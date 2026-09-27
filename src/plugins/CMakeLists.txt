@@ -17,6 +17,14 @@ endfunction()
 wiv_add_plugin(stbimage stbimage/stbimage_plugin.cpp)
 target_include_directories(wiv_plugin_stbimage PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
 
+# Takes over JPEG decoding from stbimage (see jpegturbo_plugin.cpp's doc
+# comment for why: SIMD-accelerated decode matters for $image cycling's
+# decode-on-demand path) - "jpegturbo" sorts before "stbimage" in
+# ImagePluginHost's first-match-wins dispatch, so this one always wins.
+find_package(JPEG REQUIRED)
+wiv_add_plugin(jpegturbo jpegturbo/jpegturbo_plugin.cpp)
+target_link_libraries(wiv_plugin_jpegturbo PRIVATE JPEG::JPEG)
+
 wiv_add_plugin(pgm pgm/pgm_plugin.cpp)
 
 find_package(TIFF REQUIRED)

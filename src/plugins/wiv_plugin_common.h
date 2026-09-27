@@ -24,6 +24,7 @@ inline WivPluginImage* allocImage(int width, int height)
     img->width = width;
     img->height = height;
     img->rgba = static_cast<unsigned char*>(std::malloc(static_cast<size_t>(width) * height * 4));
+    img->orientation = 1;
     return img;
 }
 

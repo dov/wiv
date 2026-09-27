@@ -19,6 +19,15 @@ extern "C"
         int width;
         int height;
         unsigned char* rgba; // width*height*4 bytes, top-to-bottom row order
+
+        // EXIF/TIFF Orientation tag value (1-8, see the Exif spec's table),
+        // or 1 ("normal", no transform) if the plugin doesn't parse one.
+        // The host applies the corresponding rotation/flip centrally
+        // (ImagePluginHost::load()) so every plugin shares one
+        // implementation instead of duplicating it; a plugin that already
+        // hands back upright pixels (e.g. tiff_plugin.cpp's
+        // TIFFReadRGBAImageOriented) should just leave this at 1.
+        int orientation;
     } WivPluginImage;
 
     // Does this plugin recognize `filename` (by extension)? Called by the

@@ -11,7 +11,7 @@ namespace givqt
 namespace
 {
 // WIV_TIMING=1 breaks each frame down into its per-phase CPU cost and
-// prints the per-frame averages alongside the fps line - benchmarking only.
+// prints the per-frame averages once a second - benchmarking only.
 const bool kTiming = std::getenv("WIV_TIMING") != nullptr;
 using Clock = std::chrono::steady_clock;
 inline double msSince(Clock::time_point t) { return std::chrono::duration<double, std::milli>(Clock::now() - t).count(); }
@@ -56,21 +56,20 @@ void GivViewer::render(double simulationTime)
         if (status->cancel()) QCoreApplication::quit();
     }
 
-    ++frameCount_;
-    auto now = std::chrono::steady_clock::now();
-    double elapsed = std::chrono::duration<double>(now - fpsWindowStart_).count();
-    if (elapsed >= 1.0)
+    if (kTiming)
     {
-        if (onFrameStats) onFrameStats(frameCount_ / elapsed);
-        if (kTiming && frameCount_ > 0)
+        ++frameCount_;
+        auto now = std::chrono::steady_clock::now();
+        double elapsed = std::chrono::duration<double>(now - fpsWindowStart_).count();
+        if (elapsed >= 1.0 && frameCount_ > 0)
         {
             double n = static_cast<double>(frameCount_);
             std::cerr << "wiv: per-frame ms: animate=" << tAnimate_ / n << " advance=" << tAdvance_ / n
                       << " update=" << tUpdate_ / n << " record=" << tRecord_ / n << " present=" << tPresent_ / n << "\n";
             tAnimate_ = tAdvance_ = tUpdate_ = tRecord_ = tPresent_ = 0.0;
+            frameCount_ = 0;
+            fpsWindowStart_ = now;
         }
-        frameCount_ = 0;
-        fpsWindowStart_ = now;
     }
 
     requests = 0;

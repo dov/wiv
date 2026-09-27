@@ -7,7 +7,6 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QSettings>
-#include <QSpinBox>
 #include <QVBoxLayout>
 
 namespace givqt
@@ -22,12 +21,6 @@ QColor PreferencesDialog::loadBackgroundColor()
 {
     auto s = settings();
     return s.value("backgroundColor", QColor(Qt::white)).value<QColor>();
-}
-
-double PreferencesDialog::loadAutoFitMarginPx()
-{
-    auto s = settings();
-    return s.value("autoFitMarginPx", 10.0).toDouble();
 }
 
 int PreferencesDialog::loadMsaaSamples()
@@ -58,12 +51,6 @@ PreferencesDialog::PreferencesDialog(QWidget* parent) : QDialog(parent)
         }
     });
 
-    marginSpin_ = new QSpinBox(this);
-    marginSpin_->setRange(0, 500);
-    marginSpin_->setSuffix(" px");
-    marginSpin_->setValue(static_cast<int>(loadAutoFitMarginPx()));
-    connect(marginSpin_, &QSpinBox::valueChanged, this, [this](int v) { emit autoFitMarginChanged(v); });
-
     msaaCombo_ = new QComboBox(this);
     msaaCombo_->addItem("Off (1x)", 1);
     msaaCombo_->addItem("2x", 2);
@@ -75,7 +62,6 @@ PreferencesDialog::PreferencesDialog(QWidget* parent) : QDialog(parent)
 
     auto form = new QFormLayout();
     form->addRow("Background color:", colorButton_);
-    form->addRow("Auto-fit margin:", marginSpin_);
     form->addRow("Antialiasing (restart required):", msaaCombo_);
 
     auto buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
@@ -92,11 +78,6 @@ PreferencesDialog::PreferencesDialog(QWidget* parent) : QDialog(parent)
     setLayout(layout);
 }
 
-double PreferencesDialog::autoFitMarginPx() const
-{
-    return marginSpin_->value();
-}
-
 int PreferencesDialog::msaaSamples() const
 {
     return msaaCombo_->currentData().toInt();
@@ -106,7 +87,6 @@ void PreferencesDialog::save()
 {
     auto s = settings();
     s.setValue("backgroundColor", backgroundColor_);
-    s.setValue("autoFitMarginPx", autoFitMarginPx());
     s.setValue("msaaSamples", msaaSamples());
 }
 

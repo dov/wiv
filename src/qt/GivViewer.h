@@ -1,8 +1,8 @@
 #pragma once
 //
 // GivViewer.h - vsgQt::Viewer subclass that layers wiv's per-frame work
-// (per-frame view-scale uniform update, balloon-tooltip readback, fps
-// accounting) onto vsgQt's QTimer-driven render() loop, replacing the manual
+// (per-frame view-scale uniform update, balloon-tooltip readback, timing
+// diagnostics) onto vsgQt's QTimer-driven render() loop, replacing the manual
 // while(viewer->advanceToNextFrame()) loop wiv used before it had a Qt
 // event loop to drive it (see the old src/main.cpp).
 //
@@ -31,10 +31,6 @@ public:
     // drive updateMarkSizes()'s callers - set by VulkanViewport since only it
     // knows the active vsg::Orthographic projection.
     std::function<float()> worldPerPixel;
-
-    // Called once per frame with the just-computed instantaneous fps, for a
-    // status-bar readout.
-    std::function<void(double)> onFrameStats;
 
     void render(double simulationTime = vsg::Viewer::UseTimeSinceStartPoint) override;
 

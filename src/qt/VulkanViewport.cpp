@@ -31,7 +31,10 @@ namespace
 // each axis maps world coordinates into these). posPx is the position of the
 // visible window's "start" edge (left edge for X, top edge for Y) measured
 // from the content's own start edge, in that same axis's scrollbar-value
-// direction. Disables (and zeroes) the bar whenever the content already fits.
+// direction. Hides (and zeroes) the bar whenever the content already fits the
+// view - i.e. at or below the zoom level that fits the whole scene, there's
+// nothing to scroll to, so the bar is fully hidden rather than left visible
+// but disabled.
 void applyScrollBarRange(QScrollBar* bar, double contentLenPx, double viewLenPx, double posPx)
 {
     QSignalBlocker blocker(bar);
@@ -39,6 +42,7 @@ void applyScrollBarRange(QScrollBar* bar, double contentLenPx, double viewLenPx,
     {
         bar->setEnabled(false);
         bar->setRange(0, 0);
+        bar->hide();
         return;
     }
     int page = std::max(1, static_cast<int>(std::lround(viewLenPx)));
@@ -48,6 +52,7 @@ void applyScrollBarRange(QScrollBar* bar, double contentLenPx, double viewLenPx,
     bar->setSingleStep(std::max(1, page / 10));
     bar->setRange(0, maxVal);
     bar->setValue(std::clamp(static_cast<int>(std::lround(posPx)), 0, maxVal));
+    bar->show();
 }
 } // namespace
 
@@ -104,8 +109,9 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
     // recording/submitting/presenting a frame when nothing has requested
     // one (see its `!continuousUpdate && requests.load() == 0` check).
     // WIV_CONTINUOUS=1 forces a frame every timer tick regardless of
-    // requests - only for benchmarking the render path (the fps readout is
-    // meaningless in the default on-demand mode, which idles at 0 fps).
+    // requests - only for benchmarking the render path (WIV_TIMING's
+    // per-frame ms breakdown is meaningless in the default on-demand mode,
+    // which idles between requests).
     viewer_->continuousUpdate = std::getenv("WIV_CONTINUOUS") != nullptr;
 
     viewer_->worldPerPixel = [this]() -> float {
@@ -113,10 +119,6 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
         auto extent = window_->windowAdapter->extent2D();
         if (extent.width == 0) return 1.0f;
         return static_cast<float>((projection_->right - projection_->left) / static_cast<double>(extent.width));
-    };
-    viewer_->onFrameStats = [this](double fps) {
-        std::cerr << "wiv: " << fps << " fps\n";
-        emit frameStats(fps);
     };
     viewer_->addEventHandler(vsg::CloseHandler::create(viewer_));
 
@@ -156,6 +158,8 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
     vScrollBar_ = new QScrollBar(Qt::Vertical, this);
     hScrollBar_->setEnabled(false);
     vScrollBar_->setEnabled(false);
+    hScrollBar_->hide();
+    vScrollBar_->hide();
     layout->addWidget(vScrollBar_, 0, 1);
     layout->addWidget(hScrollBar_, 1, 0);
     setLayout(layout);
@@ -283,13 +287,16 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     double parseMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - parseStart).count();
     std::cerr << "wiv: parsed " << newScene.datasets.size() << " dataset(s), " << totalPoints << " points in " << parseMs << " ms\n";
 
-    // Resolve and load $image references. Mirrors giv's own
+    // Resolve $image references to a candidate path list. Mirrors giv's own
     // cb_image_reference: a filename is used as-is if it already resolves
     // (absolute, or relative to the current working directory); otherwise
     // it's retried relative to the directory of the first loaded .giv file.
-    std::vector<giv::LoadedImage> loadedImages;
+    // Deliberately *not* decoded here - only a cheap existence + extension
+    // check - so that opening a folder of hundreds of images doesn't decode
+    // (and hold in memory, and upload to the GPU) every one of them before
+    // the window even shows; see decodeCurrentImage() for the actual, lazy,
+    // decode-on-display path.
     std::vector<std::string> newLoadedImageNames;
-    std::vector<std::pair<double, double>> newLoadedImageSizes;
     std::filesystem::path givDir = paths.empty() ? std::filesystem::path() : std::filesystem::path(paths.front()).parent_path();
     for (const auto& imgRef : newScene.images)
     {
@@ -297,21 +304,17 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
         if (!std::filesystem::exists(resolved) && !givDir.empty())
             resolved = givDir / imgRef;
 
-        auto loaded = giv::ImagePluginHost::load(resolved.string());
-        if (!loaded)
+        if (!std::filesystem::exists(resolved) || !giv::ImagePluginHost::isSupported(resolved.string()))
             continue;
 
         newLoadedImageNames.push_back(resolved.string());
-        newLoadedImageSizes.emplace_back(static_cast<double>(loaded->width), static_cast<double>(loaded->height));
-        loadedImages.push_back(std::move(*loaded));
     }
 
     scene_ = std::move(newScene);
-    loadedImages_ = std::move(loadedImages);
     loadedImageNames_ = std::move(newLoadedImageNames);
-    loadedImageSizes_ = std::move(newLoadedImageSizes);
     hasScene_ = true;
     currentImageIndex_ = 0;
+    decodeCurrentImage();
 
     auto buildStart = std::chrono::steady_clock::now();
     if (!rebuildSceneGraph(error, /*isInitialLoad=*/true)) return false;
@@ -335,7 +338,12 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
         scene_.datasets[i].isVisible = savedVisible[i] && globalShowMarks_;
     }
 
-    giv::SceneBuilder builder(options_);
+    // A persistent SceneBuilder (not a fresh one per call): its build()
+    // caches the view-params/image pipeline plumbing across calls (see its
+    // doc comment), which only pays off if the same instance is reused for
+    // every $image cycling step instead of starting from scratch each time.
+    if (!sceneBuilder_) sceneBuilder_ = std::make_unique<giv::SceneBuilder>(options_);
+    giv::SceneBuilder& builder = *sceneBuilder_;
     vsg::ref_ptr<vsg::Group> sceneGraph;
     try
     {
@@ -414,12 +422,18 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
         projection_ = vsg::Orthographic::create(-100.0, 100.0, -100.0, 100.0, 0.01, 100.0);
         camera_ = vsg::Camera::create(projection_, lookAt, vsg::ViewportState::create(window_->windowAdapter->extent2D()));
 
-        fitToBounds(minXyd, -maxYyd, maxXyd, -minYyd);
+        // Default to "fill" (cover) on a fresh load: the loaded image/scene
+        // fills the window edge-to-edge (cropping any overflowing axis)
+        // rather than "fit" (contain), which would letterbox it.
+        fitToBounds(minXyd, -maxYyd, maxXyd, -minYyd, /*fill=*/true);
     }
 
     panZoom_ = giv::PanZoomHandler::create(camera_);
     panZoom_->onCursorMove = [this](double x, double y) { emit cursorWorldPosition(x, y); };
-    panZoom_->onViewChanged = [this]() { updateScrollBars(); };
+    panZoom_->onViewChanged = [this]() {
+        fillFitActive_ = false; // manual zoom/pan is a real departure from the resting fill-fit - see its doc comment
+        updateScrollBars();
+    };
     viewer_->addEventHandler(panZoom_);
 
     bool wasBalloonEnabled = isInitialLoad ? false : balloonEnabled_;
@@ -459,8 +473,12 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     viewer_->viewParams->setForceOpaque(forceOpaque_);
     viewer_->imageFilterAnimator = builder.imageFilterAnimator();
 
+    // loadedImages_ only ever holds the single currently-displayed image (see
+    // decodeCurrentImage()), so the switch built from it has exactly one
+    // child - always select it, regardless of currentImageIndex_ (which
+    // indexes into loadedImageNames_, the full $image candidate list).
     imageSwitch_ = builder.imageSwitch();
-    if (imageSwitch_) imageSwitch_->setSingleChildOn(static_cast<size_t>(currentImageIndex_));
+    if (imageSwitch_) imageSwitch_->setSingleChildOn(0);
 
     if (!isInitialLoad)
     {
@@ -570,23 +588,79 @@ std::string VulkanViewport::currentImageName() const
 
 void VulkanViewport::nextImage()
 {
-    if (loadedImageNames_.size() < 2 || !imageSwitch_) return;
-    currentImageIndex_ = (currentImageIndex_ + 1) % static_cast<int>(loadedImageNames_.size());
-    imageSwitch_->setSingleChildOn(static_cast<size_t>(currentImageIndex_));
-    fitToWindow(); // matches giv's do_auto_fit_marks (default on): re-fit on every image switch
-    emit imageChanged(currentImageIndex_, imageCount(), QString::fromStdString(currentImageName()));
+    if (loadedImageNames_.size() < 2) return;
+    switchToImage((currentImageIndex_ + 1) % static_cast<int>(loadedImageNames_.size()));
 }
 
 void VulkanViewport::previousImage()
 {
-    if (loadedImageNames_.size() < 2 || !imageSwitch_) return;
-    currentImageIndex_ = (currentImageIndex_ - 1 + static_cast<int>(loadedImageNames_.size())) % static_cast<int>(loadedImageNames_.size());
-    imageSwitch_->setSingleChildOn(static_cast<size_t>(currentImageIndex_));
-    fitToWindow(); // matches giv's do_auto_fit_marks (default on): re-fit on every image switch
+    if (loadedImageNames_.size() < 2) return;
+    switchToImage((currentImageIndex_ - 1 + static_cast<int>(loadedImageNames_.size())) % static_cast<int>(loadedImageNames_.size()));
+}
+
+bool VulkanViewport::decodeImageAt(int index)
+{
+    if (index < 0 || index >= static_cast<int>(loadedImageNames_.size())) return false;
+    const giv::LoadedImage* img = imageCache_.get(loadedImageNames_[static_cast<size_t>(index)]);
+    if (!img) return false;
+    currentImageIndex_ = index;
+    loadedImages_ = {*img};
+    currentImageSize_ = std::make_pair(static_cast<double>(img->width), static_cast<double>(img->height));
+    return true;
+}
+
+void VulkanViewport::decodeCurrentImage()
+{
+    // Best-effort: try currentImageIndex_ first, then scan forward (wrapping
+    // once through the whole list) so a corrupt/unreadable file doesn't
+    // block startup - mirrors the old eager-load behavior of simply omitting
+    // any $image reference that failed to decode, but lazily (only actually
+    // decoding as many candidates as it takes to find one that works).
+    size_t n = loadedImageNames_.size();
+    for (size_t attempt = 0; attempt < n; ++attempt)
+    {
+        int idx = static_cast<int>((static_cast<size_t>(currentImageIndex_) + attempt) % n);
+        if (decodeImageAt(idx)) return;
+    }
+    loadedImages_.clear();
+    currentImageSize_.reset();
+}
+
+// Shared tail of nextImage()/previousImage(): decodes `index` (via
+// imageCache_, evicting the least-recently-used entry if it's a miss),
+// rebuilds the scene graph so the new image's texture actually replaces the
+// old one (only one is ever GPU-resident at a time - see loadedImages_'s
+// doc comment), then - if autoFit_ (giv's do_auto_fit_marks, default on) -
+// re-fits the view; otherwise the current zoom/pan is left untouched, only
+// now framing the new image's content instead.
+void VulkanViewport::switchToImage(int index)
+{
+    if (!decodeImageAt(index))
+    {
+        std::cerr << "wiv: failed to decode " << loadedImageNames_[static_cast<size_t>(index)] << "\n";
+        return;
+    }
+    QString error;
+    if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
+    {
+        std::cerr << "wiv: " << error.toStdString() << "\n";
+        return;
+    }
+    if (autoFit_)
+    {
+        fitContentToWindow(/*fill=*/true); // matches the load-time default - see fitToBounds()'s doc comment
+    }
+    else
+    {
+        // Preserved zoom/pan now frames different content than the resting
+        // fill-fit it may have come from - see fillFitActive_'s doc comment.
+        fillFitActive_ = false;
+        updateScrollBars();
+    }
     emit imageChanged(currentImageIndex_, imageCount(), QString::fromStdString(currentImageName()));
 }
 
-void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double maxY)
+void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double maxY, bool fill)
 {
     if (!projection_ || !window_ || !window_->windowAdapter) return;
 
@@ -599,10 +673,11 @@ void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double m
     double canvasW = static_cast<double>(extent.width);
     double canvasH = static_cast<double>(extent.height);
 
-    double scaleX = (canvasW - 2.0 * autoFitMarginPx_) / dataW;
-    double scaleY = (canvasH - 2.0 * autoFitMarginPx_) / dataH;
-    double scale = std::min(scaleX, scaleY);
-    if (scale <= 0.0) scale = std::min(canvasW, canvasH) / std::max(dataW, dataH);
+    double scaleX = canvasW / dataW;
+    double scaleY = canvasH / dataH;
+    double scale = fill ? std::max(scaleX, scaleY) : std::min(scaleX, scaleY);
+    if (scale <= 0.0)
+        scale = fill ? std::max(canvasW, canvasH) / std::min(dataW, dataH) : std::min(canvasW, canvasH) / std::max(dataW, dataH);
 
     double halfW = canvasW / (2.0 * scale);
     double halfH = canvasH / (2.0 * scale);
@@ -627,10 +702,20 @@ void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double m
 
 void VulkanViewport::fitToWindow()
 {
+    // Explicit user action (View > Fit to Window / F / Ctrl+0): "contain",
+    // not "fill" - the whole thing should become visible, unlike the
+    // fill-by-default auto-fit on load/image-switch (see fitContentToWindow()
+    // callers).
+    fitContentToWindow(/*fill=*/false);
+}
+
+void VulkanViewport::fitContentToWindow(bool fill)
+{
     if (!hasScene_) return;
     double minXyd, minYyd, maxXyd, maxYyd;
     currentFitBoundsYDown(minXyd, minYyd, maxXyd, maxYyd);
-    fitToBounds(minXyd, -maxYyd, maxXyd, -minYyd);
+    fillFitActive_ = fill;
+    fitToBounds(minXyd, -maxYyd, maxXyd, -minYyd, fill);
 }
 
 void VulkanViewport::currentFitBoundsYDown(double& minX, double& minY, double& maxX, double& maxY) const
@@ -641,13 +726,12 @@ void VulkanViewport::currentFitBoundsYDown(double& minX, double& minY, double& m
     minY = has ? scene_.minY : 1e30;
     maxY = has ? scene_.maxY : -1e30;
 
-    if (currentImageIndex_ >= 0 && currentImageIndex_ < static_cast<int>(loadedImageSizes_.size()))
+    if (currentImageSize_)
     {
-        const auto& size = loadedImageSizes_[currentImageIndex_];
         minX = std::min(minX, 0.0);
-        maxX = std::max(maxX, size.first);
+        maxX = std::max(maxX, currentImageSize_->first);
         minY = std::min(minY, 0.0);
-        maxY = std::max(maxY, size.second);
+        maxY = std::max(maxY, currentImageSize_->second);
     }
 
     if (minX > maxX || minY > maxY)
@@ -669,10 +753,12 @@ void VulkanViewport::updateScrollBars()
     if (caliperTool_) caliperTool_->refresh();
 
     if (!hScrollBar_ || !vScrollBar_) return;
-    if (!hasScene_ || !camera_ || !projection_ || !window_ || !window_->windowAdapter)
+    if (!hasScene_ || !camera_ || !projection_ || !window_ || !window_->windowAdapter || fillFitActive_)
     {
         hScrollBar_->setEnabled(false);
         vScrollBar_->setEnabled(false);
+        hScrollBar_->hide();
+        vScrollBar_->hide();
         return;
     }
     auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
@@ -709,6 +795,7 @@ void VulkanViewport::zoomIn()
     projection_->right = halfW;
     projection_->bottom = -halfH;
     projection_->top = halfH;
+    fillFitActive_ = false; // manual zoom is a real departure from the resting fill-fit - see its doc comment
     viewer_->request();
     updateScrollBars();
 }
@@ -723,6 +810,7 @@ void VulkanViewport::zoomOut()
     projection_->right = halfW;
     projection_->bottom = -halfH;
     projection_->top = halfH;
+    fillFitActive_ = false; // manual zoom is a real departure from the resting fill-fit - see its doc comment
     viewer_->request();
     updateScrollBars();
 }
@@ -759,11 +847,6 @@ void VulkanViewport::setBackgroundColor(const QColor& color)
     if (!window_ || !window_->windowAdapter) return;
     window_->windowAdapter->clearColor() = vsg::vec4(color.redF(), color.greenF(), color.blueF(), 1.0f);
     viewer_->request();
-}
-
-void VulkanViewport::setAutoFitMarginPx(double px)
-{
-    autoFitMarginPx_ = px;
 }
 
 } // namespace givqt

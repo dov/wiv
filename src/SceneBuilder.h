@@ -104,6 +104,26 @@ public:
     // failed to load should simply be omitted by the caller. Each is drawn
     // as a textured quad, added to the scene graph *before* marks/lines/
     // fill/text so vector data always draws on top.
+    //
+    // Safe (and meant) to call repeatedly on the same SceneBuilder instance,
+    // e.g. once per $image cycling step (VulkanViewport::switchToImage()):
+    // the view-params/image-pipeline plumbing below is created once, lazily,
+    // on the first call and reused (not recreated) on every later one, since
+    // none of it depends on which image/dataset content is being shown -
+    // only the per-call texture/descriptor set and vector-data instance
+    // buffers actually need rebuilding. vsg::Viewer::compile() recognizes
+    // already-compiled objects (same ref_ptr as a prior call) and skips
+    // them, so reusing these across calls turns "recompile every Vulkan
+    // pipeline" into "upload one new texture" for a plain image switch -
+    // recreating the pipeline objects fresh each call (the original
+    // behavior) made every next/previousImage() pay full graphics-pipeline
+    // creation cost, which dominates a Vulkan frame's CPU-side setup time
+    // far more than one texture upload does. Marks/fill/lines pipelines
+    // are deliberately NOT cached this way (see the giv::SceneBuilder
+    // members list) - whether they're even created depends on the current
+    // call's dataset content (empty batch this call, non-empty last call),
+    // so blindly caching them risks binding a pipeline with no matching
+    // data buffers this time around; they're rebuilt each call as before.
     vsg::ref_ptr<vsg::Group> build(const SceneData& scene, const std::string& shaderDir,
                                     const std::vector<LoadedImage>& images = {});
 
@@ -145,6 +165,19 @@ private:
     vsg::ref_ptr<vsg::Group> labelGraph_;
     vsg::ref_ptr<vsg::Switch> imageSwitch_;
     vsg::ref_ptr<ImageFilterAnimator> imageFilterAnimator_;
+
+    // Cached across build() calls - see build()'s doc comment above for why.
+    // None of this depends on scene/image *content*, only on the shader
+    // files (which never change at runtime), so it's safe to create once,
+    // ever, per SceneBuilder instance and reuse indefinitely.
+    vsg::ref_ptr<vsg::DescriptorSetLayout> viewParamsLayout_;
+    vsg::ref_ptr<vsg::DescriptorSet> viewParamsSet_;
+    vsg::ref_ptr<vsg::PipelineLayout> vectorPipelineLayout_;
+    vsg::ref_ptr<vsg::BindDescriptorSet> bindViewParams_;
+    vsg::ref_ptr<vsg::PipelineLayout> imagePipelineLayout_;
+    vsg::ref_ptr<vsg::BindGraphicsPipeline> imageBind_;
+    vsg::ref_ptr<vsg::Sampler> nearestSampler_;
+    vsg::ref_ptr<vsg::Sampler> linearSampler_;
 };
 
 } // namespace giv

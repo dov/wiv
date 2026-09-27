@@ -35,21 +35,24 @@ public:
 private:
     VulkanViewport* viewport_ = nullptr;
 
-    QLabel* fpsLabel_ = nullptr;
-    QLabel* cursorLabel_ = nullptr;
-    QLabel* countsLabel_ = nullptr;
-    QLabel* imageLabel_ = nullptr;
+    // Single status-bar label, mirroring giv's own w_info_label: shows
+    // "Loaded: <file>" right after a load, then gets overwritten by the
+    // cursor position (and, mid-measurement, the caliper distance) on every
+    // mouse move - see the connections built in the constructor.
+    QLabel* infoLabel_ = nullptr;
+    QString lastCursorText_;
+    QString lastMeasureText_;
+    QString loadedBaseName_;
 
     QAction* balloonAction_ = nullptr;
     QAction* forceOpaqueAction_ = nullptr;
+    QAction* autoFitAction_ = nullptr;
     QAction* nextImageAction_ = nullptr;
     QAction* previousImageAction_ = nullptr;
     QAction* showMarksAction_ = nullptr;
     QAction* markBrowserPanelAction_ = nullptr;
     QAction* measureDistanceAction_ = nullptr;
     QMenu* recentFilesMenu_ = nullptr;
-
-    QLabel* measureLabel_ = nullptr;
 
     // Mark Browser: one shared MarkTreeView content widget, hosted in either
     // a standalone (non-modal) window or a docked side panel - see

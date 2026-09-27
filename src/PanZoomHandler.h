@@ -36,8 +36,17 @@ private:
     int32_t lastX_ = 0;
     int32_t lastY_ = 0;
 
+    // Right-mouse-button drag-to-zoom: the anchor (mouse-down position)
+    // stays fixed for the whole drag so the zoom always pivots around
+    // where the drag started, not wherever the cursor currently is.
+    bool zoomDragging_ = false;
+    int32_t zoomAnchorX_ = 0;
+    int32_t zoomAnchorY_ = 0;
+    int32_t zoomLastY_ = 0;
+
     void pan(int32_t dxPix, int32_t dyPix, const VkExtent2D& extent);
     void zoom(double factor, int32_t screenX, int32_t screenY, const VkExtent2D& extent);
+    static bool shiftHeld();
 };
 
 } // namespace giv

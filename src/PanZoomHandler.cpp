@@ -1,5 +1,7 @@
 #include "PanZoomHandler.h"
 
+#include <QGuiApplication>
+
 #include <algorithm>
 #include <cmath>
 
@@ -19,11 +21,19 @@ void PanZoomHandler::apply(vsg::ButtonPressEvent& event)
         lastX_ = event.x;
         lastY_ = event.y;
     }
+    else if (event.button == 3)
+    {
+        zoomDragging_ = true;
+        zoomAnchorX_ = event.x;
+        zoomAnchorY_ = event.y;
+        zoomLastY_ = event.y;
+    }
 }
 
 void PanZoomHandler::apply(vsg::ButtonReleaseEvent& event)
 {
     if (event.button == 2) dragging_ = false;
+    if (event.button == 3) zoomDragging_ = false;
 }
 
 void PanZoomHandler::apply(vsg::MoveEvent& event)
@@ -54,6 +64,22 @@ void PanZoomHandler::apply(vsg::MoveEvent& event)
     // lastX_/lastY_ must stay current on every move (not just while dragging)
     // since ScrollWheelEvent carries no cursor position of its own and relies
     // on these for the zoom-at-cursor anchor.
+    if (zoomDragging_)
+    {
+        int32_t zoomDy = event.y - zoomLastY_;
+        zoomLastY_ = event.y;
+        if (zoomDy != 0)
+        {
+            // Dragging up (dy<0) zooms in, dragging down zooms out, at a
+            // rate tuned to feel smooth over typical drag distances.
+            double speed = shiftHeld() ? 5.0 : 1.0;
+            double amount = -static_cast<double>(zoomDy) * 0.01 * speed;
+            double factor = std::pow(0.9, amount);
+            zoom(factor, zoomAnchorX_, zoomAnchorY_, window->extent2D());
+            if (onViewChanged) onViewChanged();
+        }
+    }
+
     if (!dragging_) return;
 
     if (dx == 0 && dy == 0) return;
@@ -71,7 +97,7 @@ void PanZoomHandler::apply(vsg::ScrollWheelEvent& event)
     double amount = static_cast<double>(event.delta.y) - static_cast<double>(event.delta.z);
     if (amount == 0.0) return;
 
-    double factor = std::pow(0.9, amount);
+    double factor = std::pow(0.9, amount * (shiftHeld() ? 5.0 : 1.0));
 
     // vsg doesn't give pointer position on ScrollWheelEvent, so fall back to
     // lastX_/lastY_, which apply(MoveEvent&) keeps current on every hover
@@ -80,6 +106,15 @@ void PanZoomHandler::apply(vsg::ScrollWheelEvent& event)
     auto extent = window->extent2D();
     zoom(factor, lastX_, lastY_, extent);
     if (onViewChanged) onViewChanged();
+}
+
+bool PanZoomHandler::shiftHeld()
+{
+    // Queried directly from Qt rather than tracked via vsg key events -
+    // vsgQt's keyboard map only maps Qt::Key_Shift (which Qt reports for
+    // both physical shift keys) to KEY_Shift_L, with a distinct right-shift
+    // vsg keysym left unimplemented.
+    return QGuiApplication::keyboardModifiers() & Qt::ShiftModifier;
 }
 
 void PanZoomHandler::pan(int32_t dxPix, int32_t dyPix, const VkExtent2D& extent)

@@ -716,17 +716,25 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     // covers every draw under it instead of one per dataset - which matters
     // for files with hundreds of thousands of tiny datasets, where per-draw
     // recording cost is what limits the frame rate.
-    viewParams_ = ViewParams::create();
-    viewParams_->value = vsg::vec4Value::create(vsg::vec4(1.0f, 0.0f, 0.0f, 0.0f));
-    viewParams_->value->properties.dataVariance = vsg::DYNAMIC_DATA;
-    auto viewParamsLayout = vsg::DescriptorSetLayout::create(
-        vsg::DescriptorSetLayoutBindings{{0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr}});
-    auto viewParamsSet = vsg::DescriptorSet::create(
-        viewParamsLayout, vsg::Descriptors{vsg::DescriptorBuffer::create(viewParams_->value, 0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)});
-    auto vectorPipelineLayout = vsg::PipelineLayout::create(
-        vsg::DescriptorSetLayouts{viewParamsLayout},
-        vsg::PushConstantRanges{{VK_SHADER_STAGE_VERTEX_BIT, 0, 128}}); // projection + modelview, auto-supplied by RecordTraversal
-    auto bindViewParams = vsg::BindDescriptorSet::create(VK_PIPELINE_BIND_POINT_GRAPHICS, vectorPipelineLayout, 0, viewParamsSet);
+    //
+    // Built once, ever, and reused on every later build() call - see the
+    // cached-members doc comment in SceneBuilder.h.
+    if (!vectorPipelineLayout_)
+    {
+        viewParams_ = ViewParams::create();
+        viewParams_->value = vsg::vec4Value::create(vsg::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+        viewParams_->value->properties.dataVariance = vsg::DYNAMIC_DATA;
+        viewParamsLayout_ = vsg::DescriptorSetLayout::create(
+            vsg::DescriptorSetLayoutBindings{{0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr}});
+        viewParamsSet_ = vsg::DescriptorSet::create(
+            viewParamsLayout_, vsg::Descriptors{vsg::DescriptorBuffer::create(viewParams_->value, 0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)});
+        vectorPipelineLayout_ = vsg::PipelineLayout::create(
+            vsg::DescriptorSetLayouts{viewParamsLayout_},
+            vsg::PushConstantRanges{{VK_SHADER_STAGE_VERTEX_BIT, 0, 128}}); // projection + modelview, auto-supplied by RecordTraversal
+        bindViewParams_ = vsg::BindDescriptorSet::create(VK_PIPELINE_BIND_POINT_GRAPHICS, vectorPipelineLayout_, 0, viewParamsSet_);
+    }
+    auto& vectorPipelineLayout = vectorPipelineLayout_;
+    auto& bindViewParams = bindViewParams_;
 
     // Both scene graphs are StateGroups purely to carry that one bind; the
     // image/sprite and text draws below bind descriptor sets of their own,
@@ -742,19 +750,37 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     // -------------------------------------------------------------
     if (!images.empty())
     {
-        auto [imageStateGroup, imagePipelineLayout] = makeImagePipeline(shaderDir);
+        // Cached across calls (see build()'s doc comment) - this is the fix
+        // for $image cycling (VulkanViewport::nextImage()/previousImage()):
+        // it used to recreate this pipeline (a real, non-trivial-cost Vulkan
+        // object) on every single step, which is why switching images was
+        // far slower than giv's equivalent (a plain texture swap, no
+        // pipeline involved). Only the per-image texture/descriptor set
+        // below - genuinely new data each call - still gets rebuilt.
+        if (!imagePipelineLayout_)
+        {
+            auto [imageStateGroup, layout] = makeImagePipeline(shaderDir);
+            imageBind_ = imageStateGroup->stateCommands.front().cast<vsg::BindGraphicsPipeline>();
+            imagePipelineLayout_ = layout;
 
-        auto nearestSampler = vsg::Sampler::create();
-        nearestSampler->minFilter = VK_FILTER_NEAREST;
-        nearestSampler->magFilter = VK_FILTER_NEAREST;
-        nearestSampler->addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        nearestSampler->addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+            nearestSampler_ = vsg::Sampler::create();
+            nearestSampler_->minFilter = VK_FILTER_NEAREST;
+            nearestSampler_->magFilter = VK_FILTER_NEAREST;
+            nearestSampler_->addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+            nearestSampler_->addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 
-        auto linearSampler = vsg::Sampler::create();
-        linearSampler->minFilter = VK_FILTER_LINEAR;
-        linearSampler->magFilter = VK_FILTER_LINEAR;
-        linearSampler->addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        linearSampler->addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+            linearSampler_ = vsg::Sampler::create();
+            linearSampler_->minFilter = VK_FILTER_LINEAR;
+            linearSampler_->magFilter = VK_FILTER_LINEAR;
+            linearSampler_->addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+            linearSampler_->addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        }
+        auto& imagePipelineLayout = imagePipelineLayout_;
+        auto& nearestSampler = nearestSampler_;
+        auto& linearSampler = linearSampler_;
+
+        auto imageStateGroup = vsg::StateGroup::create();
+        imageStateGroup->add(imageBind_);
 
         auto imageQuadIndices = vsg::ushortArray::create({0, 1, 2, 2, 3, 0});
 

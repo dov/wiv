@@ -35,36 +35,39 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     setCentralWidget(viewport_);
 
     viewport_->setBackgroundColor(PreferencesDialog::loadBackgroundColor());
-    viewport_->setAutoFitMarginPx(PreferencesDialog::loadAutoFitMarginPx());
 
     buildMenus();
     buildStatusBar();
 
     connect(viewport_, &VulkanViewport::sceneLoaded, this, [this]() {
-        const auto& scene = viewport_->sceneData();
-        size_t points = 0;
-        for (const auto& ds : scene.datasets) points += ds.pointCount();
-        countsLabel_->setText(QString("%1 dataset(s), %2 points").arg(scene.datasets.size()).arg(points));
         if (markTreeView_) markTreeView_->rebuildFromScene();
     });
     connect(viewport_, &VulkanViewport::cursorWorldPosition, this, [this](double x, double y) {
-        cursorLabel_->setText(QString("(%1, %2)").arg(x, 0, 'f', 2).arg(y, 0, 'f', 2));
-    });
-    connect(viewport_, &VulkanViewport::frameStats, this, [this](double fps) {
-        fpsLabel_->setText(QString("%1 fps").arg(fps, 0, 'f', 1));
+        lastCursorText_ = QString("(%1, %2)").arg(x, 0, 'f', 2).arg(y, 0, 'f', 2);
+        infoLabel_->setText(lastMeasureText_.isEmpty() ? lastCursorText_ : QString("%1 %2").arg(lastCursorText_, lastMeasureText_));
     });
     connect(viewport_, &VulkanViewport::measurementChanged, this, [this](QString text) {
-        measureLabel_->setText(text);
+        lastMeasureText_ = text;
+        infoLabel_->setText(lastMeasureText_.isEmpty() ? lastCursorText_ : QString("%1 %2").arg(lastCursorText_, lastMeasureText_));
     });
     connect(viewport_, &VulkanViewport::imageChanged, this, [this](int index, int count, QString filename) {
         nextImageAction_->setEnabled(count > 1);
         previousImageAction_->setEnabled(count > 1);
+        // Sole owner of the title/status-label text for both the initial
+        // load and every next/previousImage() step (loadFilesInternal only
+        // updates loadedBaseName_, before calling viewport_->loadFiles() -
+        // see its comment - so this always sees the current file list).
         if (count == 0)
         {
-            imageLabel_->clear();
+            setWindowTitle(QString("wiv: %1").arg(loadedBaseName_));
+            infoLabel_->setText(QString("Loaded: %1").arg(loadedBaseName_));
             return;
         }
-        imageLabel_->setText(QString("image %1/%2: %3").arg(index + 1).arg(count).arg(QFileInfo(filename).fileName()));
+        QString baseName = QFileInfo(filename).fileName();
+        setWindowTitle(QString("wiv: %1").arg(baseName));
+        lastCursorText_.clear();
+        lastMeasureText_.clear();
+        infoLabel_->setText(QString("Loading %1").arg(baseName));
     });
 }
 
@@ -122,6 +125,14 @@ void MainWindow::buildMenus()
     viewMenu->addAction(markBrowserPanelAction_);
 
     viewMenu->addSeparator();
+    // giv's do_auto_fit_marks: on (default), next/previousImage() re-fits
+    // the view to each new image (see VulkanViewport::switchToImage());
+    // off, it preserves whatever zoom/pan the user was at across the
+    // switch instead.
+    autoFitAction_ = viewMenu->addAction("Auto Fit", viewport_, &VulkanViewport::toggleAutoFit);
+    autoFitAction_->setCheckable(true);
+    autoFitAction_->setChecked(true);
+
     nextImageAction_ = viewMenu->addAction("Next Image", viewport_, &VulkanViewport::nextImage);
     nextImageAction_->setShortcuts({QKeySequence("Shift+Up"), QKeySequence("Space"), QKeySequence("Right")});
     nextImageAction_->setEnabled(false);
@@ -138,7 +149,6 @@ void MainWindow::buildMenus()
     editMenu->addAction("Preferences...", this, [this]() {
         PreferencesDialog dlg(this);
         connect(&dlg, &PreferencesDialog::backgroundColorChanged, viewport_, &VulkanViewport::setBackgroundColor);
-        connect(&dlg, &PreferencesDialog::autoFitMarginChanged, viewport_, &VulkanViewport::setAutoFitMarginPx);
         dlg.exec();
     });
 
@@ -150,16 +160,13 @@ void MainWindow::buildMenus()
 
 void MainWindow::buildStatusBar()
 {
-    fpsLabel_ = new QLabel(this);
-    cursorLabel_ = new QLabel(this);
-    countsLabel_ = new QLabel(this);
-    imageLabel_ = new QLabel(this);
-    measureLabel_ = new QLabel(this);
-    statusBar()->addPermanentWidget(countsLabel_);
-    statusBar()->addPermanentWidget(imageLabel_);
-    statusBar()->addPermanentWidget(measureLabel_);
-    statusBar()->addPermanentWidget(cursorLabel_);
-    statusBar()->addPermanentWidget(fpsLabel_);
+    infoLabel_ = new QLabel(this);
+    infoLabel_->setAlignment(Qt::AlignCenter);
+    // giv packs this label full-width below the canvas (gtk_box_pack_start
+    // into a GtkVBox), so its text sits centered under the window rather
+    // than tucked in a corner - addWidget() with a stretch factor mirrors
+    // that, unlike addPermanentWidget() which hugs the right edge.
+    statusBar()->addWidget(infoLabel_, 1);
 }
 
 void MainWindow::openFiles()
@@ -187,6 +194,15 @@ void MainWindow::loadFiles(const std::vector<std::string>& paths)
 
 void MainWindow::loadFilesInternal(const std::vector<std::string>& paths)
 {
+    // Set before calling viewport_->loadFiles() below, not after: that call
+    // emits imageChanged synchronously (see VulkanViewport::loadFiles()),
+    // and its handler (in the constructor) reads loadedBaseName_ for the
+    // no-$image-references title/status text - it needs to already be
+    // current by then, not the previous load's value.
+    QStringList baseNames;
+    for (const auto& p : paths) baseNames << QFileInfo(QString::fromStdString(p)).fileName();
+    loadedBaseName_ = baseNames.join(", ");
+
     QString error;
     if (!viewport_->loadFiles(paths, &error))
     {
