@@ -5,6 +5,7 @@
 // aims to match giv's own look/behavior, which has neither.
 //
 #include <QMainWindow>
+#include <QStringList>
 
 #include <string>
 #include <vector>
@@ -68,11 +69,36 @@ private:
 
     std::vector<std::string> lastPaths_;
 
+    // Sibling-file browsing (Next/Previous Image) for a single plain file
+    // loaded via File > Open: the sorted list of giv-compatible files in
+    // that file's directory, and the loaded file's index within it. Only
+    // populated for a single-file load (see updateDirectoryFileList()) -
+    // cleared for multi-file opens and for scenes that provide their own
+    // $image list (VulkanViewport::imageCount() takes priority - see
+    // goNextImage()/goPreviousImage()).
+    QStringList directoryFiles_;
+    int directoryFileIndex_ = -1;
+
     void openFiles();
     void updateRecentFilesMenu();
     void addRecentFile(const QString& path);
     void loadFilesInternal(const std::vector<std::string>& paths);
     void reloadFiles();
+
+    // Rescans the directory of `loadedPath` for giv-compatible files (see
+    // isGivCompatibleFile() in MainWindow.cpp) and updates directoryFiles_/
+    // directoryFileIndex_ to match. No-op (clears both) unless exactly one
+    // file was just loaded.
+    void updateDirectoryFileList(const std::vector<std::string>& paths);
+
+    // Next/Previous Image handlers wired to the QActions instead of directly
+    // to VulkanViewport::nextImage()/previousImage(): prefer paging through
+    // the current scene's own $image references when there's more than one
+    // (VulkanViewport::imageCount() > 1), otherwise fall back to paging
+    // through directoryFiles_.
+    void goNextImage();
+    void goPreviousImage();
+    void updateNavigationActionsEnabled();
 
     void showMarkBrowser();
     void setMarkBrowserPlacement(bool asPanel);
