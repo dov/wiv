@@ -100,6 +100,17 @@ bool isSupportedWivFile(const QString& path)
     return giv::ImagePluginHost::isSupported(path.toStdString());
 }
 
+// Subdirectory names of `path` for the live folder tree, excluding the
+// hidden ".thumbnails" cache directory (see thumbnailCacheDir() above) -
+// QDir::AllDirs bypasses the usual Hidden-name filtering entirely, so it
+// must be dropped explicitly rather than by omitting QDir::Hidden.
+QStringList liveSubdirectoryNames(const QString& path)
+{
+    QStringList names = QDir(path).entryList(QDir::AllDirs | QDir::NoDotAndDotDot, QDir::Name | QDir::IgnoreCase);
+    names.removeAll(QStringLiteral(".thumbnails"));
+    return names;
+}
+
 // Rasterizes an .svg file straight to a thumbnail-sized QImage via nanosvg/
 // nanosvgrast (the same vendored single-header libraries SvgLoader.cpp
 // parses/rasterizes gradient fills with - implementation lives in that
@@ -353,6 +364,15 @@ private:
 // selectable and painted as a single line by PlacesItemDelegate.
 static constexpr int kPlacesSeparatorRole = Qt::UserRole + 100;
 
+// Tags a row under "My Computer" as part of the live directory tree (as
+// opposed to a Places/Recent/Bookmarks shortcut), and tracks whether it has
+// already been given its real subdirectory listing (vs. still carrying the
+// placeholder child appendRow'd by makeLiveFolderItem() purely to make an
+// expand arrow show up). See populateLiveFolderChildren()/
+// syncFoldersTreeToDirectory().
+static constexpr int kLiveFolderRole = Qt::UserRole + 101;
+static constexpr int kPopulatedRole = Qt::UserRole + 102;
+
 class PlacesItemDelegate : public QStyledItemDelegate
 {
 public:
@@ -393,6 +413,12 @@ OpenFileDialog::OpenFileDialog(QWidget* parent, QSettings* settings)
         "All files (*)",
     });
 
+    // Subdirectories are navigated via the live folder tree merged into the
+    // left-hand Places tree (see buildPlacesModel()/installPlacesTree() and
+    // the "My Computer" node) rather than by scrolling past their tiles in
+    // the thumbnail grid, so exclude them from the grid's model entirely.
+    setFilter(QDir::Files);
+
     // Warm giv::ImagePluginHost's lazily-loaded plugin list on the GUI thread
     // before any background directory scan or QtConcurrent decode can call
     // isSupported()/load() concurrently - the plugin list itself is not
@@ -416,6 +442,17 @@ OpenFileDialog::OpenFileDialog(QWidget* parent, QSettings* settings)
     });
 
     thumbnailSize_ = settings_ ? settings_->value("openDialog/thumbnailSize", 96).toInt() : 96;
+
+    // Scroll position/selection from the last time this dialog was closed,
+    // applied once the directory it opens on (set by the caller via
+    // setDirectory(), right after construction) finishes loading - see the
+    // directoryLoaded connection below and restoreDirectoryViewState().
+    if (settings_)
+    {
+        pendingRestoreDirectory_ = settings_->value("openDialog/lastStateDir").toString();
+        pendingRestoreScrollPos_ = settings_->value("openDialog/lastScrollPos", -1).toInt();
+        pendingRestoreSelectedFile_ = settings_->value("openDialog/lastSelectedFile").toString();
+    }
 
     connect(fileSystemWatcher_, &QFileSystemWatcher::directoryChanged, this, &OpenFileDialog::onDirectoryChanged);
 
@@ -497,11 +534,14 @@ OpenFileDialog::OpenFileDialog(QWidget* parent, QSettings* settings)
             updateLoadingOverlay();
             if (listView_) listView_->viewport()->update();
             if (treeView_) treeView_->viewport()->update();
+            restoreDirectoryViewState(current);
         });
     }
 
     connect(this, &QFileDialog::directoryEntered, this, &OpenFileDialog::onDirectoryEnteredForRecents);
+    connect(this, &QFileDialog::directoryEntered, this, &OpenFileDialog::syncFoldersTreeToDirectory);
     connect(this, &QFileDialog::accepted, this, &OpenFileDialog::onAcceptedForRecents);
+    connect(this, &QDialog::finished, this, &OpenFileDialog::saveDirectoryViewState);
 
     buildPlacesModel();
     installPlacesTree();
@@ -613,12 +653,154 @@ void OpenFileDialog::populateDrives()
                 auto* item = new QStandardItem(iconProvider.icon(QFileInfo(d.rootPath)), d.label);
                 item->setEditable(false);
                 item->setData(d.rootPath, Qt::UserRole);
+                item->setData(true, kLiveFolderRole);
                 item->setToolTip(d.rootPath);
+                if (!liveSubdirectoryNames(d.rootPath).isEmpty())
+                {
+                    // Placeholder child so an expand arrow shows immediately
+                    // - populateLiveFolderChildren() replaces it with the
+                    // drive's real top-level subdirectories the first time
+                    // it's expanded (either by the user, or by
+                    // syncFoldersTreeToDirectory() below once it walks down
+                    // into this drive).
+                    auto* placeholder = new QStandardItem();
+                    placeholder->setFlags(Qt::NoItemFlags);
+                    item->appendRow(placeholder);
+                }
+                else
+                {
+                    item->setData(true, kPopulatedRole);
+                }
                 self->myComputerNode_->appendRow(item);
             }
             if (self->placesTree_) self->placesTree_->expand(self->myComputerNode_->index());
+            // Drive enumeration is async (see the comment at this method's
+            // call site), so the initial syncFoldersTreeToDirectory() call
+            // from the constructor/showEvent likely ran before any drive
+            // item existed to walk down from - retry now that they exist.
+            self->syncFoldersTreeToDirectory(self->directory().absolutePath());
         });
     }).detach();
+}
+
+// Creates one row of the live directory tree nested under "My Computer": a
+// folder icon/name for `path`, plus - only if it actually has subdirectories
+// of its own - a placeholder child (so the row shows an expand arrow without
+// an eager full QDir listing) that populateLiveFolderChildren() replaces
+// with the real subdirectory listing the first time this item is expanded.
+// A directory whose only subdirectory is the hidden ".thumbnails" cache
+// (see liveSubdirectoryNames()) is treated as childless, same as one with
+// none at all.
+QStandardItem* OpenFileDialog::makeLiveFolderItem(const QString& path)
+{
+    QString label = QFileInfo(path).fileName();
+    if (label.isEmpty()) label = path; // drive root, e.g. "/"
+
+    auto* item = new QStandardItem(placesFolderIcon(), label);
+    item->setEditable(false);
+    item->setData(path, Qt::UserRole);
+    item->setData(true, kLiveFolderRole);
+    item->setToolTip(path);
+
+    if (!liveSubdirectoryNames(path).isEmpty())
+    {
+        auto* placeholder = new QStandardItem();
+        placeholder->setFlags(Qt::NoItemFlags);
+        item->appendRow(placeholder);
+    }
+    else
+    {
+        item->setData(true, kPopulatedRole); // no children to populate - nothing to expand
+    }
+    return item;
+}
+
+// Replaces `item`'s placeholder child with its real subdirectory listing.
+void OpenFileDialog::populateLiveFolderChildren(QStandardItem* item)
+{
+    if (!item) return;
+    const QString path = item->data(Qt::UserRole).toString();
+    item->removeRows(0, item->rowCount());
+
+    QDir dir(path);
+    for (const QString& name : liveSubdirectoryNames(path)) item->appendRow(makeLiveFolderItem(dir.filePath(name)));
+    item->setData(true, kPopulatedRole);
+}
+
+// Populates a live-folder row's real children the first time the user
+// expands it by hand (as opposed to syncFoldersTreeToDirectory() walking
+// down a specific path, which populates each node it visits directly).
+void OpenFileDialog::onPlacesTreeExpanded(const QModelIndex& index)
+{
+    if (!placesModel_) return;
+    QStandardItem* item = placesModel_->itemFromIndex(index);
+    if (item && item->data(kLiveFolderRole).toBool() && !item->data(kPopulatedRole).toBool())
+        populateLiveFolderChildren(item);
+}
+
+// Walks the live directory tree under "My Computer" down to `path`,
+// rebuilding it so that every ancestor on the way shows *only* the one
+// child that is actually on this path - its other subdirectories stay
+// hidden until that ancestor itself becomes the current directory - while
+// `path` itself is expanded to show its *entire* subdirectory listing. This
+// keeps the tree from ballooning into "every directory at every level" the
+// way a fully-expanded tree would, while still surfacing what's below the
+// directory the dialog is actually showing.
+void OpenFileDialog::syncFoldersTreeToDirectory(const QString& path)
+{
+    if (!placesTree_ || !placesModel_ || !myComputerNode_ || path.isEmpty()) return;
+
+    const QString target = QDir::cleanPath(QFileInfo(path).absoluteFilePath());
+    if (target.isEmpty()) return;
+
+    // Find the drive/root item whose mount path is the longest prefix of
+    // target - normally just one ("/"), but extra mounted volumes under My
+    // Computer are handled the same way.
+    QStandardItem* current = nullptr;
+    QString currentPath;
+    for (int row = 0; row < myComputerNode_->rowCount(); ++row)
+    {
+        auto* candidate = myComputerNode_->child(row);
+        const QString candidatePath = QDir::cleanPath(candidate->data(Qt::UserRole).toString());
+        if (candidatePath.isEmpty()) continue;
+        if ((target == candidatePath || target.startsWith(candidatePath + '/')) && candidatePath.length() > currentPath.length())
+        {
+            current = candidate;
+            currentPath = candidatePath;
+        }
+    }
+    if (!current) return; // drives not populated yet - populateDrives() retries this once they are
+
+    placesTree_->expand(current->index());
+
+    const QStringList components = QDir::cleanPath(target.mid(currentPath.length())).split('/', Qt::SkipEmptyParts);
+    for (const QString& component : components)
+    {
+        currentPath = (currentPath == "/") ? '/' + component : currentPath + '/' + component;
+
+        current->removeRows(0, current->rowCount());
+        auto* child = makeLiveFolderItem(currentPath);
+        current->appendRow(child);
+        current->setData(false, kPopulatedRole);
+
+        current = child;
+        placesTree_->expand(current->index());
+    }
+
+    if (!current->data(kPopulatedRole).toBool()) populateLiveFolderChildren(current);
+    placesTree_->expand(current->index());
+    placesTree_->setCurrentIndex(current->index());
+
+    const QPersistentModelIndex targetIndex(current->index());
+    QPointer<OpenFileDialog> self(this);
+    QTimer::singleShot(0, this, [self, targetIndex]() {
+        // Deferred to the next event-loop turn: right after the expand()
+        // calls above, the view hasn't necessarily finished relaying out
+        // yet, so an immediate scrollTo() can land on stale row geometry
+        // and do nothing visible.
+        if (!self || !self->placesTree_ || !targetIndex.isValid()) return;
+        self->placesTree_->scrollTo(targetIndex, QAbstractItemView::PositionAtCenter);
+    });
 }
 
 void OpenFileDialog::installPlacesTree()
@@ -679,6 +861,7 @@ void OpenFileDialog::installPlacesTree()
 
     connect(placesTree_, &QTreeView::clicked, this, &OpenFileDialog::onPlaceClicked);
     connect(placesTree_, &QTreeView::activated, this, &OpenFileDialog::onPlaceClicked);
+    connect(placesTree_, &QTreeView::expanded, this, &OpenFileDialog::onPlacesTreeExpanded);
 
     placesTree_->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(placesTree_, &QWidget::customContextMenuRequested, this, &OpenFileDialog::onPlacesContextMenu);
@@ -881,6 +1064,7 @@ void OpenFileDialog::showEvent(QShowEvent* event)
     // same path the dialog already has (e.g. on a second open), so make
     // sure the initial directory's thumbnails are requested regardless.
     fillThumbnailCache(directory().absolutePath());
+    syncFoldersTreeToDirectory(directory().absolutePath());
     updateLoadingOverlay();
 
     // Seed Recent with the directory the dialog opens on, so it's populated
@@ -901,6 +1085,30 @@ void OpenFileDialog::closeEvent(QCloseEvent* event)
         if (leftSplitter_) settings_->setValue("openDialog/placesSplitterState", leftSplitter_->saveState());
     }
     QFileDialog::closeEvent(event);
+}
+
+// Saves scroll position/selection, restored by restoreDirectoryViewState()
+// the next time this dialog is opened on the same directory. The directory
+// itself is already remembered by MainWindow as "lastOpenDir" (only on
+// Accept); this is hooked to finished() rather than closeEvent() so it's
+// saved regardless of how the dialog closes - QDialog::done() (which
+// Open/Cancel go through) hides the dialog without ever sending a
+// QCloseEvent, only the window manager's own close button does that.
+void OpenFileDialog::saveDirectoryViewState()
+{
+    if (!settings_) return;
+
+    settings_->setValue("openDialog/lastStateDir", directory().absolutePath());
+    QString selectedFile;
+    int scrollPos = -1;
+    if (QAbstractItemView* view = activeFileView())
+    {
+        scrollPos = view->verticalScrollBar()->value();
+        const QModelIndex current = view->currentIndex();
+        if (current.isValid()) selectedFile = current.data(QFileSystemModel::FilePathRole).toString();
+    }
+    settings_->setValue("openDialog/lastScrollPos", scrollPos);
+    settings_->setValue("openDialog/lastSelectedFile", selectedFile);
 }
 
 void OpenFileDialog::saveViewMode()
@@ -1057,13 +1265,23 @@ void OpenFileDialog::resizeEvent(QResizeEvent* event)
     updateLoadingOverlay();
 }
 
+// Whichever of listView_/treeView_ is actually showing, matching the
+// current view mode (List vs Detail) - the other one exists but is hidden.
+// Deliberately keyed off viewMode_ rather than QWidget::isVisible(): once
+// the dialog itself has been hidden (QDialog::done() hides before emitting
+// finished() - see saveDirectoryViewState()), every child's isVisible()
+// reports false regardless of which one was actually showing.
+QAbstractItemView* OpenFileDialog::activeFileView() const
+{
+    return viewMode_ == ViewMode::Detail ? static_cast<QAbstractItemView*>(treeView_)
+                                          : static_cast<QAbstractItemView*>(listView_);
+}
+
 void OpenFileDialog::updateLoadingOverlay()
 {
     if (!loadingOverlay_) return;
 
-    QWidget* view = nullptr;
-    if (treeView_ && treeView_->isVisible()) view = treeView_;
-    else if (listView_ && listView_->isVisible()) view = listView_;
+    QWidget* view = activeFileView();
 
     if (directoryLoaded_ || !view)
     {
@@ -1077,6 +1295,47 @@ void OpenFileDialog::updateLoadingOverlay()
     loadingOverlay_->raise();
     loadingOverlay_->show();
     if (!wasVisible) loadingOverlay_->repaint();
+}
+
+// Applies pendingRestoreDirectory_'s saved scroll position/selection, once,
+// the first time `directoryPath` (the directory this dialog opened on)
+// finishes loading. A no-op for every later directory the user navigates to
+// during this session - the saved state only ever describes where the last
+// session left off, not "restore whatever I last saw in this directory".
+void OpenFileDialog::restoreDirectoryViewState(const QString& directoryPath)
+{
+    if (pendingRestoreDirectory_.isEmpty()) return;
+    if (QDir::cleanPath(pendingRestoreDirectory_) != QDir::cleanPath(directoryPath)) return;
+
+    const int scrollPos = pendingRestoreScrollPos_;
+    const QString selectedFile = pendingRestoreSelectedFile_;
+    pendingRestoreDirectory_.clear(); // consume: only ever applied once per dialog instance
+
+    QAbstractItemView* view = activeFileView();
+    if (!view) return;
+
+    if (!selectedFile.isEmpty())
+    {
+        if (auto* fsModel = qobject_cast<QFileSystemModel*>(view->model()))
+        {
+            const QModelIndex index = fsModel->index(selectedFile);
+            if (index.isValid())
+            {
+                view->setCurrentIndex(index);
+                view->selectionModel()->select(index, QItemSelectionModel::ClearAndSelect);
+            }
+        }
+    }
+
+    // Deferred to the next event-loop turn: right after the directory has
+    // just finished loading, the view hasn't necessarily relaid out its rows
+    // yet, so an immediate scrollbar range/value can still reflect the old
+    // (empty) directory and silently clamp back to 0.
+    QPointer<OpenFileDialog> self(this);
+    QTimer::singleShot(0, this, [self, view, scrollPos]() {
+        if (!self || scrollPos < 0) return;
+        view->verticalScrollBar()->setValue(scrollPos);
+    });
 }
 
 void OpenFileDialog::zoomIn()
