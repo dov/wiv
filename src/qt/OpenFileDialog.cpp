@@ -50,7 +50,7 @@
 
 #include <algorithm>
 #include <filesystem>
-#include <iostream>
+#include <spdlog/spdlog.h>
 #include <thread>
 #include <vector>
 
@@ -1192,7 +1192,7 @@ void OpenFileDialog::installViewModeToolbar()
     }
     else
     {
-        std::cerr << "wiv: could not locate Open dialog's navigation toolbar; view-mode buttons not installed\n";
+        spdlog::error("Could not locate Open dialog's navigation toolbar; view-mode buttons not installed");
         listModeButton_->hide();
         detailModeButton_->hide();
         zoomInButton->hide();

@@ -15,6 +15,7 @@ find_package(vsg CONFIG REQUIRED)
 find_package(vsgXchange CONFIG REQUIRED)
 find_package(vsgQt CONFIG REQUIRED)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Concurrent)
+find_package(spdlog CONFIG REQUIRED)
 
 # ---------------------------------------------------------------------------
 # Shader compilation (GLSL -> SPIR-V) via glslangValidator
@@ -65,6 +66,7 @@ add_subdirectory(third_party/QtAwesome EXCLUDE_FROM_ALL)
 # ---------------------------------------------------------------------------
 add_executable(wiv
   src/main.cpp
+  src/Logging.cpp
   src/GivColor.cpp
   src/GivParser.cpp
   src/GivThumbnailRenderer.cpp
@@ -86,7 +88,7 @@ add_executable(wiv
 add_dependencies(wiv wiv_shaders)
 
 target_include_directories(wiv PRIVATE src ${CMAKE_SOURCE_DIR}/third_party)
-target_link_libraries(wiv PRIVATE vsg::vsg vsgXchange::vsgXchange vsgQt::vsgQt Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent QtAwesome)
+target_link_libraries(wiv PRIVATE vsg::vsg vsgXchange::vsgXchange vsgQt::vsgQt Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent QtAwesome spdlog::spdlog)
 
 target_compile_definitions(wiv PRIVATE
   WIV_SHADER_DIR="${CMAKE_BINARY_DIR}/shaders"

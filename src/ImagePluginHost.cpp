@@ -2,13 +2,14 @@
 
 #include "plugins/wiv_plugin.h"
 
+#include <spdlog/spdlog.h>
+
 #include <dlfcn.h>
 
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
-#include <iostream>
 
 namespace giv
 {
@@ -90,7 +91,7 @@ std::vector<Plugin>& loadedPlugins()
     std::error_code ec;
     if (!fs::is_directory(dir, ec))
     {
-        std::cerr << "wiv: plugin directory not found: " << dir << "\n";
+        spdlog::error("Plugin directory not found: {}", dir);
         return plugins;
     }
 
@@ -107,7 +108,7 @@ std::vector<Plugin>& loadedPlugins()
         void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
         if (!handle)
         {
-            std::cerr << "wiv: failed to load plugin " << path << ": " << dlerror() << "\n";
+            spdlog::error("Failed to load plugin {}: {}", path, dlerror());
             continue;
         }
 
@@ -121,11 +122,12 @@ std::vector<Plugin>& loadedPlugins()
 
         if (!plugin.supportsFile || !plugin.loadImage || !plugin.freeImage || !plugin.freeError)
         {
-            std::cerr << "wiv: plugin " << path << " is missing required symbols, skipping\n";
+            spdlog::error("Plugin {} is missing required symbols, skipping", path);
             dlclose(handle);
             continue;
         }
 
+        spdlog::info("Loaded image plugin: {}", path);
         plugins.push_back(plugin);
     }
 
@@ -145,7 +147,7 @@ std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename)
         WivPluginImage* img = plugin.loadImage(filename.c_str(), &errorMsg);
         if (!img)
         {
-            std::cerr << "wiv: " << (errorMsg ? errorMsg : "failed to load image") << " (" << filename << ")\n";
+            spdlog::error("{} ({})", errorMsg ? errorMsg : "failed to load image", filename);
             if (errorMsg)
                 plugin.freeError(errorMsg);
             return std::nullopt;
@@ -161,7 +163,7 @@ std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename)
         return result;
     }
 
-    std::cerr << "wiv: no plugin supports image file " << filename << "\n";
+    spdlog::error("No plugin supports image file {}", filename);
     return std::nullopt;
 }
 

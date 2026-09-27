@@ -4,16 +4,27 @@
 // dock panel/status bar/preferences, wrapping a VulkanViewport that owns the
 // actual VSG/Vulkan rendering. CLI subset (see plan/README): positional
 // .giv file(s); --geometry WxH sets the initial window size.
+#include "Logging.h"
 #include "qt/MainWindow.h"
 
 #include <QApplication>
 #include <QCommandLineParser>
 
+#include <spdlog/spdlog.h>
+
 int main(int argc, char** argv)
 {
+    giv::log::init();
+
     QApplication app(argc, argv);
     QApplication::setOrganizationName("wiv");
     QApplication::setApplicationName("wiv");
+
+    {
+        QStringList argList;
+        for (int i = 0; i < argc; ++i) argList << argv[i];
+        spdlog::info("Command line: {}", argList.join(' ').toStdString());
+    }
 
     QCommandLineParser parser;
     parser.setApplicationDescription("Vulkan-based, giv-format-compatible 2D vector viewer");
@@ -34,7 +45,11 @@ int main(int argc, char** argv)
             bool okW = false, okH = false;
             int w = geom.left(xpos).toInt(&okW);
             int h = geom.mid(xpos + 1).toInt(&okH);
-            if (okW && okH) window.resize(w, h);
+            if (okW && okH)
+            {
+                window.resize(w, h);
+                spdlog::info("Initial window geometry set from --geometry: {}x{}", w, h);
+            }
         }
     }
 
@@ -43,6 +58,7 @@ int main(int argc, char** argv)
     {
         std::vector<std::string> paths;
         for (const auto& f : files) paths.push_back(f.toStdString());
+        spdlog::info("Opening {} file(s) from command line: {}", paths.size(), files.join(", ").toStdString());
         // Called before window.show() (matching the reference application's Widget3D
         // construction order): the scene is parsed/built and the first
         // Vulkan frame is compiled/recorded/presented while the embedded
@@ -57,5 +73,8 @@ int main(int argc, char** argv)
 
     window.show();
 
-    return app.exec();
+    spdlog::info("Main window shown, entering event loop");
+    int rc = app.exec();
+    spdlog::info("Application exiting with code {}", rc);
+    return rc;
 }

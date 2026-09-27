@@ -1,6 +1,8 @@
 #include "CaliperTool.h"
 #include "CaliperJawShape.h"
 
+#include <spdlog/spdlog.h>
+
 #include <vsg/utils/Builder.h>
 
 #include <array>
@@ -173,6 +175,11 @@ void CaliperTool::apply(vsg::ButtonReleaseEvent& event)
         }
         haveCaliper_ = true;
     }
+
+    double dist = vsg::length(p1_ - p0_);
+    spdlog::info(
+        "Caliper measurement: ({:.3f}, {:.3f}) -> ({:.3f}, {:.3f}), distance = {:.3f}",
+        p0_.x, p0_.y, p1_.x, p1_.y, dist);
 }
 
 void CaliperTool::apply(vsg::MoveEvent& event)
