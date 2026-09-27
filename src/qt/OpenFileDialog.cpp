@@ -150,12 +150,50 @@ QImage decodeGivThumbnail(const QString& path)
     return giv::renderGivFileThumbnail(path.toStdString(), kThumbnailDecodeSize);
 }
 
+// Disk-backed thumbnail cache: decoded PNGs are saved next to their source
+// files, in a hidden ".thumbnails" subdirectory of the source's own
+// directory, so a thumbnail survives not just navigating away and back but
+// closing the Open dialog entirely and reopening it later. Keyed by the
+// source's file name; a cache entry is considered stale (and regenerated)
+// once the source file's mtime moves past it, so edited files pick up a
+// fresh thumbnail.
+QString thumbnailCacheDir(const QString& path)
+{
+    return QFileInfo(path).absoluteDir().filePath(".thumbnails");
+}
+
+QString thumbnailCachePath(const QString& path)
+{
+    return thumbnailCacheDir(path) + QLatin1Char('/') + QFileInfo(path).fileName() + QStringLiteral(".png");
+}
+
+QImage loadCachedThumbnail(const QString& path)
+{
+    const QFileInfo cacheInfo(thumbnailCachePath(path));
+    if (!cacheInfo.exists()) return QImage();
+    if (cacheInfo.lastModified() < QFileInfo(path).lastModified()) return QImage(); // source changed since caching
+    return QImage(cacheInfo.filePath());
+}
+
+void saveCachedThumbnail(const QString& path, const QImage& image)
+{
+    if (!QDir().mkpath(thumbnailCacheDir(path))) return;
+    image.save(thumbnailCachePath(path), "PNG");
+}
+
 // Runs on a QtConcurrent worker thread - must not touch any QWidget.
 QImage decodeThumbnail(const QString& path)
 {
-    if (path.endsWith(".giv", Qt::CaseInsensitive)) return decodeGivThumbnail(path);
-    if (path.endsWith(".svg", Qt::CaseInsensitive)) return rasterizeSvgThumbnail(path);
-    return decodeRasterThumbnail(path);
+    const QImage cached = loadCachedThumbnail(path);
+    if (!cached.isNull()) return cached;
+
+    QImage image;
+    if (path.endsWith(".giv", Qt::CaseInsensitive)) image = decodeGivThumbnail(path);
+    else if (path.endsWith(".svg", Qt::CaseInsensitive)) image = rasterizeSvgThumbnail(path);
+    else image = decodeRasterThumbnail(path);
+
+    if (!image.isNull()) saveCachedThumbnail(path, image);
+    return image;
 }
 
 } // namespace
@@ -1071,8 +1109,10 @@ void OpenFileDialog::fillThumbnailCache(const QString& directoryPath)
 
     ++generation_; // invalidate/cancel pending decodes from the previous directory
     const quint64 generation = generation_;
-    thumbnailCache_.clear();
-    thumbnailState_.clear();
+    // thumbnailCache_/thumbnailState_ are keyed by absolute file path, so
+    // entries from other directories don't collide here and are left in
+    // place - revisiting a directory reuses whatever it already decoded
+    // instead of clearing everything and re-decoding from scratch.
 
     fileSystemWatcher_->removePaths(fileSystemWatcher_->directories());
 
@@ -1111,6 +1151,12 @@ void OpenFileDialog::fillThumbnailCache(const QString& directoryPath)
             self->updateLoadingOverlay();
             for (const auto& fe : files)
             {
+                // Already decoded (from a previous visit to this directory,
+                // or coincidentally requested elsewhere) - reuse it instead
+                // of re-decoding.
+                if (self->thumbnailState_.value(fe.filePath) == ThumbnailState::Ready &&
+                    self->thumbnailCache_.contains(fe.filePath))
+                    continue;
                 self->thumbnailState_[fe.filePath] = ThumbnailState::Queued;
                 self->requestThumbnail(fe.filePath, generation);
             }
