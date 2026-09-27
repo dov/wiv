@@ -59,6 +59,21 @@ public:
     // there's no caliper to redraw.
     void refresh();
 
+    // Tools > Calibrate Pixel Size (giv's GivCalibrateDialog / cb_calib_changed):
+    // `pixelSize` real-world units per image pixel (default 1.0, i.e. raw
+    // pixels), `unit` its display suffix (e.g. "mm", default empty). Rebakes
+    // the current label immediately, so an in-progress or already-placed
+    // caliper reflects the new calibration without needing to be re-dragged.
+    void setPixelSize(double pixelSize, const std::string& unit);
+    double pixelSize() const { return pixelSize_; }
+    const std::string& unit() const { return unit_; }
+
+    // Raw on-screen distance (in image pixels, pre-calibration) of the
+    // current/most recently completed caliper - 0 if none exists yet. Feeds
+    // the Calibrate dialog's "Last measure" source option (giv's
+    // last_measure_distance_in_pixels).
+    double lastDistancePixels() const { return lastDistPx_; }
+
     // Fired whenever the live/fixed measurement text changes (empty once
     // disabled or before any caliper exists) - for a status-bar readout.
     std::function<void(const std::string&)> onMeasurementText;
@@ -109,6 +124,10 @@ private:
     vsg::dvec2 dragStartP0_{0.0, 0.0};
     vsg::dvec2 dragStartP1_{0.0, 0.0};
     VkExtent2D lastExtent_{0, 0};
+
+    double pixelSize_ = 1.0; // real-world units per image pixel - see setPixelSize()
+    std::string unit_;
+    double lastDistPx_ = 0.0; // see lastDistancePixels()
 
     vsg::dvec2 windowToWorld(int32_t x, int32_t y) const;
     double worldPerPixel() const;

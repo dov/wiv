@@ -80,6 +80,7 @@ add_executable(wiv
   src/qt/GivViewer.cpp
   src/qt/VulkanViewport.cpp
   src/qt/PreferencesDialog.cpp
+  src/qt/CalibrateDialog.cpp
   src/qt/MainWindow.cpp
   src/qt/MarkTreeView.cpp
   src/qt/OpenFileDialog.cpp

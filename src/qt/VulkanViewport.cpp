@@ -356,6 +356,12 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     }
 
     scene_ = std::move(newScene);
+    // $pixelsize directive (see SceneData::pixelSize) - only touch the
+    // calibration if the file actually specified one, so a file that
+    // doesn't mention it leaves whatever the user last dialed in (via Tools
+    // > Calibrate Pixel Size) alone, matching giv's own cb_set_pixelsize
+    // (fired only when the directive is present).
+    if (scene_.pixelSize) setPixelCalibration(*scene_.pixelSize, scene_.pixelSizeUnit);
     loadedImageNames_ = std::move(newLoadedImageNames);
     hasScene_ = true;
     currentImageIndex_ = 0;
@@ -515,6 +521,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     caliperTool_ = giv::CaliperTool::create(camera_, options_, caliperFont_);
     caliperTool_->onNeedsCompile = [this]() { viewer_->compile(); viewer_->request(); };
     caliperTool_->onMeasurementText = [this](const std::string& text) { emit measurementChanged(QString::fromStdString(text)); };
+    caliperTool_->setPixelSize(pixelSize_, pixelSizeUnit_);
     caliperTool_->setEnabled(wasMeasureEnabled);
     viewer_->addEventHandler(caliperTool_);
     measureEnabled_ = wasMeasureEnabled;
@@ -955,6 +962,15 @@ void VulkanViewport::toggleMeasureDistance()
     measureEnabled_ = !measureEnabled_;
     spdlog::info("Measure Distance Diagonal set to {}", measureEnabled_);
     if (caliperTool_) caliperTool_->setEnabled(measureEnabled_);
+    viewer_->request();
+}
+
+void VulkanViewport::setPixelCalibration(double pixelSize, const std::string& unit)
+{
+    pixelSize_ = pixelSize;
+    pixelSizeUnit_ = unit;
+    spdlog::info("Pixel calibration set to {} per pixel, unit '{}'", pixelSize_, pixelSizeUnit_);
+    if (caliperTool_) caliperTool_->setPixelSize(pixelSize_, pixelSizeUnit_);
     viewer_->request();
 }
 
