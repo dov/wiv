@@ -48,6 +48,7 @@ public:
     static constexpr size_t kImageCacheCapacity = 4;
 
     explicit VulkanViewport(QWidget* parent = nullptr);
+    ~VulkanViewport() override;
 
     // Parses and displays `paths` (replacing whatever is currently shown).
     // Returns false (and sets *error, if non-null) on the first parse/build
@@ -138,6 +139,15 @@ private:
 
     giv::SceneData scene_;
     bool hasScene_ = false;
+
+    // Set once rebuildSceneGraph() has completed a build for the first time.
+    // Distinct from that call's own isInitialLoad parameter: isInitialLoad
+    // means "(re)create the camera/projection and auto-fit to this load's
+    // bounds", which is true for every full loadFiles() call (command-line,
+    // File>Open, ...) - but the GPU can only be presenting a frame that needs
+    // waitForGpuIdle()'s protection once a build has actually happened
+    // before, which is only false for the constructor's own bootstrap call.
+    bool everBuiltSceneGraph_ = false;
     std::vector<giv::LoadedImage> loadedImages_; // 0 or 1 entries: only the currently-displayed image is ever decoded/resident (see decodeCurrentImage())
     bool globalShowMarks_ = true;
     bool forceOpaque_ = false;
