@@ -285,7 +285,6 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     }
     for (const auto& ds : newScene.datasets) totalPoints += ds.pointCount();
     double parseMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - parseStart).count();
-    std::cerr << "wiv: parsed " << newScene.datasets.size() << " dataset(s), " << totalPoints << " points in " << parseMs << " ms\n";
 
     // Resolve $image references to a candidate path list. Mirrors giv's own
     // cb_image_reference: a filename is used as-is if it already resolves
@@ -319,7 +318,6 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     auto buildStart = std::chrono::steady_clock::now();
     if (!rebuildSceneGraph(error, /*isInitialLoad=*/true)) return false;
     double buildMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - buildStart).count();
-    std::cerr << "wiv: scene build took " << buildMs << " ms\n";
 
     emit sceneLoaded();
     emit imageChanged(currentImageIndex_, imageCount(), QString::fromStdString(currentImageName()));
@@ -422,18 +420,12 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
         projection_ = vsg::Orthographic::create(-100.0, 100.0, -100.0, 100.0, 0.01, 100.0);
         camera_ = vsg::Camera::create(projection_, lookAt, vsg::ViewportState::create(window_->windowAdapter->extent2D()));
 
-        // Default to "fill" (cover) on a fresh load: the loaded image/scene
-        // fills the window edge-to-edge (cropping any overflowing axis)
-        // rather than "fit" (contain), which would letterbox it.
-        fitToBounds(minXyd, -maxYyd, maxXyd, -minYyd, /*fill=*/true);
+        fitToBounds(minXyd, -maxYyd, maxXyd, -minYyd);
     }
 
     panZoom_ = giv::PanZoomHandler::create(camera_);
     panZoom_->onCursorMove = [this](double x, double y) { emit cursorWorldPosition(x, y); };
-    panZoom_->onViewChanged = [this]() {
-        fillFitActive_ = false; // manual zoom/pan is a real departure from the resting fill-fit - see its doc comment
-        updateScrollBars();
-    };
+    panZoom_->onViewChanged = [this]() { updateScrollBars(); };
     viewer_->addEventHandler(panZoom_);
 
     bool wasBalloonEnabled = isInitialLoad ? false : balloonEnabled_;
@@ -637,8 +629,9 @@ void VulkanViewport::decodeCurrentImage()
 // rebuilds the scene graph so the new image's texture actually replaces the
 // old one (only one is ever GPU-resident at a time - see loadedImages_'s
 // doc comment), then - if autoFit_ (giv's do_auto_fit_marks, default on) -
-// re-fits the view; otherwise the current zoom/pan is left untouched, only
-// now framing the new image's content instead.
+// re-fits the view (whole image visible, matching fitToWindow()); otherwise
+// the current zoom/pan is left untouched, only now framing the new image's
+// content instead.
 void VulkanViewport::switchToImage(int index)
 {
     if (!decodeImageAt(index))
@@ -654,19 +647,16 @@ void VulkanViewport::switchToImage(int index)
     }
     if (autoFit_)
     {
-        fitContentToWindow(/*fill=*/true); // matches the load-time default - see fitToBounds()'s doc comment
+        fitContentToWindow();
     }
     else
     {
-        // Preserved zoom/pan now frames different content than the resting
-        // fill-fit it may have come from - see fillFitActive_'s doc comment.
-        fillFitActive_ = false;
         updateScrollBars();
     }
     emit imageChanged(currentImageIndex_, imageCount(), QString::fromStdString(currentImageName()));
 }
 
-void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double maxY, bool fill)
+void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double maxY)
 {
     if (!projection_ || !window_ || !window_->windowAdapter) return;
 
@@ -679,11 +669,13 @@ void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double m
     double canvasW = static_cast<double>(extent.width);
     double canvasH = static_cast<double>(extent.height);
 
+    // "Contain": scale to the smaller of scaleX/scaleY so the whole content
+    // is visible, possibly with letterbox margins on one axis.
     double scaleX = canvasW / dataW;
     double scaleY = canvasH / dataH;
-    double scale = fill ? std::max(scaleX, scaleY) : std::min(scaleX, scaleY);
+    double scale = std::min(scaleX, scaleY);
     if (scale <= 0.0)
-        scale = fill ? std::max(canvasW, canvasH) / std::min(dataW, dataH) : std::min(canvasW, canvasH) / std::max(dataW, dataH);
+        scale = std::min(canvasW, canvasH) / std::max(dataW, dataH);
 
     double halfW = canvasW / (2.0 * scale);
     double halfH = canvasH / (2.0 * scale);
@@ -708,20 +700,15 @@ void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double m
 
 void VulkanViewport::fitToWindow()
 {
-    // Explicit user action (View > Fit to Window / F / Ctrl+0): "contain",
-    // not "fill" - the whole thing should become visible, unlike the
-    // fill-by-default auto-fit on load/image-switch (see fitContentToWindow()
-    // callers).
-    fitContentToWindow(/*fill=*/false);
+    fitContentToWindow();
 }
 
-void VulkanViewport::fitContentToWindow(bool fill)
+void VulkanViewport::fitContentToWindow()
 {
     if (!hasScene_) return;
     double minXyd, minYyd, maxXyd, maxYyd;
     currentFitBoundsYDown(minXyd, minYyd, maxXyd, maxYyd);
-    fillFitActive_ = fill;
-    fitToBounds(minXyd, -maxYyd, maxXyd, -minYyd, fill);
+    fitToBounds(minXyd, -maxYyd, maxXyd, -minYyd);
 }
 
 void VulkanViewport::currentFitBoundsYDown(double& minX, double& minY, double& maxX, double& maxY) const
@@ -759,7 +746,7 @@ void VulkanViewport::updateScrollBars()
     if (caliperTool_) caliperTool_->refresh();
 
     if (!hScrollBar_ || !vScrollBar_) return;
-    if (!hasScene_ || !camera_ || !projection_ || !window_ || !window_->windowAdapter || fillFitActive_)
+    if (!hasScene_ || !camera_ || !projection_ || !window_ || !window_->windowAdapter)
     {
         hScrollBar_->setEnabled(false);
         vScrollBar_->setEnabled(false);
@@ -801,7 +788,6 @@ void VulkanViewport::zoomIn()
     projection_->right = halfW;
     projection_->bottom = -halfH;
     projection_->top = halfH;
-    fillFitActive_ = false; // manual zoom is a real departure from the resting fill-fit - see its doc comment
     viewer_->request();
     updateScrollBars();
 }
@@ -816,7 +802,6 @@ void VulkanViewport::zoomOut()
     projection_->right = halfW;
     projection_->bottom = -halfH;
     projection_->top = halfH;
-    fillFitActive_ = false; // manual zoom is a real departure from the resting fill-fit - see its doc comment
     viewer_->request();
     updateScrollBars();
 }
