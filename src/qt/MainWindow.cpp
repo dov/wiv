@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include "ImagePluginHost.h"
 #include "MarkTreeView.h"
 #include "OpenFileDialog.h"
 #include "PreferencesDialog.h"
@@ -25,6 +26,18 @@ namespace givqt
 namespace
 {
 constexpr int kMaxRecentFiles = 8;
+
+// True if `path` is a wiv-openable file - mirrors
+// OpenFileDialog.cpp's isSupportedWivFile(): a .giv scene, an .svg, or
+// anything giv::ImagePluginHost::isSupported() claims (suffix-only, never
+// decodes).
+bool isGivCompatibleFile(const QString& path)
+{
+    const QString suffix = QFileInfo(path).suffix();
+    if (suffix.compare("giv", Qt::CaseInsensitive) == 0) return true;
+    if (suffix.compare("svg", Qt::CaseInsensitive) == 0) return true;
+    return giv::ImagePluginHost::isSupported(path.toStdString());
+}
 }
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
@@ -52,8 +65,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         infoLabel_->setText(lastMeasureText_.isEmpty() ? lastCursorText_ : QString("%1 %2").arg(lastCursorText_, lastMeasureText_));
     });
     connect(viewport_, &VulkanViewport::imageChanged, this, [this](int index, int count, QString filename) {
-        nextImageAction_->setEnabled(count > 1);
-        previousImageAction_->setEnabled(count > 1);
+        updateNavigationActionsEnabled();
         // Sole owner of the title/status-label text for both the initial
         // load and every next/previousImage() step (loadFilesInternal only
         // updates loadedBaseName_, before calling viewport_->loadFiles() -
@@ -134,10 +146,10 @@ void MainWindow::buildMenus()
     autoFitAction_->setCheckable(true);
     autoFitAction_->setChecked(true);
 
-    nextImageAction_ = viewMenu->addAction("Next Image", viewport_, &VulkanViewport::nextImage);
+    nextImageAction_ = viewMenu->addAction("Next Image", this, &MainWindow::goNextImage);
     nextImageAction_->setShortcuts({QKeySequence("Shift+Up"), QKeySequence("Space"), QKeySequence("Right")});
     nextImageAction_->setEnabled(false);
-    previousImageAction_ = viewMenu->addAction("Previous Image", viewport_, &VulkanViewport::previousImage);
+    previousImageAction_ = viewMenu->addAction("Previous Image", this, &MainWindow::goPreviousImage);
     previousImageAction_->setShortcuts({QKeySequence("Shift+Down"), QKeySequence("Backspace"), QKeySequence("Left")});
     previousImageAction_->setEnabled(false);
 
@@ -210,6 +222,7 @@ void MainWindow::loadFilesInternal(const std::vector<std::string>& paths)
     QStringList baseNames;
     for (const auto& p : paths) baseNames << QFileInfo(QString::fromStdString(p)).fileName();
     loadedBaseName_ = baseNames.join(", ");
+    updateDirectoryFileList(paths);
 
     QString error;
     if (!viewport_->loadFiles(paths, &error))
@@ -226,6 +239,59 @@ void MainWindow::reloadFiles()
 {
     if (lastPaths_.empty()) return;
     loadFilesInternal(lastPaths_);
+}
+
+void MainWindow::updateDirectoryFileList(const std::vector<std::string>& paths)
+{
+    if (paths.size() != 1)
+    {
+        directoryFiles_.clear();
+        directoryFileIndex_ = -1;
+        return;
+    }
+
+    QFileInfo loadedInfo(QString::fromStdString(paths.front()));
+    QDir dir = loadedInfo.absoluteDir();
+
+    QStringList files;
+    for (const auto& entry : dir.entryInfoList(QDir::Files, QDir::Name | QDir::IgnoreCase))
+    {
+        if (isGivCompatibleFile(entry.absoluteFilePath())) files << entry.absoluteFilePath();
+    }
+
+    directoryFiles_ = files;
+    directoryFileIndex_ = directoryFiles_.indexOf(loadedInfo.absoluteFilePath());
+}
+
+void MainWindow::updateNavigationActionsEnabled()
+{
+    bool canNavigate = viewport_->imageCount() > 1 || directoryFiles_.size() > 1;
+    nextImageAction_->setEnabled(canNavigate);
+    previousImageAction_->setEnabled(canNavigate);
+}
+
+void MainWindow::goNextImage()
+{
+    if (viewport_->imageCount() > 1)
+    {
+        viewport_->nextImage();
+        return;
+    }
+    if (directoryFiles_.size() < 2) return;
+    directoryFileIndex_ = (directoryFileIndex_ + 1) % directoryFiles_.size();
+    loadFilesInternal({directoryFiles_[directoryFileIndex_].toStdString()});
+}
+
+void MainWindow::goPreviousImage()
+{
+    if (viewport_->imageCount() > 1)
+    {
+        viewport_->previousImage();
+        return;
+    }
+    if (directoryFiles_.size() < 2) return;
+    directoryFileIndex_ = (directoryFileIndex_ - 1 + directoryFiles_.size()) % directoryFiles_.size();
+    loadFilesInternal({directoryFiles_[directoryFileIndex_].toStdString()});
 }
 
 void MainWindow::updateRecentFilesMenu()
