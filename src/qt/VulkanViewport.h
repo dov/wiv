@@ -79,7 +79,7 @@ public:
     // giv's do_auto_fit_marks: on (default) re-fits the view (fill, see
     // fitContentToWindow()) to each new image on next/previousImage(); off
     // preserves whatever zoom/pan the view was already at instead.
-    void setAutoFit(bool enable) { autoFit_ = enable; }
+    void setAutoFit(bool enable);
     void toggleAutoFit() { setAutoFit(!autoFit_); }
     bool autoFit() const { return autoFit_; }
 

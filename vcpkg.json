@@ -17,6 +17,7 @@
       ]
     },
     "tiff",
-    "libwebp"
+    "libwebp",
+    "spdlog"
   ]
 }

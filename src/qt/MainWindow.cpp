@@ -6,6 +6,8 @@
 #include "PreferencesDialog.h"
 #include "VulkanViewport.h"
 
+#include <spdlog/spdlog.h>
+
 #include <QAction>
 #include <QApplication>
 #include <QDialog>
@@ -161,9 +163,11 @@ void MainWindow::buildMenus()
 
     auto editMenu = menuBar()->addMenu("&Edit");
     editMenu->addAction("Preferences...", this, [this]() {
+        spdlog::info("Preferences dialog opened");
         PreferencesDialog dlg(this);
         connect(&dlg, &PreferencesDialog::backgroundColorChanged, viewport_, &VulkanViewport::setBackgroundColor);
         dlg.exec();
+        spdlog::info("Preferences dialog closed");
     });
 
     auto helpMenu = menuBar()->addMenu("&Help");
@@ -185,6 +189,7 @@ void MainWindow::buildStatusBar()
 
 void MainWindow::openFiles()
 {
+    spdlog::info("User invoked File > Open...");
     QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
     // Default to the process's current directory the first time this dialog
     // ever opens (no "lastOpenDir" recorded yet), rather than whatever
@@ -193,7 +198,11 @@ void MainWindow::openFiles()
 
     OpenFileDialog dlg(this, &settings);
     dlg.setDirectory(lastDir);
-    if (dlg.exec() != QDialog::Accepted) return;
+    if (dlg.exec() != QDialog::Accepted)
+    {
+        spdlog::info("Open dialog cancelled");
+        return;
+    }
 
     QStringList files = dlg.selectedFiles();
     if (files.isEmpty()) return;
@@ -241,6 +250,11 @@ void MainWindow::showEvent(QShowEvent* event)
 
 void MainWindow::loadFilesInternal(const std::vector<std::string>& paths)
 {
+    {
+        QStringList list;
+        for (const auto& p : paths) list << QString::fromStdString(p);
+        spdlog::info("Loading {} file(s): {}", paths.size(), list.join(", ").toStdString());
+    }
     // Set before calling viewport_->loadFiles() below, not after: that call
     // emits imageChanged synchronously (see VulkanViewport::loadFiles()),
     // and its handler (in the constructor) reads loadedBaseName_ for the
@@ -254,17 +268,20 @@ void MainWindow::loadFilesInternal(const std::vector<std::string>& paths)
     QString error;
     if (!viewport_->loadFiles(paths, &error))
     {
+        spdlog::error("Failed to load file(s): {}", error.toStdString());
         QMessageBox::critical(this, "wiv", QString("Failed to load file(s):\n%1").arg(error));
         return;
     }
     lastPaths_ = paths;
     balloonAction_->setChecked(false);
     measureDistanceAction_->setChecked(false);
+    spdlog::info("Loaded {} file(s) successfully", paths.size());
 }
 
 void MainWindow::reloadFiles()
 {
     if (lastPaths_.empty()) return;
+    spdlog::info("User invoked File > Reload");
     loadFilesInternal(lastPaths_);
 }
 
@@ -299,6 +316,7 @@ void MainWindow::updateNavigationActionsEnabled()
 
 void MainWindow::goNextImage()
 {
+    spdlog::info("User invoked Next Image");
     if (viewport_->imageCount() > 1)
     {
         viewport_->nextImage();
@@ -306,11 +324,13 @@ void MainWindow::goNextImage()
     }
     if (directoryFiles_.size() < 2) return;
     directoryFileIndex_ = (directoryFileIndex_ + 1) % directoryFiles_.size();
+    spdlog::info("Directory navigation: switching to {}", directoryFiles_[directoryFileIndex_].toStdString());
     loadFilesInternal({directoryFiles_[directoryFileIndex_].toStdString()});
 }
 
 void MainWindow::goPreviousImage()
 {
+    spdlog::info("User invoked Previous Image");
     if (viewport_->imageCount() > 1)
     {
         viewport_->previousImage();
@@ -318,6 +338,7 @@ void MainWindow::goPreviousImage()
     }
     if (directoryFiles_.size() < 2) return;
     directoryFileIndex_ = (directoryFileIndex_ - 1 + directoryFiles_.size()) % directoryFiles_.size();
+    spdlog::info("Directory navigation: switching to {}", directoryFiles_[directoryFileIndex_].toStdString());
     loadFilesInternal({directoryFiles_[directoryFileIndex_].toStdString()});
 }
 
@@ -346,6 +367,7 @@ void MainWindow::addRecentFile(const QString& path)
 
 void MainWindow::showMarkBrowser()
 {
+    spdlog::info("User opened Mark Browser");
     if (!markTreeView_) markTreeView_ = new MarkTreeView(viewport_);
     markTreeView_->rebuildFromScene();
 
@@ -384,6 +406,7 @@ void MainWindow::showMarkBrowser()
 void MainWindow::setMarkBrowserPlacement(bool asPanel)
 {
     if (markBrowserAsPanel_ == asPanel) return;
+    spdlog::info("Mark Browser placement changed to {}", asPanel ? "panel" : "dialog");
 
     bool wasVisible = (markBrowserDialog_ && markBrowserDialog_->isVisible()) || (markBrowserDock_ && markBrowserDock_->isVisible());
 

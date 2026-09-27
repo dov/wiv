@@ -3,6 +3,8 @@
 #include "GivParser.h"
 #include "ImagePluginHost.h"
 
+#include <spdlog/spdlog.h>
+
 #include <vsg/all.h>
 #include <vsgXchange/all.h>
 #include <vsgXchange/freetype.h>
@@ -20,7 +22,6 @@
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
-#include <iostream>
 #include <string>
 
 namespace givqt
@@ -318,6 +319,7 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
             std::string parseError;
             if (!parser.parseFile(f, newScene, parseError))
             {
+                spdlog::error("Failed to parse {}: {}", f, parseError);
                 if (error) *error = QString::fromStdString(parseError);
                 return false;
             }
@@ -362,6 +364,10 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     auto buildStart = std::chrono::steady_clock::now();
     if (!rebuildSceneGraph(error, /*isInitialLoad=*/true)) return false;
     double buildMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - buildStart).count();
+
+    spdlog::info(
+        "Scene loaded: {} dataset(s), {} point(s), {} image reference(s) resolved (parse {:.1f} ms, scene build {:.1f} ms)",
+        scene_.datasets.size(), totalPoints, loadedImageNames_.size(), parseMs, buildMs);
 
     emit sceneLoaded();
     emit imageChanged(currentImageIndex_, imageCount(), QString::fromStdString(currentImageName()));
@@ -437,9 +443,9 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
             VkResult result = viewer_->waitForFences(relativeFrameIndex, kFenceTimeoutNs);
             if (result != VK_SUCCESS)
             {
-                std::cerr << "wiv: GPU didn't finish frame -" << relativeFrameIndex
-                          << " within " << (kFenceTimeoutNs / 1000000) << " ms (VkResult=" << result
-                          << "); skipping this scene rebuild rather than risking a hang or destroying in-flight GPU resources\n";
+                spdlog::error(
+                    "GPU didn't finish frame -{} within {} ms (VkResult={}); skipping this scene rebuild rather than risking a hang or destroying in-flight GPU resources",
+                    relativeFrameIndex, kFenceTimeoutNs / 1000000, static_cast<int>(result));
                 if (error) *error = "GPU is not responding; try again";
                 return false;
             }
@@ -610,19 +616,21 @@ void VulkanViewport::setDatasetsVisible(const std::vector<size_t>& indices, bool
         }
     }
     if (!changed) return;
+    spdlog::info("Dataset visibility changed for {} dataset(s), now {}", indices.size(), visible ? "visible" : "hidden");
     QString error;
     if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
-        std::cerr << "wiv: " << error.toStdString() << "\n";
+        spdlog::error("{}", error.toStdString());
 }
 
 void VulkanViewport::setShowMarks(bool show)
 {
     if (globalShowMarks_ == show) return;
     globalShowMarks_ = show;
+    spdlog::info("Show Marks set to {}", show);
     if (!hasScene_) return;
     QString error;
     if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
-        std::cerr << "wiv: " << error.toStdString() << "\n";
+        spdlog::error("{}", error.toStdString());
 }
 
 void VulkanViewport::toggleShowMarks()
@@ -688,13 +696,14 @@ void VulkanViewport::switchToImage(int index)
 {
     if (!decodeImageAt(index))
     {
-        std::cerr << "wiv: failed to decode " << loadedImageNames_[static_cast<size_t>(index)] << "\n";
+        spdlog::error("Failed to decode {}", loadedImageNames_[static_cast<size_t>(index)]);
         return;
     }
+    spdlog::info("Switched to image {}/{}: {}", index + 1, loadedImageNames_.size(), loadedImageNames_[static_cast<size_t>(index)]);
     QString error;
     if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
     {
-        std::cerr << "wiv: " << error.toStdString() << "\n";
+        spdlog::error("{}", error.toStdString());
         return;
     }
     if (autoFit_)
@@ -777,6 +786,7 @@ void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double m
 
 void VulkanViewport::fitToWindow()
 {
+    spdlog::info("Fit to Window");
     fitContentToWindow();
 }
 
@@ -890,6 +900,7 @@ void VulkanViewport::updateScrollBars()
 
 void VulkanViewport::zoomIn()
 {
+    spdlog::info("Zoom In");
     if (!projection_) return;
     double factor = 0.8;
     double halfW = (projection_->right - projection_->left) * 0.5 * factor;
@@ -904,6 +915,7 @@ void VulkanViewport::zoomIn()
 
 void VulkanViewport::zoomOut()
 {
+    spdlog::info("Zoom Out");
     if (!projection_) return;
     double factor = 1.25;
     double halfW = (projection_->right - projection_->left) * 0.5 * factor;
@@ -920,6 +932,7 @@ void VulkanViewport::toggleBalloon()
 {
     if (!labelPicker_ || !balloonController_) return;
     balloonEnabled_ = !balloonEnabled_;
+    spdlog::info("Balloon Tooltips set to {}", balloonEnabled_);
     balloonController_->setEnabled(balloonEnabled_);
     viewer_->request();
 }
@@ -932,6 +945,7 @@ bool VulkanViewport::balloonEnabled() const
 void VulkanViewport::toggleForceOpaque()
 {
     forceOpaque_ = !forceOpaque_;
+    spdlog::info("Force Opaque set to {}", forceOpaque_);
     if (viewer_->viewParams) viewer_->viewParams->setForceOpaque(forceOpaque_);
     viewer_->request();
 }
@@ -939,13 +953,21 @@ void VulkanViewport::toggleForceOpaque()
 void VulkanViewport::toggleMeasureDistance()
 {
     measureEnabled_ = !measureEnabled_;
+    spdlog::info("Measure Distance Diagonal set to {}", measureEnabled_);
     if (caliperTool_) caliperTool_->setEnabled(measureEnabled_);
     viewer_->request();
+}
+
+void VulkanViewport::setAutoFit(bool enable)
+{
+    autoFit_ = enable;
+    spdlog::info("Auto Fit set to {}", enable);
 }
 
 void VulkanViewport::setBackgroundColor(const QColor& color)
 {
     if (!window_ || !window_->windowAdapter) return;
+    spdlog::info("Background color set to #{:02x}{:02x}{:02x}", color.red(), color.green(), color.blue());
     window_->windowAdapter->clearColor() = vsg::vec4(color.redF(), color.greenF(), color.blueF(), 1.0f);
     viewer_->request();
 }
