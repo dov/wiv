@@ -122,6 +122,8 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
         if (extent.width == 0) return 1.0f;
         return static_cast<float>((projection_->right - projection_->left) / static_cast<double>(extent.width));
     };
+
+    viewer_->isResizeSettling = [this]() { return checkResizeSettling(); };
     viewer_->addEventHandler(vsg::CloseHandler::create(viewer_));
 
     // Top-level (Qt::ToolTip) popup for the balloon tooltip - see
@@ -236,6 +238,21 @@ void VulkanViewport::resizeEvent(QResizeEvent* event)
     auto extent = window_->windowAdapter->extent2D();
     if (extent.width == 0 || extent.height == 0) return;
 
+    // extent2D() can still be reporting the *old* size here - see
+    // ensureExtentSettled()'s doc comment - in which case the swapchain
+    // rebuild for this resize hasn't happened yet and is still pending,
+    // asynchronously, on some later iteration of GivViewer's render loop.
+    // Track the size we actually asked for so isResizeSettling() can hold
+    // frames off until extent2D() catches up to it (see its doc comment for
+    // why racing that rebuild instead is unsafe).
+    int wantW = static_cast<int>(std::lround(this->width() * devicePixelRatioF()));
+    int wantH = static_cast<int>(std::lround(this->height() * devicePixelRatioF()));
+    if (static_cast<int>(extent.width) != wantW || static_cast<int>(extent.height) != wantH)
+    {
+        resizeSettling_ = true;
+        pendingResizeExtent_ = QSize(wantW, wantH);
+    }
+
     syncRenderExtent(extent);
 
     // Preserve the current pixels-per-world-unit scale (rather than
@@ -256,6 +273,24 @@ void VulkanViewport::resizeEvent(QResizeEvent* event)
     lastHeight_ = static_cast<int>(extent.height);
     viewer_->request();
     updateScrollBars();
+}
+
+bool VulkanViewport::checkResizeSettling()
+{
+    if (!resizeSettling_) return false;
+    if (!window_ || !window_->windowAdapter)
+    {
+        resizeSettling_ = false;
+        return false;
+    }
+    auto extent = window_->windowAdapter->extent2D();
+    if (static_cast<int>(extent.width) == pendingResizeExtent_.width() &&
+        static_cast<int>(extent.height) == pendingResizeExtent_.height())
+    {
+        resizeSettling_ = false;
+        return false;
+    }
+    return true;
 }
 
 bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* error)
