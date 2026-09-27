@@ -2,6 +2,7 @@
 
 #include "GivParser.h"
 #include "ImagePluginHost.h"
+#include "PreferencesDialog.h"
 
 #include <spdlog/spdlog.h>
 
@@ -216,6 +217,31 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
 #    define WIV_SHADER_DIR "shaders"
 #endif
     shaderDir_ = WIV_SHADER_DIR;
+
+    // Set the real (saved-preference) background color before the bootstrap
+    // loadFiles({}) below builds the first RenderGraph: RenderGraph::
+    // setClearValues() only ever reads window_->windowAdapter->clearColor()
+    // once, at construction time (see its doc comment on setBackgroundColor()
+    // below) - leaving it at VSG's own default (a bluish gray) would seed
+    // every render until the next full rebuild with the wrong color, since
+    // MainWindow's own setBackgroundColor() call (which mirrors this same
+    // preference) only runs after this constructor returns.
+    QColor initialBackground = PreferencesDialog::loadBackgroundColor();
+    window_->windowAdapter->clearColor() =
+        vsg::vec4(initialBackground.redF(), initialBackground.greenF(), initialBackground.blueF(), 1.0f);
+
+    // Compile a valid (if empty) Vulkan scene graph up front, unconditionally
+    // - not only when a file is passed on the command line. loadFiles()
+    // (called with no paths, which it handles as a legitimate empty scene)
+    // is what runs rebuildSceneGraph()'s isInitialLoad path, and with it
+    // viewer_->compile(): that's what actually builds this window's Vulkan
+    // device/surface/swapchain. Without this, running with no file argument
+    // left those null (main.cpp only calls loadFiles() "if (!files.isEmpty())"),
+    // and the first native-window resize event Qt delivers once the event
+    // loop starts (from createWindowContainer() above reparenting/embedding
+    // this window) segfaulted inside Xcb_Window::resize()'s buildSwapchain(),
+    // which dereferences that still-null device/surface/physicalDevice.
+    loadFiles({});
 }
 
 void VulkanViewport::resizeEvent(QResizeEvent* event)
@@ -326,6 +352,16 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
         }
         else
         {
+            // Unlike a $image reference discovered inside a .giv file (which
+            // may legitimately not resolve - see the silent `continue` below),
+            // this path was named directly (command line or File > Open): a
+            // typo here should be reported, not silently produce an image-less
+            // scene.
+            if (!std::filesystem::exists(f))
+            {
+                if (error) *error = QString("could not open file: %1").arg(QString::fromStdString(f));
+                return false;
+            }
             newScene.images.push_back(f);
         }
     }
@@ -866,10 +902,13 @@ void VulkanViewport::currentFitBoundsYDown(double& minX, double& minY, double& m
 
     if (minX > maxX || minY > maxY)
     {
-        minX = -100.0;
-        maxX = 100.0;
-        minY = -100.0;
-        maxY = 100.0;
+        // Nothing loaded (no datasets, no image) - an empty unit-square
+        // canvas, not an arbitrary large box, so "no file" mode reads as an
+        // empty 0->1 canvas rather than a mysteriously oversized fit.
+        minX = 0.0;
+        maxX = 1.0;
+        minY = 0.0;
+        maxY = 1.0;
     }
 }
 
@@ -995,6 +1034,13 @@ void VulkanViewport::setBackgroundColor(const QColor& color)
     if (!window_ || !window_->windowAdapter) return;
     spdlog::info("Background color set to #{:02x}{:02x}{:02x}", color.red(), color.green(), color.blue());
     window_->windowAdapter->clearColor() = vsg::vec4(color.redF(), color.greenF(), color.blueF(), 1.0f);
+    // RenderGraph::setClearValues() only reads window_->windowAdapter->
+    // clearColor() once, at RenderGraph construction time - so once a scene
+    // has been built, changing the window's clearColor() alone (above) has
+    // no visible effect until the next full rebuildSceneGraph(). Re-apply it
+    // to the already-built renderGraph_ (if any) so Preferences > Background
+    // Color takes effect immediately.
+    if (renderGraph_) renderGraph_->setClearValues(window_->windowAdapter->clearColor());
     viewer_->request();
 }
 

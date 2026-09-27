@@ -22,6 +22,7 @@
 #include <QSettings>
 #include <QShowEvent>
 #include <QStatusBar>
+#include <QThread>
 #include <QVBoxLayout>
 
 namespace givqt
@@ -281,7 +282,41 @@ void MainWindow::loadFilesInternal(const std::vector<std::string>& paths)
     if (!viewport_->loadFiles(paths, &error))
     {
         spdlog::error("Failed to load file(s): {}", error.toStdString());
-        QMessageBox::critical(this, "wiv", QString("Failed to load file(s):\n%1").arg(error));
+        // QMessageBox::critical(parent, ...)'s own centering-over-parent
+        // logic isn't reliable under every window manager (observed: FVWM
+        // placed it well off-center) - position it explicitly instead of
+        // trusting that.
+        //
+        // This can run for a command-line file (main.cpp calls
+        // window.loadFiles() right after window.show(), before app.exec()
+        // has processed a single event), in which case frameGeometry() below
+        // would still reflect this window's pre-placement default (window
+        // manager placement is asynchronous - a ConfigureNotify that hasn't
+        // arrived yet) rather than where it actually ends up on screen. Pump
+        // events briefly first so that has a chance to arrive - the same
+        // class of lag VulkanViewport::ensureExtentSettled() waits out, but
+        // with no equivalent "is it done yet" signal to poll for here, so
+        // this is just a fixed, short, best-effort wait.
+        for (int i = 0; i < 20; ++i)
+        {
+            QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+            QThread::msleep(5);
+        }
+
+        QMessageBox box(QMessageBox::Critical, "wiv", QString("Failed to load file(s):\n%1").arg(error), QMessageBox::Ok, this);
+        box.adjustSize();
+        // move() *after* show() rather than before: some window managers
+        // apply their own initial-placement policy at map time regardless of
+        // any position set beforehand, but still honor an explicit move
+        // request against an already-mapped window.
+        box.show();
+        // frameGeometry() (not rect()/geometry()) on both sides: move()
+        // positions a top-level widget's frame (including window-manager
+        // decorations), but rect()'s size is the client area only, which
+        // otherwise under-counts the dialog's own title bar and skews the
+        // result off-center by about half of it.
+        box.move(frameGeometry().center() - QPoint(box.frameGeometry().width() / 2, box.frameGeometry().height() / 2));
+        box.exec();
         return;
     }
     lastPaths_ = paths;
