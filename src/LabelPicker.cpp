@@ -183,6 +183,7 @@ void LabelPicker::rebuild(const VkExtent2D& extent)
 
     renderGraph_ = vsg::RenderGraph::create();
     renderGraph_->framebuffer = createLabelFramebuffer(device_, renderImageView_);
+    renderGraph_->renderArea.offset = {0, 0};
     renderGraph_->renderArea.extent = extent_;
     // Cleared to (0,0,0,1) so an untouched (background) pixel decodes to
     // label id -1 (see labelColorFor()'s +1 bias) - matches giv's
