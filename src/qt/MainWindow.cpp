@@ -17,6 +17,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QSettings>
+#include <QShowEvent>
 #include <QStatusBar>
 #include <QVBoxLayout>
 
@@ -210,6 +211,32 @@ void MainWindow::loadFiles(const std::vector<std::string>& paths)
 {
     loadFilesInternal(paths);
     for (const auto& p : paths) addRecentFile(QString::fromStdString(p));
+}
+
+void MainWindow::showEvent(QShowEvent* event)
+{
+    QMainWindow::showEvent(event);
+    if (!firstShow_) return;
+    firstShow_ = false;
+
+    // The very first fit computed at load time (VulkanViewport::
+    // rebuildSceneGraph()'s isInitialLoad path, since loadFiles() is called
+    // before show() - see main.cpp) is only ever a rough placeholder: the
+    // embedded Vulkan window's true on-screen size isn't reliably known until
+    // the window has actually been shown/laid out. Queued rather than called
+    // directly - showEvent() itself still fires before that layout has fully
+    // settled - so this runs once the event loop regains control; then
+    // ensureExtentSettled() (see its doc comment) waits for the window's real
+    // size to actually be reflected before fitToWindow() runs - the exact
+    // same fitToWindow() the "Fit to Window" menu action calls, so a
+    // subsequent manual Fit to Window is then a no-op.
+    QMetaObject::invokeMethod(
+        viewport_,
+        [this]() {
+            viewport_->ensureExtentSettled();
+            viewport_->fitToWindow();
+        },
+        Qt::QueuedConnection);
 }
 
 void MainWindow::loadFilesInternal(const std::vector<std::string>& paths)
