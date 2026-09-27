@@ -154,26 +154,13 @@ private:
     int lastHeight_ = 0;
     bool autoFit_ = true; // see setAutoFit()
 
-    // Set whenever fitContentToWindow(/*fill=*/true) runs (initial load,
-    // $image cycling), cleared by any subsequent manual zoom/pan. "Fill"
-    // deliberately crops whichever axis doesn't match the window's aspect
-    // ratio - that's the point, not something to reveal a scrollbar for -
-    // so while this is set, updateScrollBars() hides both unconditionally
-    // rather than reporting the (intentional) overflow. A manual zoom/pan
-    // after the fact is a real departure from that resting fill state, so
-    // scrollbars should - and, once this is cleared, again do - reflect it.
-    bool fillFitActive_ = false;
-
-    // `fill` picks the fit mode: false ("contain") scales the content down
-    // to the smaller of scaleX/scaleY so the whole thing is visible, possibly
-    // with letterbox margins - true ("cover") scales up to the larger of the
-    // two so the content fills the window edge-to-edge, cropping whichever
-    // axis overflows.
-    void fitToBounds(double minX, double minY, double maxX, double maxY, bool fill);
+    // "Contain": scales the content down to the smaller of scaleX/scaleY so
+    // the whole thing is visible, possibly with letterbox margins on one axis.
+    void fitToBounds(double minX, double minY, double maxX, double maxY);
 
     // Shared tail of fitToWindow()/the initial-load and image-switch auto-fit:
     // reads currentFitBoundsYDown() and calls fitToBounds() with it.
-    void fitContentToWindow(bool fill);
+    void fitContentToWindow();
 
     // Decodes loadedImageNames_[index] (via imageCache_) and, on success,
     // updates currentImageIndex_/loadedImages_/currentImageSize_ to match.
