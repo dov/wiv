@@ -7,10 +7,12 @@
 #include <vsgXchange/all.h>
 #include <vsgXchange/freetype.h>
 
+#include <QCoreApplication>
 #include <QGridLayout>
 #include <QLabel>
 #include <QScrollBar>
 #include <QSignalBlocker>
+#include <QThread>
 
 #include <algorithm>
 #include <cctype>
@@ -218,6 +220,13 @@ void VulkanViewport::resizeEvent(QResizeEvent* event)
     QWidget::resizeEvent(event);
     if (!camera_ || !projection_ || !window_ || !window_->windowAdapter) return;
 
+    // createWindowContainer()'s usual auto-sync of the embedded QWindow's
+    // geometry to its container widget does not reliably fire here (observed:
+    // window_->geometry() stuck at the WindowTraits-default 1280x1024 while
+    // this widget/container_ had already been laid out to a smaller size) -
+    // force it explicitly rather than relying on Qt to do it.
+    if (window_->geometry().size() != this->size()) window_->resize(this->size());
+
     // vsgQt::Window::resizeEvent (fired on the embedded QWindow itself, as
     // Qt's layout resizes the container to match this widget) already calls
     // windowAdapter->resize() to keep the swapchain in sync; here we only
@@ -227,7 +236,7 @@ void VulkanViewport::resizeEvent(QResizeEvent* event)
     auto extent = window_->windowAdapter->extent2D();
     if (extent.width == 0 || extent.height == 0) return;
 
-    if (camera_->viewportState) camera_->viewportState->set(0, 0, extent.width, extent.height);
+    syncRenderExtent(extent);
 
     // Preserve the current pixels-per-world-unit scale (rather than
     // re-fitting/rescaling the whole view): the visible half-extents just
@@ -420,6 +429,14 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
         projection_ = vsg::Orthographic::create(-100.0, 100.0, -100.0, 100.0, 0.01, 100.0);
         camera_ = vsg::Camera::create(projection_, lookAt, vsg::ViewportState::create(window_->windowAdapter->extent2D()));
 
+        // Rough placeholder only: window_->windowAdapter->extent2D() is not
+        // yet reliable here - loadFiles() runs before window.show() (see
+        // main.cpp), and separately the embedded native window doesn't
+        // always pick up its true on-screen size this early either (see
+        // MainWindow::showEvent()'s doc comment). MainWindow::showEvent()
+        // redoes this properly - via the exact same fitToWindow() the "Fit
+        // to Window" menu action calls - once the window is actually shown
+        // and both are guaranteed correct.
         fitToBounds(minXyd, -maxYyd, maxXyd, -minYyd);
     }
 
@@ -509,9 +526,9 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     mainView_->addChild(sceneGraph);
     mainView_->addChild(caliperTool_->root());
 
-    auto renderGraph = vsg::RenderGraph::create(window_->windowAdapter, mainView_);
+    renderGraph_ = vsg::RenderGraph::create(window_->windowAdapter, mainView_);
     auto commandGraph = vsg::CommandGraph::create(window_->windowAdapter);
-    commandGraph->addChild(renderGraph);
+    commandGraph->addChild(renderGraph_);
 
     viewer_->assignRecordAndSubmitTaskAndPresentation({labelPicker_->commandGraph(), commandGraph});
     viewer_->compile();
@@ -656,6 +673,29 @@ void VulkanViewport::switchToImage(int index)
     emit imageChanged(currentImageIndex_, imageCount(), QString::fromStdString(currentImageName()));
 }
 
+void VulkanViewport::syncRenderExtent(VkExtent2D extent)
+{
+    if (camera_ && camera_->viewportState) camera_->viewportState->set(0, 0, extent.width, extent.height);
+    if (!renderGraph_) return;
+
+    // vsg::RenderGraph::accept() compares getExtent() (the window's *actual
+    // current* extent, read fresh every frame) against previous_extent (a
+    // baseline frozen at whatever extent existed when renderGraph_ was
+    // constructed - see rebuildSceneGraph()) and, if they differ, calls
+    // resized(), which *proportionally rescales* the existing renderArea by
+    // the (possibly non-uniform, per-axis) ratio between those two extents -
+    // entirely independent of camera_->viewportState above. Snapping both
+    // renderArea and previous_extent directly to the real, current extent
+    // here - rather than leaving that stale baseline for accept() to rescale
+    // from - is what actually keeps the render area's aspect ratio correct;
+    // this is the mechanism that was producing a non-isotropic stretch no
+    // amount of camera-side fixing could touch.
+    renderGraph_->renderArea.offset = {0, 0};
+    renderGraph_->renderArea.extent = extent;
+    renderGraph_->previous_extent = extent;
+    renderGraph_->viewportState->set(0, 0, extent.width, extent.height);
+}
+
 void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double maxY)
 {
     if (!projection_ || !window_ || !window_->windowAdapter) return;
@@ -668,6 +708,8 @@ void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double m
     auto extent = window_->windowAdapter->extent2D();
     double canvasW = static_cast<double>(extent.width);
     double canvasH = static_cast<double>(extent.height);
+
+    syncRenderExtent(extent);
 
     // "Contain": scale to the smaller of scaleX/scaleY so the whole content
     // is visible, possibly with letterbox margins on one axis.
@@ -691,8 +733,8 @@ void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double m
     projection_->bottom = -halfH;
     projection_->top = halfH;
 
-    lastWidth_ = static_cast<int>(extent.width);
-    lastHeight_ = static_cast<int>(extent.height);
+    lastWidth_ = static_cast<int>(std::lround(canvasW));
+    lastHeight_ = static_cast<int>(std::lround(canvasH));
 
     viewer_->request();
     updateScrollBars();
@@ -701,6 +743,39 @@ void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double m
 void VulkanViewport::fitToWindow()
 {
     fitContentToWindow();
+}
+
+// window_->resize() (called from resizeEvent() to keep the embedded native
+// window in sync with its container) only *posts* that resize: the platform
+// plugin round-trips it (an X11 ConfigureRequest/ConfigureNotify exchange)
+// before window_->windowAdapter->extent2D() actually reflects it - observed
+// to still read the old, larger, default-traits size for a little while
+// after resizeEvent() has already returned. Calling fitToWindow() at the
+// wrong moment doesn't just under/over-size the fit (which self-corrects
+// once the projection is later redone against a matching extent) - it can
+// leave camera_->viewportState and the projection built from *different*
+// extents, which is a non-isotropic stretch, not just a wrong scale. So
+// callers doing the very first fit right after the window is shown (see
+// MainWindow::showEvent()) should call this first, to actually wait for that
+// round trip rather than guessing at the timing.
+void VulkanViewport::ensureExtentSettled()
+{
+    if (!window_ || !window_->windowAdapter) return;
+    double wantW = static_cast<double>(width()) * devicePixelRatioF();
+    double wantH = static_cast<double>(height()) * devicePixelRatioF();
+    if (wantW <= 0.0 || wantH <= 0.0) return;
+
+    for (int attempt = 0; attempt < 100; ++attempt)
+    {
+        auto extent = window_->windowAdapter->extent2D();
+        if (std::abs(static_cast<double>(extent.width) - wantW) < 1.5 &&
+            std::abs(static_cast<double>(extent.height) - wantH) < 1.5)
+            return;
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+        QThread::msleep(5);
+    }
+    // Gave up after ~0.5s: proceed with whatever extent2D() reports rather
+    // than hang forever - better a possibly-wrong fit than a frozen window.
 }
 
 void VulkanViewport::fitContentToWindow()

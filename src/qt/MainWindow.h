@@ -15,6 +15,7 @@ class QAction;
 class QMenu;
 class QDialog;
 class QDockWidget;
+class QShowEvent;
 
 namespace givqt
 {
@@ -32,6 +33,9 @@ public:
     // Loads `paths` into the viewport (used for files given on the command
     // line at startup).
     void loadFiles(const std::vector<std::string>& paths);
+
+protected:
+    void showEvent(QShowEvent* event) override;
 
 private:
     VulkanViewport* viewport_ = nullptr;
@@ -78,6 +82,10 @@ private:
     // goNextImage()/goPreviousImage()).
     QStringList directoryFiles_;
     int directoryFileIndex_ = -1;
+
+    // showEvent()'s guard for the deferred initial-load auto-fit - see its
+    // doc comment.
+    bool firstShow_ = true;
 
     void openFiles();
     void updateRecentFilesMenu();

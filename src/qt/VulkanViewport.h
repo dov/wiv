@@ -56,6 +56,12 @@ public:
     void zoomIn();
     void zoomOut();
     void fitToWindow();
+
+    // Spins the Qt event loop (bounded - never blocks indefinitely) until
+    // window_->windowAdapter->extent2D() reflects this widget's actual
+    // current size, or gives up. See its definition for why this is needed
+    // before the very first fitToWindow() call after the window is shown.
+    void ensureExtentSettled();
     void toggleBalloon();
     bool balloonEnabled() const;
 
@@ -128,6 +134,20 @@ private:
     vsg::ref_ptr<vsg::Camera> camera_;
     vsg::ref_ptr<vsg::Orthographic> projection_;
     vsg::ref_ptr<vsg::View> mainView_; // persists across rebuilds - see rebuildSceneGraph()
+
+    // vsg::RenderGraph::accept() maintains its *own* renderArea/viewportState
+    // (separate from camera_->viewportState!), seeded once at construction
+    // from camera_->getRenderArea() and the window's extent2D() *at that
+    // moment*; on every later frame where the window's current extent
+    // differs from that frozen baseline, it proportionally rescales the old
+    // renderArea by the (possibly non-uniform, per-axis) ratio - entirely
+    // bypassing whatever camera_->viewportState is set to afterwards. Kept
+    // as a member (rather than rebuildSceneGraph()'s previous local
+    // variable) so fitToBounds()/resizeEvent() can reset renderArea and its
+    // resize-tracking baseline directly, instead of letting that proportional
+    // rescale run (which is what was producing a non-isotropic stretch no
+    // amount of camera-side fixing could touch).
+    vsg::ref_ptr<vsg::RenderGraph> renderGraph_;
     vsg::ref_ptr<giv::PanZoomHandler> panZoom_;
     vsg::ref_ptr<giv::LabelPicker> labelPicker_;
     QLabel* balloonLabel_ = nullptr; // top-level Qt::ToolTip popup, see BalloonController.h
@@ -157,6 +177,14 @@ private:
     // "Contain": scales the content down to the smaller of scaleX/scaleY so
     // the whole thing is visible, possibly with letterbox margins on one axis.
     void fitToBounds(double minX, double minY, double maxX, double maxY);
+
+    // Keeps camera_->viewportState AND renderGraph_'s own renderArea/
+    // viewportState/previous_extent all matching `extent` - see
+    // renderGraph_'s doc comment for why the latter needs it explicitly too
+    // (vsg::RenderGraph::accept() otherwise proportionally rescales its own
+    // renderArea from a stale baseline instead of snapping to the real
+    // extent, which is what was causing the non-isotropic stretch).
+    void syncRenderExtent(VkExtent2D extent);
 
     // Shared tail of fitToWindow()/the initial-load and image-switch auto-fit:
     // reads currentFitBoundsYDown() and calls fitToBounds() with it.
