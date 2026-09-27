@@ -244,6 +244,20 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
     loadFiles({});
 }
 
+VulkanViewport::~VulkanViewport()
+{
+    // Unlike waitForGpuIdle() (bounded, used mid-session so a wedged GPU
+    // can't hang rebuildSceneGraph() forever), this runs once at shutdown,
+    // so an unconditional wait is fine - and necessary: with no destructor
+    // at all, the members below (viewer_ first, per C++ reverse-declaration-
+    // order) were destroyed while the GPU could still be mid-flight on the
+    // previous frame's submit/present, which is undefined behavior (observed
+    // as validation-layer heap corruption and a SIGSEGV inside
+    // libVkLayer_khronos_validation.so on quit, on whichever thread happened
+    // to touch the corrupted state next).
+    if (viewer_) viewer_->deviceWaitIdle();
+}
+
 void VulkanViewport::resizeEvent(QResizeEvent* event)
 {
     QWidget::resizeEvent(event);
@@ -472,7 +486,11 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     // was observed to eventually wedge the window: rendering kept running
     // but the Qt event loop stopped servicing input). Only needed once the
     // viewer has actually presented a frame before (i.e. never on the very
-    // first build).
+    // first build) - tracked by everBuiltSceneGraph_ below rather than this
+    // call's own isInitialLoad, since isInitialLoad is true for every full
+    // loadFiles() call (command-line, File>Open, ...), not just the
+    // constructor's bootstrap one: it also gates recreating the camera/
+    // auto-fit further down, which must happen on every such load.
     //
     // This used to call viewer_->deviceWaitIdle(), which waits unconditionally
     // (no timeout) for every device to go idle, including the outstanding
@@ -494,11 +512,12 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     // this loop at 1 (skipping 0) was exactly the bug the Vulkan validation
     // layer caught - vkDestroyPipeline/vkDestroyFence/vkFreeCommandBuffers
     // all firing on objects "currently in use by VkQueue/VkCommandBuffer".
-    if (!isInitialLoad && !waitForGpuIdle())
+    if (everBuiltSceneGraph_ && !waitForGpuIdle())
     {
         if (error) *error = "GPU is not responding; try again";
         return false;
     }
+    everBuiltSceneGraph_ = true;
 
     // Drop the previous build's event handlers (pan/zoom + balloon + caliper)
     // but keep the CloseHandler added once in the constructor.
