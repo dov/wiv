@@ -3,6 +3,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <vsg/io/convert_utf.h>
 #include <vsg/utils/Builder.h>
 
 #include <array>
@@ -349,7 +350,9 @@ void CaliperTool::rebuildGeometry()
         layout->color = kLabelColor;
 
         auto text = vsg::Text::create();
-        text->text = vsg::stringValue::create(label);
+        // Labels can contain non-ASCII unit prefixes (e.g. "µm"); vsg::stringValue
+        // iterates raw bytes rather than decoding UTF-8, so use wstringValue instead.
+        text->text = vsg::wstringValue::create(vsg::convert_utf<std::wstring>(label));
         text->font = font_;
         text->layout = layout;
         text->setup(0, options_);
