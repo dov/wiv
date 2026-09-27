@@ -29,6 +29,7 @@
 #include <QSet>
 #include <QString>
 
+class QAbstractItemView;
 class QListView;
 class QTreeView;
 class QToolButton;
@@ -72,12 +73,15 @@ private slots:
     void updateThumbnails();
     void onDirectoryChanged(const QString& path);
     void onPlaceClicked(const QModelIndex& index);
+    void onPlacesTreeExpanded(const QModelIndex& index);
+    void syncFoldersTreeToDirectory(const QString& path);
     void onDirectoryEnteredForRecents(const QString& path);
     void onAcceptedForRecents();
     void onPlacesContextMenu(const QPoint& pos);
     void onRemoveSelectedRecent();
     void onAddBookmarkClicked();
     void onViewModeButtonClicked(ViewMode mode);
+    void saveDirectoryViewState();
 
 public slots:
     void fillThumbnailCache(const QString& directory);
@@ -91,6 +95,8 @@ private:
     void populateDrives();
     QIcon placesFolderIcon() const;
     void installPlacesTree();
+    QStandardItem* makeLiveFolderItem(const QString& path);
+    void populateLiveFolderChildren(QStandardItem* item);
     void refreshRecentNode();
     void addRecentDirectory(const QString& path);
     void removeRecentDirectory(const QString& path);
@@ -104,6 +110,8 @@ private:
     void updateLoadingOverlay();
     void requestThumbnail(const QString& path, quint64 generation);
     void onThumbnailReady(const QString& path, const QImage& image, bool success, quint64 generation);
+    QAbstractItemView* activeFileView() const;
+    void restoreDirectoryViewState(const QString& directoryPath);
 
     static constexpr int kMaxRecents = 10;
 
@@ -150,6 +158,15 @@ private:
     bool directoryLoaded_ = false;
     QSet<QString> loadedDirectories_;
     QLabel* loadingOverlay_ = nullptr;
+
+    // Scroll position/selection to restore once the directory this dialog
+    // opens on has finished loading - captured from settings_ in the
+    // constructor, applied (and cleared) the first time onDirectoryLoaded
+    // fires for a matching path. Left as -1/empty once consumed, or if
+    // nothing was saved.
+    QString pendingRestoreDirectory_;
+    int pendingRestoreScrollPos_ = -1;
+    QString pendingRestoreSelectedFile_;
 
     friend class ThumbnailDelegate;
 };
