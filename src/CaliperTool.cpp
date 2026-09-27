@@ -214,6 +214,13 @@ void CaliperTool::refresh()
     rebuildGeometry();
 }
 
+void CaliperTool::setPixelSize(double pixelSize, const std::string& unit)
+{
+    pixelSize_ = pixelSize;
+    unit_ = unit;
+    refresh();
+}
+
 void CaliperTool::rebuildGeometry()
 {
     double wpp = worldPerPixel();
@@ -314,7 +321,8 @@ void CaliperTool::rebuildGeometry()
     }
     newRoot->addChild(jawStateGroup_);
 
-    std::string label = std::format("{:.3f}", dist);
+    lastDistPx_ = dist;
+    std::string label = std::format("{:.3f}{}", dist * pixelSize_, unit_);
 
     if (font_)
     {

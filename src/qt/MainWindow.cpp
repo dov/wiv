@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include "CalibrateDialog.h"
 #include "ImagePluginHost.h"
 #include "MarkTreeView.h"
 #include "OpenFileDialog.h"
@@ -160,6 +161,17 @@ void MainWindow::buildMenus()
     measureDistanceAction_ = toolsMenu->addAction("Measure Distance Diagonal", viewport_, &VulkanViewport::toggleMeasureDistance);
     measureDistanceAction_->setCheckable(true);
     measureDistanceAction_->setShortcut(QKeySequence("Z"));
+
+    toolsMenu->addAction("Calibrate Pixel Size...", this, [this]() {
+        spdlog::info("Calibrate Pixel Size dialog opened");
+        CalibrateDialog dlg(this, viewport_->pixelSize(), QString::fromStdString(viewport_->pixelSizeUnit()),
+                            viewport_->lastMeasureDistancePixels(), viewport_->currentImageSize());
+        connect(&dlg, &CalibrateDialog::calibrationChanged, this, [this](double pixelSize, QString unit) {
+            viewport_->setPixelCalibration(pixelSize, unit.toStdString());
+        });
+        dlg.exec();
+        spdlog::info("Calibrate Pixel Size dialog closed");
+    });
 
     auto editMenu = menuBar()->addMenu("&Edit");
     editMenu->addAction("Preferences...", this, [this]() {

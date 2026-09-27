@@ -111,6 +111,16 @@ public:
     void toggleMeasureDistance();
     bool measureDistanceEnabled() const { return measureEnabled_; }
 
+    // Tools > Calibrate Pixel Size - see CalibrateDialog.h. Reapplied to
+    // caliperTool_ on every scene rebuild (it's recreated each time - see
+    // rebuildSceneGraph()), so calibration survives across file loads/next-
+    // previousImage() within one wiv session.
+    void setPixelCalibration(double pixelSize, const std::string& unit);
+    double pixelSize() const { return pixelSize_; }
+    std::string pixelSizeUnit() const { return pixelSizeUnit_; }
+    double lastMeasureDistancePixels() const { return caliperTool_ ? caliperTool_->lastDistancePixels() : 0.0; }
+    std::optional<std::pair<double, double>> currentImageSize() const { return currentImageSize_; }
+
 signals:
     void sceneLoaded();
     void cursorWorldPosition(double x, double y);
@@ -157,6 +167,8 @@ private:
     vsg::ref_ptr<giv::CaliperTool> caliperTool_;
     vsg::ref_ptr<vsg::Font> caliperFont_;
     bool measureEnabled_ = false;
+    double pixelSize_ = 1.0; // see setPixelCalibration()
+    std::string pixelSizeUnit_;
 
     // giv-style scrollbars around the render surface: horizontal/vertical
     // pan controls, ranged over the current content bounds and disabled

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -146,6 +147,17 @@ struct SceneData
     // currently-displayed image, cycled by the user), not geometry
     // attached to a particular dataset.
     std::vector<std::string> images;
+
+    // $pixelsize <value> [<unit>] - giv's calibration directive (see
+    // GivParser::parseLine's "$pixelsize" handling and
+    // VulkanViewport::loadFiles, which feeds this to
+    // VulkanViewport::setPixelCalibration on load). Whole-file/whole-view
+    // concept, like `images` above - not attached to a particular dataset.
+    // std::nullopt if the file never sets it, so a load can tell "not
+    // specified" apart from an explicit "$pixelsize 1" and leave whatever
+    // calibration the user already dialed in alone.
+    std::optional<double> pixelSize;
+    std::string pixelSizeUnit;
 
     double minX = 1e30, minY = 1e30;
     double maxX = -1e30, maxY = -1e30;

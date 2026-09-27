@@ -434,9 +434,20 @@ void GivParser::parseLine(Dataset& ds, const char* line, size_t len, SceneData& 
             applyStyle(ds, tok.get(1));
         }
         else if (w0 == "$hide") ds.isVisible = false;
-        else if (w0 == "$name" || w0 == "$title" || w0 == "$pixelsize")
+        else if (w0 == "$pixelsize")
         {
-            // Documented as dead/no-op (or calibration-only, Phase 2) in giv itself.
+            // Whole-file calibration directive (giv's STRING_PIXEL_SIZE /
+            // cb_set_pixelsize) - not attached to `ds`, see SceneData::pixelSize.
+            double v = tok.getFloat(1);
+            if (!std::isnan(v))
+            {
+                scene.pixelSize = v;
+                scene.pixelSizeUnit = tok.size() > 2 ? tok.getRest(2) : std::string();
+            }
+        }
+        else if (w0 == "$name" || w0 == "$title")
+        {
+            // Documented as dead/no-op in giv itself.
         }
         // unrecognized directives are silently accepted for compatibility.
         return;
