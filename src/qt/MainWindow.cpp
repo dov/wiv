@@ -1,14 +1,15 @@
 #include "MainWindow.h"
 
 #include "MarkTreeView.h"
+#include "OpenFileDialog.h"
 #include "PreferencesDialog.h"
 #include "VulkanViewport.h"
 
 #include <QAction>
 #include <QApplication>
 #include <QDialog>
+#include <QDir>
 #include <QDockWidget>
-#include <QFileDialog>
 #include <QFileInfo>
 #include <QLabel>
 #include <QMenu>
@@ -172,9 +173,16 @@ void MainWindow::buildStatusBar()
 void MainWindow::openFiles()
 {
     QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
-    QString lastDir = settings.value("lastOpenDir").toString();
+    // Default to the process's current directory the first time this dialog
+    // ever opens (no "lastOpenDir" recorded yet), rather than whatever
+    // QFileDialog itself would otherwise default to.
+    QString lastDir = settings.value("lastOpenDir", QDir::currentPath()).toString();
 
-    QStringList files = QFileDialog::getOpenFileNames(this, "Open giv file(s)", lastDir, "giv files (*.giv);;All files (*)");
+    OpenFileDialog dlg(this, &settings);
+    dlg.setDirectory(lastDir);
+    if (dlg.exec() != QDialog::Accepted) return;
+
+    QStringList files = dlg.selectedFiles();
     if (files.isEmpty()) return;
 
     settings.setValue("lastOpenDir", QFileInfo(files.first()).absolutePath());
