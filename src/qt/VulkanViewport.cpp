@@ -507,6 +507,12 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     {
         mainView_->children.clear();
     }
+    // isInitialLoad reassigns camera_ to a brand-new vsg::Camera (see above) -
+    // without this, a second isInitialLoad (e.g. opening another file after
+    // the first) would leave mainView_ still pointing at the *old* camera,
+    // so every subsequent zoom/pan/fit (which all mutate the new camera_)
+    // would silently affect an orphaned object nothing ever renders with.
+    mainView_->camera = camera_;
     mainView_->addChild(vsg::createHeadlight());
     mainView_->addChild(sceneGraph);
     mainView_->addChild(caliperTool_->root());

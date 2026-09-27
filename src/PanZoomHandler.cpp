@@ -56,6 +56,17 @@ void PanZoomHandler::apply(vsg::MoveEvent& event)
 
     if (!window) return;
 
+    // A ButtonReleaseEvent can be lost - e.g. a right/middle-button drag that
+    // ends off this window (over a scrollbar, a menu, outside the app
+    // entirely) never delivers its release back here, since nothing grabs
+    // the pointer for the duration of the drag - which would otherwise latch
+    // dragging_/zoomDragging_ true forever, turning every future mouse move
+    // (not just deliberate drags) into an unwanted pan/zoom. event.mask
+    // reports which buttons are *actually* still down on every move, so
+    // resync against it rather than trusting the flags alone.
+    if (dragging_ && !(event.mask & vsg::BUTTON_MASK_2)) dragging_ = false;
+    if (zoomDragging_ && !(event.mask & vsg::BUTTON_MASK_3)) zoomDragging_ = false;
+
     int32_t dx = event.x - lastX_;
     int32_t dy = event.y - lastY_;
     lastX_ = event.x;
