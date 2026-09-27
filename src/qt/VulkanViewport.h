@@ -20,6 +20,7 @@
 
 #include <QColor>
 #include <QResizeEvent>
+#include <QSize>
 #include <QWidget>
 
 #include <memory>
@@ -174,6 +175,10 @@ private:
     int lastHeight_ = 0;
     bool autoFit_ = true; // see setAutoFit()
 
+    // See checkResizeSettling()/GivViewer::isResizeSettling's doc comment.
+    bool resizeSettling_ = false;
+    QSize pendingResizeExtent_;
+
     // "Contain": scales the content down to the smaller of scaleX/scaleY so
     // the whole thing is visible, possibly with letterbox margins on one axis.
     void fitToBounds(double minX, double minY, double maxX, double maxY);
@@ -185,6 +190,13 @@ private:
     // renderArea from a stale baseline instead of snapping to the real
     // extent, which is what was causing the non-isotropic stretch).
     void syncRenderExtent(VkExtent2D extent);
+
+    // Wired to viewer_->isResizeSettling: true while resizeEvent() has asked
+    // window_ to resize but window_->windowAdapter->extent2D() hasn't caught
+    // up to it yet (the resize is still pending, asynchronously - see
+    // ensureExtentSettled()'s doc comment). Clears resizeSettling_ (and
+    // returns false) the first time extent2D() matches pendingResizeExtent_.
+    bool checkResizeSettling();
 
     // Shared tail of fitToWindow()/the initial-load and image-switch auto-fit:
     // reads currentFitBoundsYDown() and calls fitToBounds() with it.

@@ -225,6 +225,26 @@ void LabelPicker::syncExtent(vsg::Viewer* viewer)
     if (extent.width == 0 || extent.height == 0) return;
     if (extent.width == extent_.width && extent.height == extent_.height) return;
 
+    // rebuild() below drops renderImageView_/captureImage_/renderGraph_'s
+    // framebuffer (and, via createLabelFramebuffer(), a freshly-created
+    // renderPass) - all of which this same frame's commandGraph_ (submitted
+    // moments ago in this call's own recordAndSubmit(), since this runs from
+    // GivViewer::render() right after present()) may still be executing on
+    // the GPU. Dropping those ref_ptrs before that work retires destroys
+    // them out from under an in-flight VkCommandBuffer - exactly the
+    // vkDestroyFramebuffer/RenderPass/Image "still in use" validation errors
+    // this was observed to produce (reproducibly: zoom, enable balloons,
+    // move the mouse over a few, then Fit to Window, which is what actually
+    // makes window_->extent2D() step over some off-by-one-frame rounding and
+    // finally disagree with extent_ here). See
+    // VulkanViewport::rebuildSceneGraph()'s identical fence-wait for the
+    // same reasoning/VUIDs, applied there to the main scene graph.
+    constexpr uint64_t kFenceTimeoutNs = 2'000'000'000; // 2 seconds
+    for (size_t relativeFrameIndex = 0; relativeFrameIndex <= 2; ++relativeFrameIndex)
+    {
+        if (viewer->waitForFences(relativeFrameIndex, kFenceTimeoutNs) != VK_SUCCESS) return; // GPU not caught up yet - try again next frame rather than risk destroying in-flight resources
+    }
+
     bool wasEnabled = !switch_->children.empty() && switch_->children.front().mask != vsg::MASK_OFF;
     rebuild(extent);
     // rebuild() replaces renderGraph_/captureCommands_ with new (uncompiled)

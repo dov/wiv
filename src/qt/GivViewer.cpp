@@ -19,6 +19,10 @@ inline double msSince(Clock::time_point t) { return std::chrono::duration<double
 
 void GivViewer::render(double simulationTime)
 {
+    // Left pending (not consumed below) rather than dropped, so whatever
+    // requested this frame still gets one once the resize settles - see
+    // isResizeSettling's doc comment.
+    if (isResizeSettling && isResizeSettling()) return;
     if (!continuousUpdate && requests.load() == 0) return;
     auto tPhase = Clock::now();
 
