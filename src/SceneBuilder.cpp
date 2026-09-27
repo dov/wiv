@@ -1,5 +1,7 @@
 #include "SceneBuilder.h"
 
+#include <vsg/io/convert_utf.h>
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -1105,7 +1107,9 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
                     if (font)
                     {
                         auto text = vsg::Text::create();
-                        text->text = vsg::stringValue::create(item.text);
+                        // vsg::stringValue iterates raw bytes rather than decoding UTF-8,
+                        // which corrupts non-ASCII text; use wstringValue instead.
+                        text->text = vsg::wstringValue::create(vsg::convert_utf<std::wstring>(item.text));
                         text->font = font;
                         text->layout = layout;
                         text->setup(0, options_);
