@@ -150,7 +150,8 @@ void MainWindow::buildMenus()
     showMarksAction_->setChecked(true);
     showMarksAction_->setShortcut(QKeySequence("M"));
 
-    viewMenu->addAction("Mark Browser...", this, &MainWindow::showMarkBrowser);
+    auto markBrowserAction = viewMenu->addAction("Mark Browser...", this, &MainWindow::showMarkBrowser);
+    markBrowserAction->setShortcut(QKeySequence("O"));
 
     markBrowserPanelAction_ = new QAction("Mark Browser as Panel", this);
     markBrowserPanelAction_->setCheckable(true);
