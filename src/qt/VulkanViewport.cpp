@@ -565,7 +565,15 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     if (!labelPicker_)
         labelPicker_ = giv::LabelPicker::create(window_->windowAdapter, camera_, builder.labelGraph());
     else
+    {
+        // isInitialLoad above may have just replaced camera_ with a brand-new
+        // vsg::Camera - labelPicker_ itself is preserved across rebuilds (see
+        // its own doc comment), so without this it would keep rendering
+        // against the *previous* camera's projection/view forever. See
+        // LabelPicker::updateCamera()'s doc comment.
+        if (isInitialLoad) labelPicker_->updateCamera(camera_);
         labelPicker_->updateScene(builder.labelGraph());
+    }
     balloonController_ = giv::BalloonController::create(&scene_, labelPicker_, balloonLabel_, window_);
     viewer_->addEventHandler(balloonController_);
     viewer_->balloonController = balloonController_;
@@ -714,6 +722,42 @@ std::string VulkanViewport::currentImageName() const
 {
     if (currentImageIndex_ < 0 || currentImageIndex_ >= static_cast<int>(loadedImageNames_.size())) return {};
     return loadedImageNames_[currentImageIndex_];
+}
+
+QString VulkanViewport::pixelValueText(double worldX, double worldY) const
+{
+    if (loadedImages_.empty() || !currentImageSize_) return {};
+    const giv::LoadedImage& img = loadedImages_.front();
+
+    // worldX/worldY here are exactly what PanZoomHandler::apply(MoveEvent&)
+    // hands to onCursorMove: worldX is the raw (y-up) VSG world X, but
+    // worldY is already negated back to y-down there - and since
+    // SceneBuilder places the image's top-left at world (0,0) extending to
+    // (w,-h), both worldX and worldY are already image pixel coords as-is.
+    int px = static_cast<int>(std::floor(worldX));
+    int py = static_cast<int>(std::floor(worldY));
+    if (px < 0 || py < 0 || px >= img.width || py >= img.height) return {};
+
+    const uint8_t* p = &img.rgba[(static_cast<size_t>(py) * img.width + px) * 4];
+    uint8_t r = p[0], g = p[1], b = p[2], a = p[3];
+
+    if (r == g && g == b)
+        return QString(" [%1] = #%2").arg(r).arg(r, 2, 16, QChar('0')).toUpper();
+
+    QString hex = QString("#%1%2%3")
+                      .arg(r, 2, 16, QChar('0'))
+                      .arg(g, 2, 16, QChar('0'))
+                      .arg(b, 2, 16, QChar('0'))
+                      .toUpper();
+    if (a != 255)
+        return QString(" [%1 %2 %3 %4] = %5%6")
+            .arg(r, 3)
+            .arg(g, 3)
+            .arg(b, 3)
+            .arg(a, 3)
+            .arg(hex)
+            .arg(QString("%1").arg(a, 2, 16, QChar('0')).toUpper());
+    return QString(" [%1 %2 %3] = %4").arg(r, 3).arg(g, 3).arg(b, 3).arg(hex);
 }
 
 void VulkanViewport::nextImage()
