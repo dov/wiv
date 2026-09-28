@@ -48,6 +48,7 @@ private:
     QString lastCursorText_;
     QString lastMeasureText_;
     QString loadedBaseName_;
+    QString lastLoadSummary_;
 
     QAction* balloonAction_ = nullptr;
     QAction* forceOpaqueAction_ = nullptr;

@@ -60,6 +60,20 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 
     connect(viewport_, &VulkanViewport::sceneLoaded, this, [this]() {
         if (markTreeView_) markTreeView_->rebuildFromScene();
+        const auto& scene = viewport_->sceneData();
+        if (!scene.datasets.empty())
+        {
+            size_t totalPoints = 0;
+            for (const auto& ds : scene.datasets) totalPoints += ds.pointCount();
+            lastLoadSummary_ = QString("Loaded %1: %2 dataset(s), %3 point(s)")
+                                    .arg(loadedBaseName_)
+                                    .arg(scene.datasets.size())
+                                    .arg(totalPoints);
+        }
+        else
+        {
+            lastLoadSummary_.clear();
+        }
     });
     connect(viewport_, &VulkanViewport::cursorWorldPosition, this, [this](double x, double y) {
         lastCursorText_ = QString("(%1, %2)").arg(x, 0, 'f', 2).arg(y, 0, 'f', 2);
@@ -78,7 +92,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         if (count == 0)
         {
             setWindowTitle(QString("wiv: %1").arg(loadedBaseName_));
-            infoLabel_->setText(QString("Loaded: %1").arg(loadedBaseName_));
+            infoLabel_->setText(lastLoadSummary_.isEmpty() ? QString("Loaded: %1").arg(loadedBaseName_)
+                                                            : lastLoadSummary_);
             return;
         }
         QString baseName = QFileInfo(filename).fileName();
