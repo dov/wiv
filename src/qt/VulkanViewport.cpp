@@ -489,9 +489,8 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     // viewer has actually presented a frame before (i.e. never on the very
     // first build) - tracked by everBuiltSceneGraph_ below rather than this
     // call's own isInitialLoad, since isInitialLoad is true for every full
-    // loadFiles() call (command-line, File>Open, ...), not just the
-    // constructor's bootstrap one: it also gates recreating the camera/
-    // auto-fit further down, which must happen on every such load.
+    // loadFiles() call (command-line, File>Open, directory navigation, ...),
+    // not just the constructor's bootstrap one.
     //
     // This used to call viewer_->deviceWaitIdle(), which waits unconditionally
     // (no timeout) for every device to go idle, including the outstanding
@@ -529,23 +528,33 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
                                    }),
                    handlers.end());
 
-    if (isInitialLoad)
+    // A brand-new camera/projection is only needed on the very first build
+    // ever (camera_ still null) - every subsequent loadFiles() (File>Open,
+    // directory navigation, ...) reuses the existing one so that, when
+    // autoFit_ is off, the previously dialed-in zoom/pan carries over onto
+    // the newly loaded content instead of resetting - matching the
+    // non-autofit branch of switchToImage() further down this file.
+    bool needsNewCamera = !camera_;
+    if (needsNewCamera)
+    {
+        auto lookAt = vsg::LookAt::create(vsg::dvec3(0.0, 0.0, 1.0), vsg::dvec3(0.0, 0.0, 0.0), vsg::dvec3(0.0, 1.0, 0.0));
+        projection_ = vsg::Orthographic::create(-100.0, 100.0, -100.0, 100.0, 0.01, 100.0);
+        camera_ = vsg::Camera::create(projection_, lookAt, vsg::ViewportState::create(window_->windowAdapter->extent2D()));
+    }
+
+    if (isInitialLoad && (needsNewCamera || autoFit_))
     {
         double minXyd, minYyd, maxXyd, maxYyd;
         currentFitBoundsYDown(minXyd, minYyd, maxXyd, maxYyd);
 
-        auto lookAt = vsg::LookAt::create(vsg::dvec3(0.0, 0.0, 1.0), vsg::dvec3(0.0, 0.0, 0.0), vsg::dvec3(0.0, 1.0, 0.0));
-        projection_ = vsg::Orthographic::create(-100.0, 100.0, -100.0, 100.0, 0.01, 100.0);
-        camera_ = vsg::Camera::create(projection_, lookAt, vsg::ViewportState::create(window_->windowAdapter->extent2D()));
-
-        // Rough placeholder only: window_->windowAdapter->extent2D() is not
-        // yet reliable here - loadFiles() runs before window.show() (see
-        // main.cpp), and separately the embedded native window doesn't
-        // always pick up its true on-screen size this early either (see
-        // MainWindow::showEvent()'s doc comment). MainWindow::showEvent()
-        // redoes this properly - via the exact same fitToWindow() the "Fit
-        // to Window" menu action calls - once the window is actually shown
-        // and both are guaranteed correct.
+        // Rough placeholder only when needsNewCamera: window_->windowAdapter
+        // ->extent2D() is not yet reliable here - loadFiles() runs before
+        // window.show() (see main.cpp), and separately the embedded native
+        // window doesn't always pick up its true on-screen size this early
+        // either (see MainWindow::showEvent()'s doc comment).
+        // MainWindow::showEvent() redoes this properly - via the exact same
+        // fitToWindow() the "Fit to Window" menu action calls - once the
+        // window is actually shown and both are guaranteed correct.
         fitToBounds(minXyd, -maxYyd, maxXyd, -minYyd);
     }
 
@@ -567,12 +576,12 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
         labelPicker_ = giv::LabelPicker::create(window_->windowAdapter, camera_, builder.labelGraph());
     else
     {
-        // isInitialLoad above may have just replaced camera_ with a brand-new
-        // vsg::Camera - labelPicker_ itself is preserved across rebuilds (see
-        // its own doc comment), so without this it would keep rendering
-        // against the *previous* camera's projection/view forever. See
-        // LabelPicker::updateCamera()'s doc comment.
-        if (isInitialLoad) labelPicker_->updateCamera(camera_);
+        // needsNewCamera above may have just replaced camera_ with a
+        // brand-new vsg::Camera - labelPicker_ itself is preserved across
+        // rebuilds (see its own doc comment), so without this it would keep
+        // rendering against the *previous* camera's projection/view forever.
+        // See LabelPicker::updateCamera()'s doc comment.
+        if (needsNewCamera) labelPicker_->updateCamera(camera_);
         labelPicker_->updateScene(builder.labelGraph());
     }
     balloonController_ = giv::BalloonController::create(&scene_, labelPicker_, balloonLabel_, window_);
@@ -638,11 +647,12 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     {
         mainView_->children.clear();
     }
-    // isInitialLoad reassigns camera_ to a brand-new vsg::Camera (see above) -
-    // without this, a second isInitialLoad (e.g. opening another file after
-    // the first) would leave mainView_ still pointing at the *old* camera,
-    // so every subsequent zoom/pan/fit (which all mutate the new camera_)
-    // would silently affect an orphaned object nothing ever renders with.
+    // needsNewCamera reassigns camera_ to a brand-new vsg::Camera (see
+    // above) - without this, that first reassignment would leave mainView_
+    // still pointing at the *old* camera, so every subsequent zoom/pan/fit
+    // (which all mutate the new camera_) would silently affect an orphaned
+    // object nothing ever renders with. Harmless to reassign the same
+    // reference on every other rebuild too.
     mainView_->camera = camera_;
     mainView_->addChild(vsg::createHeadlight());
     mainView_->addChild(sceneGraph);
@@ -865,6 +875,8 @@ VulkanViewport::ContrastState VulkanViewport::currentContrastState()
         ContrastState defaultState;
         defaultState.min = src.sampleMin;
         defaultState.max = src.sampleMax;
+        defaultState.colormapId = lastColormapId_;
+        defaultState.colormapEnabled = lastColormapEnabled_;
         it = contrastState_.emplace(path, defaultState).first;
     }
     return it->second;
@@ -893,6 +905,8 @@ void VulkanViewport::setColormap(giv::colormaps::Id id, bool enabled)
     state.colormapId = id;
     state.colormapEnabled = enabled;
     contrastState_[currentImageName()] = state;
+    lastColormapId_ = id;
+    lastColormapEnabled_ = enabled;
 
     recomputeDisplayImage();
     QString error;
