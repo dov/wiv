@@ -41,12 +41,22 @@ extern "C"
         // TIFFReadRGBAImageOriented) should just leave this at 1.
         int orientation;
 
-        // Optional raw single-channel sample buffer: width*height samples,
-        // row-major, top-to-bottom, each sampleType wide (1/2/4 bytes).
-        // WIV_SAMPLE_NONE/NULL for plugins/formats with no meaningful
-        // dynamic range beyond the RGBA8 preview (e.g. color JPEG/WebP).
+        // Optional raw single-channel sample buffer: width*height*depth
+        // samples, row-major, top-to-bottom, slice-major (slice 0's
+        // width*height samples, then slice 1's, ...), each sampleType wide
+        // (1/2/4 bytes). WIV_SAMPLE_NONE/NULL for plugins/formats with no
+        // meaningful dynamic range beyond the RGBA8 preview (e.g. color
+        // JPEG/WebP).
         WivSampleType sampleType;
         void* samples;
+
+        // Number of 2D slices stacked in `samples` (1 for an ordinary 2D
+        // image). >1 for formats that carry a depth axis (npy 3D arrays,
+        // FITS NAXIS=3, multi-frame DICOM) - see giv's Up/Down slice-cycling
+        // (giv-win.cc's current_slice). `rgba` is always just a single
+        // width*height*4 preview (slice 0) - the host regenerates the
+        // per-slice display buffer from `samples` (see DisplayImage.h).
+        int depth;
     } WivPluginImage;
 
     // Does this plugin recognize `filename` (by extension)? Called by the

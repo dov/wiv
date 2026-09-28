@@ -741,17 +741,19 @@ QString VulkanViewport::pixelValueText(double worldX, double worldY) const
     if (px < 0 || py < 0 || px >= img.width || py >= img.height) return {};
 
     const size_t sampleIdx = static_cast<size_t>(py) * img.width + px;
-    const uint8_t* p = &img.rgba[sampleIdx * 4];
+    const uint8_t* p = &img.rgba[sampleIdx * 4]; // img (displayImages_) already holds only the current slice's pixels
     uint8_t r = p[0], g = p[1], b = p[2], a = p[3];
 
     if (raw.sampleType != WIV_SAMPLE_NONE)
     {
+        // raw.samples holds every slice - offset into the currently-selected one.
+        const size_t rawIdx = static_cast<size_t>(raw.width) * raw.height * currentSlice_ + sampleIdx;
         double native;
         switch (raw.sampleType)
         {
-            case WIV_SAMPLE_U8: native = raw.samples[sampleIdx]; break;
-            case WIV_SAMPLE_U16: native = reinterpret_cast<const uint16_t*>(raw.samples.data())[sampleIdx]; break;
-            case WIV_SAMPLE_FLOAT: native = reinterpret_cast<const float*>(raw.samples.data())[sampleIdx]; break;
+            case WIV_SAMPLE_U8: native = raw.samples[rawIdx]; break;
+            case WIV_SAMPLE_U16: native = reinterpret_cast<const uint16_t*>(raw.samples.data())[rawIdx]; break;
+            case WIV_SAMPLE_FLOAT: native = reinterpret_cast<const float*>(raw.samples.data())[rawIdx]; break;
             default: native = 0.0; break;
         }
         QString hex = QString("#%1%2%3")
@@ -793,15 +795,41 @@ void VulkanViewport::previousImage()
     switchToImage((currentImageIndex_ - 1 + static_cast<int>(loadedImageNames_.size())) % static_cast<int>(loadedImageNames_.size()));
 }
 
+void VulkanViewport::nextSlice()
+{
+    const int count = sliceCount();
+    if (count < 2) return;
+    currentSlice_ = (currentSlice_ + 1) % count;
+    recomputeDisplayImage();
+    QString error;
+    if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
+        spdlog::error("Failed to switch slice: {}", error.toStdString());
+    emit sliceChanged(currentSlice_, count);
+}
+
+void VulkanViewport::previousSlice()
+{
+    const int count = sliceCount();
+    if (count < 2) return;
+    currentSlice_ = (currentSlice_ - 1 + count) % count;
+    recomputeDisplayImage();
+    QString error;
+    if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
+        spdlog::error("Failed to switch slice: {}", error.toStdString());
+    emit sliceChanged(currentSlice_, count);
+}
+
 bool VulkanViewport::decodeImageAt(int index)
 {
     if (index < 0 || index >= static_cast<int>(loadedImageNames_.size())) return false;
     const giv::LoadedImage* img = imageCache_.get(loadedImageNames_[static_cast<size_t>(index)]);
     if (!img) return false;
     currentImageIndex_ = index;
+    currentSlice_ = 0;
     loadedImages_ = {*img};
     currentImageSize_ = std::make_pair(static_cast<double>(img->width), static_cast<double>(img->height));
     recomputeDisplayImage();
+    emit sliceChanged(currentSlice_, sliceCount());
     return true;
 }
 
@@ -818,7 +846,8 @@ void VulkanViewport::recomputeDisplayImage()
     if (src.sampleType != WIV_SAMPLE_NONE)
     {
         const ContrastState state = currentContrastState();
-        giv::renderDisplayRgba(src, state.min, state.max, state.colormapId, state.colormapEnabled, display.rgba);
+        giv::renderDisplayRgba(src, state.min, state.max, state.colormapId, state.colormapEnabled, display.rgba,
+                                currentSlice_);
     }
     displayImages_ = {std::move(display)};
 }
@@ -881,7 +910,8 @@ std::array<uint32_t, 256> VulkanViewport::computeHistogram() const
 
     const float range = img.sampleMax - img.sampleMin;
     const size_t pixelCount = static_cast<size_t>(img.width) * img.height;
-    for (size_t i = 0; i < pixelCount; ++i)
+    const size_t sliceOffset = pixelCount * static_cast<size_t>(currentSlice_);
+    for (size_t i = sliceOffset; i < sliceOffset + pixelCount; ++i)
     {
         double v;
         switch (img.sampleType)

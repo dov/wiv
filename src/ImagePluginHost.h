@@ -29,9 +29,14 @@ struct LoadedImage
     // the Contrast/Color Table tools. sampleType == WIV_SAMPLE_NONE for
     // images with no raw dynamic range beyond the RGBA8 preview above.
     WivSampleType sampleType = WIV_SAMPLE_NONE;
-    std::vector<uint8_t> samples;
-    float sampleMin = 0.0f; // full-image scan, computed once at load
+    std::vector<uint8_t> samples; // width*height*depth samples, slice-major
+    float sampleMin = 0.0f; // full-volume scan, computed once at load
     float sampleMax = 0.0f;
+
+    // Number of stacked 2D slices in `samples` (1 for an ordinary 2D
+    // image) - see WivPluginImage::depth. VulkanViewport's currentSlice_
+    // selects which slice of `samples` is rendered/reported on.
+    int depth = 1;
 };
 
 class ImagePluginHost

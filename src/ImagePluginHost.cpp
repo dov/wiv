@@ -84,6 +84,13 @@ void applyOrientation(LoadedImage& image, int orientation)
     if (orientation <= 1 || orientation > 8)
         return;
 
+    // Multi-slice volumes (npy/FITS/DICOM stacks) have no EXIF/TIFF
+    // orientation concept - none of those plugins set anything but 1, so
+    // this is just a safety net against reorderBuffer() misinterpreting a
+    // multi-slice sample buffer as a single width*height*elemSize one.
+    if (image.depth > 1)
+        return;
+
     const int w = image.width;
     const int h = image.height;
     if (!image.samples.empty())
@@ -95,11 +102,10 @@ void applyOrientation(LoadedImage& image, int orientation)
         std::swap(image.width, image.height);
 }
 
-// Reads sample (x,y) as a double, regardless of sampleType - mirrors giv's
-// giv_image_get_value().
-double sampleValue(const LoadedImage& image, int x, int y)
+// Reads flat sample `idx` (0..width*height*depth) as a double, regardless
+// of sampleType - mirrors giv's giv_image_get_value().
+double sampleValue(const LoadedImage& image, size_t idx)
 {
-    const size_t idx = static_cast<size_t>(y) * image.width + x;
     switch (image.sampleType)
     {
         case WIV_SAMPLE_U8:
@@ -113,8 +119,8 @@ double sampleValue(const LoadedImage& image, int x, int y)
     }
 }
 
-// Full linear scan for the image's native-value min/max - mirrors giv's
-// giv_image_get_min_max() (no shortcuts/caching there either).
+// Full linear scan (over every slice) for the image's native-value min/max -
+// mirrors giv's giv_image_get_min_max() (no shortcuts/caching there either).
 void computeSampleMinMax(LoadedImage& image)
 {
     if (image.samples.empty())
@@ -122,13 +128,13 @@ void computeSampleMinMax(LoadedImage& image)
 
     double lo = std::numeric_limits<double>::max();
     double hi = std::numeric_limits<double>::lowest();
-    for (int y = 0; y < image.height; ++y)
-        for (int x = 0; x < image.width; ++x)
-        {
-            double v = sampleValue(image, x, y);
-            lo = std::min(lo, v);
-            hi = std::max(hi, v);
-        }
+    const size_t count = static_cast<size_t>(image.width) * image.height * image.depth;
+    for (size_t idx = 0; idx < count; ++idx)
+    {
+        double v = sampleValue(image, idx);
+        lo = std::min(lo, v);
+        hi = std::max(hi, v);
+    }
 
     image.sampleMin = static_cast<float>(lo);
     image.sampleMax = static_cast<float>(hi);
@@ -215,10 +221,11 @@ std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename)
         result.height = img->height;
         result.rgba.assign(img->rgba, img->rgba + static_cast<size_t>(img->width) * img->height * 4);
         result.sampleType = img->sampleType;
+        result.depth = std::max(1, img->depth);
         if (img->sampleType != WIV_SAMPLE_NONE && img->samples)
         {
-            const size_t bytes =
-                static_cast<size_t>(img->width) * img->height * wiv_plugin::sampleTypeSize(img->sampleType);
+            const size_t bytes = static_cast<size_t>(img->width) * img->height * result.depth *
+                                  wiv_plugin::sampleTypeSize(img->sampleType);
             const auto* samplesBytes = static_cast<const uint8_t*>(img->samples);
             result.samples.assign(samplesBytes, samplesBytes + bytes);
         }

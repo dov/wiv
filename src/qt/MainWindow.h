@@ -49,6 +49,7 @@ private:
     QLabel* infoLabel_ = nullptr;
     QString lastCursorText_;
     QString lastMeasureText_;
+    QString lastSliceText_; // "Slice N/D" for the current multi-slice image, empty otherwise - see sliceChanged
     QString loadedBaseName_;
     QString lastLoadSummary_;
 
@@ -57,6 +58,8 @@ private:
     QAction* autoFitAction_ = nullptr;
     QAction* nextImageAction_ = nullptr;
     QAction* previousImageAction_ = nullptr;
+    QAction* nextSliceAction_ = nullptr;
+    QAction* previousSliceAction_ = nullptr;
     QAction* showMarksAction_ = nullptr;
     QAction* markBrowserPanelAction_ = nullptr;
     QAction* measureDistanceAction_ = nullptr;
@@ -98,6 +101,11 @@ private:
     // doc comment.
     bool firstShow_ = true;
 
+    // Combines lastCursorText_/lastMeasureText_/lastSliceText_ into the
+    // status-bar label's text - see the cursorWorldPosition/
+    // measurementChanged/sliceChanged connections built in the constructor.
+    QString statusLineText() const;
+
     void openFiles();
     void updateRecentFilesMenu();
     void addRecentFile(const QString& path);
@@ -118,6 +126,11 @@ private:
     void goNextImage();
     void goPreviousImage();
     void updateNavigationActionsEnabled();
+
+    // Enables/disables nextSliceAction_/previousSliceAction_ for the
+    // currently-displayed image's slice count (viewport_->sliceCount()) -
+    // called whenever the displayed image changes.
+    void updateSliceActionsEnabled();
 
     void showMarkBrowser();
     void setMarkBrowserPlacement(bool asPanel);

@@ -18,6 +18,7 @@
     },
     "tiff",
     "libwebp",
-    "spdlog"
+    "spdlog",
+    "cfitsio"
   ]
 }

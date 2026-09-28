@@ -25,8 +25,10 @@ struct LoadedImage;
 // (colormapEnabled == false) or looked up in colormaps::lut(colormapId).
 // If src has no raw sample buffer (sampleType == WIV_SAMPLE_NONE, e.g. a
 // color image), src.rgba is copied through unchanged - contrast/colormap
-// only apply to genuine single-channel sample data.
+// only apply to genuine single-channel sample data. `slice` (0..src.depth-1)
+// selects which of src's stacked slices to render - see WivPluginImage::depth.
 void renderDisplayRgba(const LoadedImage& src, float contrastMin, float contrastMax,
-                        colormaps::Id colormapId, bool colormapEnabled, std::vector<uint8_t>& outRgba);
+                        colormaps::Id colormapId, bool colormapEnabled, std::vector<uint8_t>& outRgba,
+                        int slice = 0);
 
 } // namespace giv

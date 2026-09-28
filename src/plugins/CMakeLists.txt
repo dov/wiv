@@ -34,3 +34,18 @@ target_link_libraries(wiv_plugin_tiff PRIVATE TIFF::TIFF)
 find_package(WebP CONFIG REQUIRED)
 wiv_add_plugin(webp webp/webp_plugin.cpp)
 target_link_libraries(wiv_plugin_webp PRIVATE WebP::webp)
+
+wiv_add_plugin(npy npy/npy_plugin.cpp)
+
+wiv_add_plugin(dicom dicom/dicom_plugin.cpp)
+
+# cfitsio ships a CMake config (CFITSIO::cfitsio) via vcpkg, but Fedora's
+# cfitsio-devel package only provides a pkg-config file - fall back to that
+# when the CMake config isn't found (e.g. building against the system lib).
+find_package(cfitsio CONFIG QUIET)
+if(NOT cfitsio_FOUND)
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(CFITSIO REQUIRED IMPORTED_TARGET cfitsio)
+endif()
+wiv_add_plugin(fits fits/fits_plugin.cpp)
+target_link_libraries(wiv_plugin_fits PRIVATE $<IF:$<TARGET_EXISTS:CFITSIO::cfitsio>,CFITSIO::cfitsio,PkgConfig::CFITSIO>)
