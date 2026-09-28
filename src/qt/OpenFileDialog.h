@@ -60,6 +60,17 @@ public:
     // MainWindow already uses for its own preferences.
     explicit OpenFileDialog(QWidget* parent, QSettings* settings);
 
+    // QFileDialog::setFileMode() recomputes the model's filter via
+    // QFileDialogPrivate::filterForMode(), which unconditionally ORs in
+    // QDir::Dirs | QDir::AllDirs | QDir::Drives - undoing the constructor's
+    // files-only setFilter(QDir::Files) and bringing directories back into
+    // the grid. Not currently called after construction anywhere in wiv,
+    // but shadowed defensively so any future caller's setFileMode() through
+    // an OpenFileDialog-typed reference can't reintroduce that. QFileDialog::
+    // setFileMode() isn't virtual, so this only takes effect when the static
+    // type of the call is OpenFileDialog, not a QFileDialog base pointer.
+    void setFileMode(QFileDialog::FileMode mode);
+
 protected:
     void showEvent(QShowEvent* event) override;
     void closeEvent(QCloseEvent* event) override;

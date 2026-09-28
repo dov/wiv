@@ -8,6 +8,11 @@
 
 #include "QtAwesome.h"
 
+#ifdef _WIN32
+#include <shlobj.h>
+#include <windows.h>
+#endif
+
 #include <QAbstractFileIconProvider>
 #include <QAbstractItemView>
 #include <QAbstractProxyModel>
@@ -85,6 +90,33 @@ public:
         return suffix.isEmpty() ? QObject::tr("File") : suffix.toUpper() + QStringLiteral(" File");
     }
 };
+
+// Get the Windows Explorer-style display name for a path (e.g., "Local Disk (C:)")
+// Uses Windows Shell API to get the exact name shown in "This PC".
+// On Linux, returns the path as-is (no drive letters on Linux).
+QString getShellDisplayName(const QString& path)
+{
+#ifdef _WIN32
+    // Normalize path: Qt may use forward slashes, but Windows Shell API needs
+    // backslashes. Drive roots must end with backslash (e.g., "C:\").
+    QString normalized = path;
+    normalized.replace('/', '\\');
+    if (!normalized.endsWith('\\')) normalized.append('\\');
+
+    SHFILEINFOW sfi = {};
+    std::wstring wpath = normalized.toStdWString();
+    if (SHGetFileInfoW(wpath.c_str(), 0, &sfi, sizeof(sfi), SHGFI_DISPLAYNAME))
+    {
+        QString displayName = QString::fromWCharArray(sfi.szDisplayName);
+        if (!displayName.isEmpty()) return displayName;
+    }
+    // Fallback on Windows: return normalized path with backslashes
+    return normalized;
+#else
+    // On Linux, just return the path as-is
+    return path;
+#endif
+}
 
 // True if `path` is a wiv-openable file: a .giv scene, an .svg (loaded as
 // vector shapes, not through the plugin host), or anything
@@ -547,6 +579,14 @@ OpenFileDialog::OpenFileDialog(QWidget* parent, QSettings* settings)
     installPlacesTree();
 }
 
+// See the comment on the declaration: re-applies the files-only filter after
+// the base class's setFileMode() recomputes (and would otherwise widen) it.
+void OpenFileDialog::setFileMode(QFileDialog::FileMode mode)
+{
+    QFileDialog::setFileMode(mode);
+    setFilter(QDir::Files);
+}
+
 // Explorer-style pastel-yellow folder icon for the left-pane directory rows
 // (Recent / Bookmark children) - the same fill color as the folder icons in
 // the file list (see OpenFileDialog's constructor).
@@ -631,6 +671,11 @@ void OpenFileDialog::populateDrives()
 
     QPointer<OpenFileDialog> self(this);
     std::thread([self]() {
+#ifdef _WIN32
+        // SHGetFileInfoW (via getShellDisplayName()) needs COM initialized on
+        // the calling thread.
+        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+#endif
         struct DriveEntry
         {
             QString rootPath;
@@ -640,10 +685,17 @@ void OpenFileDialog::populateDrives()
         for (const QStorageInfo& info : QStorageInfo::mountedVolumes())
         {
             if (!info.isValid() || !info.isReady()) continue;
+#ifdef _WIN32
+            QString label = getShellDisplayName(info.rootPath());
+#else
             QString label = info.displayName();
             if (label.isEmpty()) label = info.rootPath();
+#endif
             drives.push_back({info.rootPath(), label});
         }
+#ifdef _WIN32
+        CoUninitialize();
+#endif
 
         QMetaObject::invokeMethod(qApp, [self, drives]() {
             if (!self || !self->myComputerNode_) return;
@@ -694,7 +746,7 @@ void OpenFileDialog::populateDrives()
 QStandardItem* OpenFileDialog::makeLiveFolderItem(const QString& path)
 {
     QString label = QFileInfo(path).fileName();
-    if (label.isEmpty()) label = path; // drive root, e.g. "/"
+    if (label.isEmpty()) label = getShellDisplayName(path); // drive root, e.g. "/" or "Local Disk (C:)"
 
     auto* item = new QStandardItem(placesFolderIcon(), label);
     item->setEditable(false);
