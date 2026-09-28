@@ -144,9 +144,10 @@ public:
 
     // Tools > Adjust Contrast / Color Table - see ContrastDialog.h/
     // ColorTableDialog.h. Per-image state (giv's do_auto_contrast default:
-    // stretched to the image's own sampleMin/sampleMax the first time each
-    // image path is seen), keyed by resolved path so it survives
-    // next/previousImage() cycling.
+    // stretched to the image's own sampleMin/sampleMax, colormap carried
+    // forward from the last one the user picked - see lastColormapId_) the
+    // first time each image path is seen, keyed by resolved path so it
+    // survives next/previousImage() cycling and directory navigation.
     struct ContrastState
     {
         float min = 0.0f;
@@ -162,8 +163,8 @@ public:
     const giv::LoadedImage* currentImage() const { return loadedImages_.empty() ? nullptr : &loadedImages_.front(); }
 
     // Current contrast/colormap settings for the displayed image, defaulted
-    // (and recorded) to sampleMin/sampleMax/None/disabled the first time
-    // this image's path is seen.
+    // (and recorded) to sampleMin/sampleMax and the last-chosen colormap the
+    // first time this image's path is seen.
     ContrastState currentContrastState();
 
     // Recomputes the displayed image (see DisplayImage.h) with the new
@@ -215,6 +216,15 @@ private:
     std::vector<giv::LoadedImage> loadedImages_; // 0 or 1 entries: only the currently-displayed image is ever decoded/resident (see decodeCurrentImage())
     std::vector<giv::LoadedImage> displayImages_; // parallel to loadedImages_, but .rgba is the contrast/colormap-stretched buffer actually uploaded (see recomputeDisplayImage())
     std::unordered_map<std::string, ContrastState> contrastState_; // keyed by resolved image path, see currentContrastState()
+    // The colormap selection last chosen via setColormap(), carried forward
+    // as the default for any image path not yet in contrastState_ - so
+    // navigating to a file never seen before (e.g. directory Next/Previous)
+    // keeps the user's color table instead of resetting to None. min/max
+    // deliberately aren't sticky the same way: each new image is still
+    // auto-stretched to its own sampleMin/sampleMax, since that's data-range
+    // dependent per file.
+    giv::colormaps::Id lastColormapId_ = giv::colormaps::Id::None;
+    bool lastColormapEnabled_ = false;
     bool globalShowMarks_ = true;
     bool forceOpaque_ = false;
 
