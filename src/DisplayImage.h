@@ -1,0 +1,32 @@
+#pragma once
+//
+// DisplayImage.h - renders the RGBA8 buffer actually uploaded to the GPU
+// from an image's raw sample data, applying a linear contrast stretch and
+// (optionally) a colormap LUT. Pure CPU, no GPU involvement - mirrors
+// giv's giv_image_get_pixbuf()+apply_color_map() two-stage pipeline
+// (~/hd/github/giv/src/givimage.cc, giv-win.gob). Used by VulkanViewport to
+// recompute the displayed texture whenever the Contrast/Color Table tools
+// change their settings; SceneBuilder itself is untouched and keeps
+// uploading whatever rgba bytes it's handed.
+//
+#include "Colormaps.h"
+
+#include <cstdint>
+#include <vector>
+
+namespace giv
+{
+
+struct LoadedImage;
+
+// Renders `outRgba` (resized to src.width*src.height*4) from src's raw
+// samples: each native sample value is linearly stretched to [0,255] by
+// (contrastMin, contrastMax) and clamped, then either replicated to gray
+// (colormapEnabled == false) or looked up in colormaps::lut(colormapId).
+// If src has no raw sample buffer (sampleType == WIV_SAMPLE_NONE, e.g. a
+// color image), src.rgba is copied through unchanged - contrast/colormap
+// only apply to genuine single-channel sample data.
+void renderDisplayRgba(const LoadedImage& src, float contrastMin, float contrastMax,
+                        colormaps::Id colormapId, bool colormapEnabled, std::vector<uint8_t>& outRgba);
+
+} // namespace giv

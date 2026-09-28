@@ -7,6 +7,8 @@
 // deterministic (sorted-filename) load/dispatch order - giv's own docs
 // (doc/plugins.txt) admit its order is arbitrary.
 //
+#include "plugins/wiv_plugin.h"
+
 #include <cstdint>
 #include <list>
 #include <optional>
@@ -22,6 +24,14 @@ struct LoadedImage
     int width = 0;
     int height = 0;
     std::vector<uint8_t> rgba; // width*height*4, top-to-bottom row order
+
+    // Optional raw single-channel sample buffer (see wiv_plugin.h) used by
+    // the Contrast/Color Table tools. sampleType == WIV_SAMPLE_NONE for
+    // images with no raw dynamic range beyond the RGBA8 preview above.
+    WivSampleType sampleType = WIV_SAMPLE_NONE;
+    std::vector<uint8_t> samples;
+    float sampleMin = 0.0f; // full-image scan, computed once at load
+    float sampleMax = 0.0f;
 };
 
 class ImagePluginHost

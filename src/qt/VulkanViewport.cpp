@@ -1,5 +1,6 @@
 #include "VulkanViewport.h"
 
+#include "DisplayImage.h"
 #include "GivParser.h"
 #include "ImagePluginHost.h"
 #include "PreferencesDialog.h"
@@ -468,7 +469,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     vsg::ref_ptr<vsg::Group> sceneGraph;
     try
     {
-        sceneGraph = builder.build(scene_, shaderDir_, loadedImages_);
+        sceneGraph = builder.build(scene_, shaderDir_, displayImages_);
     }
     catch (const std::exception& e)
     {
@@ -726,8 +727,9 @@ std::string VulkanViewport::currentImageName() const
 
 QString VulkanViewport::pixelValueText(double worldX, double worldY) const
 {
-    if (loadedImages_.empty() || !currentImageSize_) return {};
-    const giv::LoadedImage& img = loadedImages_.front();
+    if (loadedImages_.empty() || displayImages_.empty() || !currentImageSize_) return {};
+    const giv::LoadedImage& raw = loadedImages_.front();
+    const giv::LoadedImage& img = displayImages_.front(); // what's actually on screen (post contrast/colormap)
 
     // worldX/worldY here are exactly what PanZoomHandler::apply(MoveEvent&)
     // hands to onCursorMove: worldX is the raw (y-up) VSG world X, but
@@ -738,8 +740,27 @@ QString VulkanViewport::pixelValueText(double worldX, double worldY) const
     int py = static_cast<int>(std::floor(worldY));
     if (px < 0 || py < 0 || px >= img.width || py >= img.height) return {};
 
-    const uint8_t* p = &img.rgba[(static_cast<size_t>(py) * img.width + px) * 4];
+    const size_t sampleIdx = static_cast<size_t>(py) * img.width + px;
+    const uint8_t* p = &img.rgba[sampleIdx * 4];
     uint8_t r = p[0], g = p[1], b = p[2], a = p[3];
+
+    if (raw.sampleType != WIV_SAMPLE_NONE)
+    {
+        double native;
+        switch (raw.sampleType)
+        {
+            case WIV_SAMPLE_U8: native = raw.samples[sampleIdx]; break;
+            case WIV_SAMPLE_U16: native = reinterpret_cast<const uint16_t*>(raw.samples.data())[sampleIdx]; break;
+            case WIV_SAMPLE_FLOAT: native = reinterpret_cast<const float*>(raw.samples.data())[sampleIdx]; break;
+            default: native = 0.0; break;
+        }
+        QString hex = QString("#%1%2%3")
+                          .arg(r, 2, 16, QChar('0'))
+                          .arg(g, 2, 16, QChar('0'))
+                          .arg(b, 2, 16, QChar('0'))
+                          .toUpper();
+        return QString(" [%1] = %2").arg(native).arg(hex);
+    }
 
     if (r == g && g == b)
         return QString(" [%1] = #%2").arg(r).arg(r, 2, 16, QChar('0')).toUpper();
@@ -780,7 +801,100 @@ bool VulkanViewport::decodeImageAt(int index)
     currentImageIndex_ = index;
     loadedImages_ = {*img};
     currentImageSize_ = std::make_pair(static_cast<double>(img->width), static_cast<double>(img->height));
+    recomputeDisplayImage();
     return true;
+}
+
+void VulkanViewport::recomputeDisplayImage()
+{
+    if (loadedImages_.empty())
+    {
+        displayImages_.clear();
+        return;
+    }
+
+    const giv::LoadedImage& src = loadedImages_.front();
+    giv::LoadedImage display = src;
+    if (src.sampleType != WIV_SAMPLE_NONE)
+    {
+        const ContrastState state = currentContrastState();
+        giv::renderDisplayRgba(src, state.min, state.max, state.colormapId, state.colormapEnabled, display.rgba);
+    }
+    displayImages_ = {std::move(display)};
+}
+
+VulkanViewport::ContrastState VulkanViewport::currentContrastState()
+{
+    static const ContrastState kEmpty{};
+    if (loadedImages_.empty()) return kEmpty;
+
+    const giv::LoadedImage& src = loadedImages_.front();
+    const std::string path = currentImageName();
+    auto it = contrastState_.find(path);
+    if (it == contrastState_.end())
+    {
+        ContrastState defaultState;
+        defaultState.min = src.sampleMin;
+        defaultState.max = src.sampleMax;
+        it = contrastState_.emplace(path, defaultState).first;
+    }
+    return it->second;
+}
+
+void VulkanViewport::setContrast(float min, float max)
+{
+    if (loadedImages_.empty() || loadedImages_.front().sampleType == WIV_SAMPLE_NONE) return;
+
+    ContrastState state = currentContrastState();
+    state.min = min;
+    state.max = max;
+    contrastState_[currentImageName()] = state;
+
+    recomputeDisplayImage();
+    QString error;
+    if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
+        spdlog::error("Failed to apply contrast: {}", error.toStdString());
+}
+
+void VulkanViewport::setColormap(giv::colormaps::Id id, bool enabled)
+{
+    if (loadedImages_.empty() || loadedImages_.front().sampleType == WIV_SAMPLE_NONE) return;
+
+    ContrastState state = currentContrastState();
+    state.colormapId = id;
+    state.colormapEnabled = enabled;
+    contrastState_[currentImageName()] = state;
+
+    recomputeDisplayImage();
+    QString error;
+    if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
+        spdlog::error("Failed to apply color table: {}", error.toStdString());
+}
+
+std::array<uint32_t, 256> VulkanViewport::computeHistogram() const
+{
+    std::array<uint32_t, 256> histogram{};
+    if (loadedImages_.empty()) return histogram;
+
+    const giv::LoadedImage& img = loadedImages_.front();
+    if (img.sampleType == WIV_SAMPLE_NONE) return histogram;
+
+    const float range = img.sampleMax - img.sampleMin;
+    const size_t pixelCount = static_cast<size_t>(img.width) * img.height;
+    for (size_t i = 0; i < pixelCount; ++i)
+    {
+        double v;
+        switch (img.sampleType)
+        {
+            case WIV_SAMPLE_U8: v = img.samples[i]; break;
+            case WIV_SAMPLE_U16: v = reinterpret_cast<const uint16_t*>(img.samples.data())[i]; break;
+            case WIV_SAMPLE_FLOAT: v = reinterpret_cast<const float*>(img.samples.data())[i]; break;
+            default: v = 0.0; break;
+        }
+        int idx = range != 0.0f ? static_cast<int>(std::floor((v - img.sampleMin) / range * 255.0)) : 0;
+        if (idx >= 0 && idx < 256) ++histogram[static_cast<size_t>(idx)];
+    }
+    return histogram;
 }
 
 void VulkanViewport::decodeCurrentImage()
@@ -797,6 +911,7 @@ void VulkanViewport::decodeCurrentImage()
         if (decodeImageAt(idx)) return;
     }
     loadedImages_.clear();
+    displayImages_.clear();
     currentImageSize_.reset();
 }
 

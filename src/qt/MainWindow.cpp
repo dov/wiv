@@ -1,6 +1,8 @@
 #include "MainWindow.h"
 
 #include "CalibrateDialog.h"
+#include "ColorTableDialog.h"
+#include "ContrastDialog.h"
 #include "ImagePluginHost.h"
 #include "MarkTreeView.h"
 #include "OpenFileDialog.h"
@@ -85,6 +87,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     });
     connect(viewport_, &VulkanViewport::imageChanged, this, [this](int index, int count, QString filename) {
         updateNavigationActionsEnabled();
+        updateContrastToolsEnabled();
+        if (contrastDialog_ && contrastDialog_->isVisible()) contrastDialog_->refreshForImage();
+        if (colorTableDialog_ && colorTableDialog_->isVisible()) colorTableDialog_->refreshForImage();
         // Sole owner of the title/status-label text for both the initial
         // load and every next/previousImage() step (loadFilesInternal only
         // updates loadedBaseName_, before calling viewport_->loadFiles() -
@@ -189,6 +194,12 @@ void MainWindow::buildMenus()
         dlg.exec();
         spdlog::info("Calibrate Pixel Size dialog closed");
     });
+
+    toolsMenu->addSeparator();
+    contrastAction_ = toolsMenu->addAction("Adjust Contrast...", this, &MainWindow::showContrastDialog);
+    colorTableAction_ = toolsMenu->addAction("Color Table...", this, &MainWindow::showColorTableDialog);
+    contrastAction_->setEnabled(false);
+    colorTableAction_->setEnabled(false);
 
     auto editMenu = menuBar()->addMenu("&Edit");
     editMenu->addAction("Preferences...", this, [this]() {
@@ -490,6 +501,34 @@ void MainWindow::setMarkBrowserPlacement(bool asPanel)
 
     markBrowserAsPanel_ = asPanel;
     if (wasVisible) showMarkBrowser();
+}
+
+void MainWindow::showContrastDialog()
+{
+    spdlog::info("User opened Adjust Contrast dialog");
+    if (!contrastDialog_) contrastDialog_ = new ContrastDialog(viewport_, this);
+    contrastDialog_->refreshForImage();
+    contrastDialog_->show();
+    contrastDialog_->raise();
+    contrastDialog_->activateWindow();
+}
+
+void MainWindow::showColorTableDialog()
+{
+    spdlog::info("User opened Color Table dialog");
+    if (!colorTableDialog_) colorTableDialog_ = new ColorTableDialog(viewport_, this);
+    colorTableDialog_->refreshForImage();
+    colorTableDialog_->show();
+    colorTableDialog_->raise();
+    colorTableDialog_->activateWindow();
+}
+
+void MainWindow::updateContrastToolsEnabled()
+{
+    const giv::LoadedImage* img = viewport_->currentImage();
+    bool hasRawSamples = img && img->sampleType != WIV_SAMPLE_NONE;
+    contrastAction_->setEnabled(hasRawSamples);
+    colorTableAction_->setEnabled(hasRawSamples);
 }
 
 } // namespace givqt

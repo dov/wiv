@@ -50,5 +50,24 @@ extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** er
     WivPluginImage* img = wiv_plugin::allocImage(width, height);
     std::memcpy(img->rgba, pixels, static_cast<size_t>(width) * height * 4);
     stbi_image_free(pixels);
+
+    // 16-bit grayscale PNG carries real dynamic range beyond the 8-bit
+    // preview above - decode it a second time into a raw sample buffer for
+    // the Contrast/Color Table tools. Other formats/channel counts stay
+    // RGBA8-only (stbi_load already collapsed them to an 8-bit preview).
+    int rawWidth = 0, rawHeight = 0, rawChannels = 0;
+    if (stbi_info(filename, &rawWidth, &rawHeight, &rawChannels) && rawChannels == 1 &&
+        stbi_is_16_bit(filename))
+    {
+        unsigned short* samples16 = stbi_load_16(filename, &rawWidth, &rawHeight, &rawChannels, 1);
+        if (samples16 && rawWidth == width && rawHeight == height)
+        {
+            wiv_plugin::allocSamples(img, WIV_SAMPLE_U16);
+            std::memcpy(img->samples, samples16, static_cast<size_t>(width) * height * 2);
+        }
+        if (samples16)
+            stbi_image_free(samples16);
+    }
+
     return img;
 }

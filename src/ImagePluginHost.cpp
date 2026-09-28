@@ -1,6 +1,7 @@
 #include "ImagePluginHost.h"
 
 #include "plugins/wiv_plugin.h"
+#include "plugins/wiv_plugin_common.h"
 
 #include <spdlog/spdlog.h>
 
@@ -10,6 +11,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <limits>
 
 namespace giv
 {
@@ -34,24 +36,26 @@ struct Plugin
     FreeErrorFn freeError = nullptr;
 };
 
-// Applies the rotation/flip implied by an EXIF/TIFF Orientation tag (1-8;
-// see the Exif spec's table) to an already-decoded RGBA8 image, so that
-// every plugin can hand back raw sensor-order pixels plus an orientation
-// value and share one transform instead of each reimplementing it. 1
-// ("normal") and anything out of range are a no-op.
-void applyOrientation(LoadedImage& image, int orientation)
+// Reorders a row-major, top-to-bottom buffer of `elemSize`-byte elements
+// (w*h elements total) per the rotation/flip implied by an EXIF/TIFF
+// Orientation tag (1-8; see the Exif spec's table). Shared by both the
+// RGBA8 preview (elemSize=4) and the optional raw sample buffer
+// (elemSize=1/2/4, see WivSampleType) so every plugin can hand back raw
+// sensor-order pixels plus an orientation value instead of each
+// reimplementing this. Returns the buffer unchanged (by value-move) if
+// `orientation` is 1 ("normal") or out of range.
+std::vector<uint8_t> reorderBuffer(const std::vector<uint8_t>& in, int w, int h, size_t elemSize,
+                                    int orientation)
 {
-    if (orientation <= 1 || orientation > 8)
-        return;
+    if (orientation <= 1 || orientation > 8 || in.empty())
+        return in;
 
-    const int w = image.width;
-    const int h = image.height;
     const bool swapDims = orientation >= 5;
     const int newW = swapDims ? h : w;
     const int newH = swapDims ? w : h;
 
-    std::vector<uint8_t> out(static_cast<size_t>(newW) * newH * 4);
-    auto srcPixel = [&](int x, int y) { return &image.rgba[(static_cast<size_t>(y) * w + x) * 4]; };
+    std::vector<uint8_t> out(static_cast<size_t>(newW) * newH * elemSize);
+    auto srcElem = [&](int x, int y) { return &in[(static_cast<size_t>(y) * w + x) * elemSize]; };
 
     for (int y = 0; y < newH; ++y)
     {
@@ -68,13 +72,66 @@ void applyOrientation(LoadedImage& image, int orientation)
                 case 7: sx = w - 1 - y; sy = h - 1 - x; break;         // transverse
                 default: sx = w - 1 - y; sy = x; break;                // 8: rotate 270 CW
             }
-            std::memcpy(&out[(static_cast<size_t>(y) * newW + x) * 4], srcPixel(sx, sy), 4);
+            std::memcpy(&out[(static_cast<size_t>(y) * newW + x) * elemSize], srcElem(sx, sy), elemSize);
         }
     }
 
-    image.width = newW;
-    image.height = newH;
-    image.rgba = std::move(out);
+    return out;
+}
+
+void applyOrientation(LoadedImage& image, int orientation)
+{
+    if (orientation <= 1 || orientation > 8)
+        return;
+
+    const int w = image.width;
+    const int h = image.height;
+    if (!image.samples.empty())
+        image.samples = reorderBuffer(image.samples, w, h, wiv_plugin::sampleTypeSize(image.sampleType), orientation);
+    image.rgba = reorderBuffer(image.rgba, w, h, 4, orientation);
+
+    const bool swapDims = orientation >= 5;
+    if (swapDims)
+        std::swap(image.width, image.height);
+}
+
+// Reads sample (x,y) as a double, regardless of sampleType - mirrors giv's
+// giv_image_get_value().
+double sampleValue(const LoadedImage& image, int x, int y)
+{
+    const size_t idx = static_cast<size_t>(y) * image.width + x;
+    switch (image.sampleType)
+    {
+        case WIV_SAMPLE_U8:
+            return image.samples[idx];
+        case WIV_SAMPLE_U16:
+            return reinterpret_cast<const uint16_t*>(image.samples.data())[idx];
+        case WIV_SAMPLE_FLOAT:
+            return reinterpret_cast<const float*>(image.samples.data())[idx];
+        default:
+            return 0.0;
+    }
+}
+
+// Full linear scan for the image's native-value min/max - mirrors giv's
+// giv_image_get_min_max() (no shortcuts/caching there either).
+void computeSampleMinMax(LoadedImage& image)
+{
+    if (image.samples.empty())
+        return;
+
+    double lo = std::numeric_limits<double>::max();
+    double hi = std::numeric_limits<double>::lowest();
+    for (int y = 0; y < image.height; ++y)
+        for (int x = 0; x < image.width; ++x)
+        {
+            double v = sampleValue(image, x, y);
+            lo = std::min(lo, v);
+            hi = std::max(hi, v);
+        }
+
+    image.sampleMin = static_cast<float>(lo);
+    image.sampleMax = static_cast<float>(hi);
 }
 
 std::vector<Plugin>& loadedPlugins()
@@ -157,9 +214,18 @@ std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename)
         result.width = img->width;
         result.height = img->height;
         result.rgba.assign(img->rgba, img->rgba + static_cast<size_t>(img->width) * img->height * 4);
+        result.sampleType = img->sampleType;
+        if (img->sampleType != WIV_SAMPLE_NONE && img->samples)
+        {
+            const size_t bytes =
+                static_cast<size_t>(img->width) * img->height * wiv_plugin::sampleTypeSize(img->sampleType);
+            const auto* samplesBytes = static_cast<const uint8_t*>(img->samples);
+            result.samples.assign(samplesBytes, samplesBytes + bytes);
+        }
         const int orientation = img->orientation;
         plugin.freeImage(img);
         applyOrientation(result, orientation);
+        computeSampleMinMax(result);
         return result;
     }
 

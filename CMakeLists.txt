@@ -77,10 +77,15 @@ add_executable(wiv
   src/LabelPicker.cpp
   src/BalloonController.cpp
   src/ImagePluginHost.cpp
+  src/Colormaps.cpp
+  src/DisplayImage.cpp
   src/qt/GivViewer.cpp
   src/qt/VulkanViewport.cpp
   src/qt/PreferencesDialog.cpp
   src/qt/CalibrateDialog.cpp
+  src/qt/HistogramWidget.cpp
+  src/qt/ContrastDialog.cpp
+  src/qt/ColorTableDialog.cpp
   src/qt/MainWindow.cpp
   src/qt/MarkTreeView.cpp
   src/qt/OpenFileDialog.cpp
