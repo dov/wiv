@@ -122,6 +122,13 @@ public:
     double lastMeasureDistancePixels() const { return caliperTool_ ? caliperTool_->lastDistancePixels() : 0.0; }
     std::optional<std::pair<double, double>> currentImageSize() const { return currentImageSize_; }
 
+    // giv's status-bar pixel readout (giv-win.cc's on_motion_notify): given
+    // the cursor's current world position (as reported via
+    // cursorWorldPosition()), returns " [gray] = #XX" or " [ r g b] = #RRGGBB"
+    // for the image pixel underneath it, or an empty string if no image is
+    // loaded or the position falls outside its bounds.
+    QString pixelValueText(double worldX, double worldY) const;
+
 signals:
     void sceneLoaded();
     void cursorWorldPosition(double x, double y);
