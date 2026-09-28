@@ -60,6 +60,21 @@ public:
     // afterwards.
     void updateScene(vsg::ref_ptr<vsg::Node> labelScene);
 
+    // Re-points this LabelPicker at a new camera - needed because
+    // VulkanViewport::rebuildSceneGraph()'s isInitialLoad path replaces
+    // camera_ with a brand-new vsg::Camera on every file load (see its doc
+    // comment on "isInitialLoad reassigns camera_ to a brand-new
+    // vsg::Camera"), while this LabelPicker's vsg::View is deliberately
+    // preserved across rebuilds (see updateScene()'s doc comment). Without
+    // this, the label render would keep using the *original* camera's
+    // projection/view forever - correct on the very first load, but frozen
+    // at whatever rough placeholder fit or stale pan/zoom state that camera
+    // had by the time any later load or view->camera swap occurred, while
+    // the main scene (which always reads VulkanViewport's current camera_)
+    // moves on. Caller must still call viewer->compile() afterwards, same as
+    // updateScene().
+    void updateCamera(vsg::ref_ptr<vsg::Camera> camera);
+
 private:
     vsg::ref_ptr<vsg::Window> window_;
     vsg::ref_ptr<vsg::Device> device_;

@@ -262,6 +262,12 @@ void LabelPicker::updateScene(vsg::ref_ptr<vsg::Node> labelScene)
     rebuild(extent_);
 }
 
+void LabelPicker::updateCamera(vsg::ref_ptr<vsg::Camera> camera)
+{
+    camera_ = camera;
+    if (view_) view_->camera = camera_;
+}
+
 void LabelPicker::setEnabled(bool enabled)
 {
     switch_->setAllChildren(enabled);
