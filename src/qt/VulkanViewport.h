@@ -9,6 +9,7 @@
 //
 #include "BalloonController.h"
 #include "CaliperTool.h"
+#include "Colormaps.h"
 #include "GivScene.h"
 #include "GivViewer.h"
 #include "ImagePluginHost.h"
@@ -23,9 +24,11 @@
 #include <QSize>
 #include <QWidget>
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 class QLabel;
@@ -129,6 +132,43 @@ public:
     // loaded or the position falls outside its bounds.
     QString pixelValueText(double worldX, double worldY) const;
 
+    // Tools > Adjust Contrast / Color Table - see ContrastDialog.h/
+    // ColorTableDialog.h. Per-image state (giv's do_auto_contrast default:
+    // stretched to the image's own sampleMin/sampleMax the first time each
+    // image path is seen), keyed by resolved path so it survives
+    // next/previousImage() cycling.
+    struct ContrastState
+    {
+        float min = 0.0f;
+        float max = 0.0f;
+        giv::colormaps::Id colormapId = giv::colormaps::Id::None;
+        bool colormapEnabled = false;
+    };
+
+    // The raw (undisplayed) currently-decoded image - nullptr if none, or if
+    // it has no raw sample buffer (sampleType == WIV_SAMPLE_NONE). Used by
+    // ContrastDialog to compute the histogram and by MainWindow to decide
+    // whether to enable the Contrast/Color Table tool actions.
+    const giv::LoadedImage* currentImage() const { return loadedImages_.empty() ? nullptr : &loadedImages_.front(); }
+
+    // Current contrast/colormap settings for the displayed image, defaulted
+    // (and recorded) to sampleMin/sampleMax/None/disabled the first time
+    // this image's path is seen.
+    ContrastState currentContrastState();
+
+    // Recomputes the displayed image (see DisplayImage.h) with the new
+    // contrast window / colormap selection and rebuilds the scene graph so
+    // the change is actually visible. No-ops if the current image has no
+    // raw sample buffer.
+    void setContrast(float min, float max);
+    void setColormap(giv::colormaps::Id id, bool enabled);
+
+    // 256-bucket histogram of the current image's raw samples, binned
+    // against its own sampleMin/sampleMax (a fixed axis, independent of the
+    // live contrast window - mirrors giv's giv_histo). Empty if the current
+    // image has no raw sample buffer.
+    std::array<uint32_t, 256> computeHistogram() const;
+
 signals:
     void sceneLoaded();
     void cursorWorldPosition(double x, double y);
@@ -156,6 +196,8 @@ private:
     // before, which is only false for the constructor's own bootstrap call.
     bool everBuiltSceneGraph_ = false;
     std::vector<giv::LoadedImage> loadedImages_; // 0 or 1 entries: only the currently-displayed image is ever decoded/resident (see decodeCurrentImage())
+    std::vector<giv::LoadedImage> displayImages_; // parallel to loadedImages_, but .rgba is the contrast/colormap-stretched buffer actually uploaded (see recomputeDisplayImage())
+    std::unordered_map<std::string, ContrastState> contrastState_; // keyed by resolved image path, see currentContrastState()
     bool globalShowMarks_ = true;
     bool forceOpaque_ = false;
 
@@ -243,6 +285,12 @@ private:
     // file doesn't blank the whole load. Leaves loadedImages_/
     // currentImageSize_ empty if every candidate fails.
     void decodeCurrentImage();
+
+    // Recomputes displayImages_ from loadedImages_.front() and the current
+    // image's ContrastState (see setContrast()/setColormap()). Called
+    // whenever loadedImages_ changes (decodeImageAt()) or the contrast/
+    // colormap settings change. Does not itself rebuild the scene graph.
+    void recomputeDisplayImage();
 
     // nextImage()/previousImage()'s shared tail: decodes `index`, rebuilds
     // the scene graph so its texture actually replaces whatever was

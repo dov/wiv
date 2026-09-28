@@ -22,6 +22,8 @@ namespace givqt
 
 class VulkanViewport;
 class MarkTreeView;
+class ContrastDialog;
+class ColorTableDialog;
 
 class MainWindow : public QMainWindow
 {
@@ -58,6 +60,8 @@ private:
     QAction* showMarksAction_ = nullptr;
     QAction* markBrowserPanelAction_ = nullptr;
     QAction* measureDistanceAction_ = nullptr;
+    QAction* contrastAction_ = nullptr;
+    QAction* colorTableAction_ = nullptr;
     QMenu* recentFilesMenu_ = nullptr;
 
     // Mark Browser: one shared MarkTreeView content widget, hosted in either
@@ -68,6 +72,12 @@ private:
     QDialog* markBrowserDialog_ = nullptr;
     QDockWidget* markBrowserDock_ = nullptr;
     bool markBrowserAsPanel_ = false;
+
+    // Tools > Adjust Contrast / Color Table: non-modal, lazily created (see
+    // showMarkBrowser()'s pattern), kept alive across show()/hide() so their
+    // state survives, and refreshed whenever the displayed image changes.
+    ContrastDialog* contrastDialog_ = nullptr;
+    ColorTableDialog* colorTableDialog_ = nullptr;
 
     void buildMenus();
     void buildStatusBar();
@@ -111,6 +121,10 @@ private:
 
     void showMarkBrowser();
     void setMarkBrowserPlacement(bool asPanel);
+
+    void showContrastDialog();
+    void showColorTableDialog();
+    void updateContrastToolsEnabled();
 };
 
 } // namespace givqt

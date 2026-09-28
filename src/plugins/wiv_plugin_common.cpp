@@ -7,6 +7,7 @@ extern "C" void wiv_plugin_free_image(WivPluginImage* img)
     if (!img)
         return;
     std::free(img->rgba);
+    std::free(img->samples);
     std::free(img);
 }
 
