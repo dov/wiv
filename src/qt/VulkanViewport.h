@@ -24,6 +24,7 @@
 #include <QSize>
 #include <QWidget>
 
+#include <algorithm>
 #include <array>
 #include <memory>
 #include <optional>
@@ -77,6 +78,15 @@ public:
     int imageCount() const { return static_cast<int>(loadedImageNames_.size()); }
     int currentImageIndex() const { return currentImageIndex_; }
     std::string currentImageName() const;
+
+    // Slice navigation (giv's plain Up/Down key, giv-win.cc's current_slice)
+    // for multi-slice images (npy 3D arrays, FITS NAXIS=3, multi-frame
+    // DICOM - see WivPluginImage::depth). No-ops if the current image has
+    // fewer than 2 slices. Wraps around at either end.
+    void nextSlice();
+    void previousSlice();
+    int sliceCount() const { return loadedImages_.empty() ? 1 : std::max(1, loadedImages_.front().depth); }
+    int currentSlice() const { return currentSlice_; }
 
     void setBackgroundColor(const QColor& color);
 
@@ -175,6 +185,13 @@ signals:
     void imageChanged(int index, int count, QString filename);
     void measurementChanged(QString text);
 
+    // Emitted whenever the current slice changes: on nextSlice()/
+    // previousSlice(), and whenever decodeImageAt() (re)selects an image
+    // (so a status bar can clear/refresh its "Slice N/D" text on next/
+    // previousImage() and initial load too). `count` is 1 for an ordinary
+    // 2D image.
+    void sliceChanged(int slice, int count);
+
 private:
     vsg::ref_ptr<vsg::WindowTraits> traits_;
     vsg::ref_ptr<GivViewer> viewer_;
@@ -239,6 +256,7 @@ private:
     std::vector<std::string> loadedImageNames_; // resolved paths of $image refs a plugin claims to support (not yet decoded - see ImagePluginHost::isSupported)
     std::optional<std::pair<double, double>> currentImageSize_; // (width, height) px of loadedImageNames_[currentImageIndex_], once decoded
     int currentImageIndex_ = 0;
+    int currentSlice_ = 0; // see nextSlice()/previousSlice(); reset to 0 by decodeImageAt()
     giv::ImageCache imageCache_{kImageCacheCapacity}; // bounds how many decoded images are resident at once while paging with next/previousImage()
 
     bool balloonEnabled_ = false;

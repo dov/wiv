@@ -439,9 +439,9 @@ OpenFileDialog::OpenFileDialog(QWidget* parent, QSettings* settings)
     setAcceptMode(QFileDialog::AcceptOpen);
     setWindowTitle("Open");
     setNameFilters({
-        "Supported files (*.giv *.svg *.png *.jpg *.jpeg *.bmp *.tga *.gif *.psd *.tif *.tiff *.webp *.pgm *.ppm)",
+        "Supported files (*.giv *.svg *.png *.jpg *.jpeg *.bmp *.tga *.gif *.psd *.tif *.tiff *.webp *.pgm *.ppm *.npy *.fits *.fit *.dcm)",
         "giv files (*.giv)",
-        "Image files (*.svg *.png *.jpg *.jpeg *.bmp *.tga *.gif *.psd *.tif *.tiff *.webp *.pgm *.ppm)",
+        "Image files (*.svg *.png *.jpg *.jpeg *.bmp *.tga *.gif *.psd *.tif *.tiff *.webp *.pgm *.ppm *.npy *.fits *.fit *.dcm)",
         "All files (*)",
     });
 

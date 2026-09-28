@@ -79,14 +79,19 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     });
     connect(viewport_, &VulkanViewport::cursorWorldPosition, this, [this](double x, double y) {
         lastCursorText_ = QString("(%1, %2)").arg(x, 0, 'f', 2).arg(y, 0, 'f', 2) + viewport_->pixelValueText(x, y);
-        infoLabel_->setText(lastMeasureText_.isEmpty() ? lastCursorText_ : QString("%1 %2").arg(lastCursorText_, lastMeasureText_));
+        infoLabel_->setText(statusLineText());
     });
     connect(viewport_, &VulkanViewport::measurementChanged, this, [this](QString text) {
         lastMeasureText_ = text;
-        infoLabel_->setText(lastMeasureText_.isEmpty() ? lastCursorText_ : QString("%1 %2").arg(lastCursorText_, lastMeasureText_));
+        infoLabel_->setText(statusLineText());
+    });
+    connect(viewport_, &VulkanViewport::sliceChanged, this, [this](int slice, int count) {
+        lastSliceText_ = count > 1 ? QString("Slice %1/%2").arg(slice + 1).arg(count) : QString();
+        infoLabel_->setText(statusLineText());
     });
     connect(viewport_, &VulkanViewport::imageChanged, this, [this](int index, int count, QString filename) {
         updateNavigationActionsEnabled();
+        updateSliceActionsEnabled();
         updateContrastToolsEnabled();
         if (contrastDialog_ && contrastDialog_->isVisible()) contrastDialog_->refreshForImage();
         if (colorTableDialog_ && colorTableDialog_->isVisible()) colorTableDialog_->refreshForImage();
@@ -107,6 +112,15 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         lastMeasureText_.clear();
         infoLabel_->setText(QString("Loading %1").arg(baseName));
     });
+}
+
+QString MainWindow::statusLineText() const
+{
+    QStringList parts;
+    if (!lastCursorText_.isEmpty()) parts << lastCursorText_;
+    if (!lastMeasureText_.isEmpty()) parts << lastMeasureText_;
+    if (!lastSliceText_.isEmpty()) parts << lastSliceText_;
+    return parts.join(" ");
 }
 
 void MainWindow::buildMenus()
@@ -178,6 +192,16 @@ void MainWindow::buildMenus()
     previousImageAction_ = viewMenu->addAction("Previous Image", this, &MainWindow::goPreviousImage);
     previousImageAction_->setShortcuts({QKeySequence("Shift+Down"), QKeySequence("Backspace"), QKeySequence("Left")});
     previousImageAction_->setEnabled(false);
+
+    // Slice navigation (giv's plain Up/Down) for multi-slice images (npy 3D
+    // arrays, FITS NAXIS=3, multi-frame DICOM) - distinct from Next/Previous
+    // Image's shift-Up/Down $image cycling above.
+    nextSliceAction_ = viewMenu->addAction("Next Slice", viewport_, &VulkanViewport::nextSlice);
+    nextSliceAction_->setShortcut(QKeySequence("Up"));
+    nextSliceAction_->setEnabled(false);
+    previousSliceAction_ = viewMenu->addAction("Previous Slice", viewport_, &VulkanViewport::previousSlice);
+    previousSliceAction_->setShortcut(QKeySequence("Down"));
+    previousSliceAction_->setEnabled(false);
 
     auto toolsMenu = menuBar()->addMenu("&Tools");
     measureDistanceAction_ = toolsMenu->addAction("Measure Distance Diagonal", viewport_, &VulkanViewport::toggleMeasureDistance);
@@ -386,6 +410,13 @@ void MainWindow::updateNavigationActionsEnabled()
     bool canNavigate = viewport_->imageCount() > 1 || directoryFiles_.size() > 1;
     nextImageAction_->setEnabled(canNavigate);
     previousImageAction_->setEnabled(canNavigate);
+}
+
+void MainWindow::updateSliceActionsEnabled()
+{
+    bool canNavigate = viewport_->sliceCount() > 1;
+    nextSliceAction_->setEnabled(canNavigate);
+    previousSliceAction_->setEnabled(canNavigate);
 }
 
 void MainWindow::goNextImage()

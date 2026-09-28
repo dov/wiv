@@ -32,7 +32,8 @@ double sampleValue(const LoadedImage& img, size_t idx)
 } // namespace
 
 void renderDisplayRgba(const LoadedImage& src, float contrastMin, float contrastMax,
-                        colormaps::Id colormapId, bool colormapEnabled, std::vector<uint8_t>& outRgba)
+                        colormaps::Id colormapId, bool colormapEnabled, std::vector<uint8_t>& outRgba,
+                        int slice)
 {
     const size_t pixelCount = static_cast<size_t>(src.width) * src.height;
     outRgba.resize(pixelCount * 4);
@@ -45,10 +46,11 @@ void renderDisplayRgba(const LoadedImage& src, float contrastMin, float contrast
 
     const uint8_t* lut = colormapEnabled ? colormaps::lut(colormapId) : nullptr;
     const float range = contrastMax - contrastMin;
+    const size_t sliceOffset = pixelCount * static_cast<size_t>(std::max(0, slice));
 
     for (size_t i = 0; i < pixelCount; ++i)
     {
-        double v = sampleValue(src, i);
+        double v = sampleValue(src, sliceOffset + i);
         double t = range != 0.0f ? (v - contrastMin) / range : 0.5;
         int u8 = static_cast<int>(std::lround(t * 255.0));
         u8 = std::clamp(u8, 0, 255);
