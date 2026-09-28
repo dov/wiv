@@ -28,6 +28,15 @@ void PanZoomHandler::apply(vsg::ButtonPressEvent& event)
         zoomAnchorY_ = event.y;
         zoomLastY_ = event.y;
     }
+
+    if (onClick)
+    {
+        auto window = event.window.ref_ptr();
+        double worldX = 0.0, worldY = 0.0;
+        if (window && screenToWorld(event.x, event.y, window, worldX, worldY))
+            onClick(worldX, worldY, static_cast<int>(event.button),
+                    static_cast<int>(QGuiApplication::keyboardModifiers()));
+    }
 }
 
 void PanZoomHandler::apply(vsg::ButtonReleaseEvent& event)
@@ -41,17 +50,8 @@ void PanZoomHandler::apply(vsg::MoveEvent& event)
     auto window = event.window.ref_ptr();
     if (window && onCursorMove)
     {
-        auto extent = window->extent2D();
-        auto ortho = camera_->projectionMatrix.cast<vsg::Orthographic>();
-        auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
-        if (ortho && lookAt && extent.width > 0 && extent.height > 0)
-        {
-            double worldPerPixelX = (ortho->right - ortho->left) / static_cast<double>(extent.width);
-            double worldPerPixelY = (ortho->top - ortho->bottom) / static_cast<double>(extent.height);
-            double worldX = lookAt->center.x + (static_cast<double>(event.x) - extent.width * 0.5) * worldPerPixelX;
-            double worldY = -(lookAt->center.y + (extent.height * 0.5 - static_cast<double>(event.y)) * worldPerPixelY);
-            onCursorMove(worldX, worldY);
-        }
+        double worldX = 0.0, worldY = 0.0;
+        if (screenToWorld(event.x, event.y, window, worldX, worldY)) onCursorMove(worldX, worldY);
     }
 
     if (!window) return;
@@ -117,6 +117,21 @@ void PanZoomHandler::apply(vsg::ScrollWheelEvent& event)
     auto extent = window->extent2D();
     zoom(factor, lastX_, lastY_, extent);
     if (onViewChanged) onViewChanged();
+}
+
+bool PanZoomHandler::screenToWorld(int32_t screenX, int32_t screenY, const vsg::ref_ptr<vsg::Window>& window,
+                                    double& outX, double& outY) const
+{
+    auto extent = window->extent2D();
+    auto ortho = camera_->projectionMatrix.cast<vsg::Orthographic>();
+    auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
+    if (!ortho || !lookAt || extent.width == 0 || extent.height == 0) return false;
+
+    double worldPerPixelX = (ortho->right - ortho->left) / static_cast<double>(extent.width);
+    double worldPerPixelY = (ortho->top - ortho->bottom) / static_cast<double>(extent.height);
+    outX = lookAt->center.x + (static_cast<double>(screenX) - extent.width * 0.5) * worldPerPixelX;
+    outY = -(lookAt->center.y + (extent.height * 0.5 - static_cast<double>(screenY)) * worldPerPixelY);
+    return true;
 }
 
 bool PanZoomHandler::shiftHeld()

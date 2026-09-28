@@ -7,6 +7,7 @@
 #include "MarkTreeView.h"
 #include "OpenFileDialog.h"
 #include "PreferencesDialog.h"
+#include "RpcServer.h"
 #include "VulkanViewport.h"
 
 #include <spdlog/spdlog.h>
@@ -112,6 +113,19 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         lastMeasureText_.clear();
         infoLabel_->setText(QString("Loading %1").arg(baseName));
     });
+}
+
+MainWindow::~MainWindow() = default;
+
+bool MainWindow::startRpcServer(int port)
+{
+    rpcServer_ = std::make_unique<RpcServer>(this, viewport_, this);
+    if (!rpcServer_->start(static_cast<quint16>(port)))
+    {
+        rpcServer_.reset();
+        return false;
+    }
+    return true;
 }
 
 QString MainWindow::statusLineText() const

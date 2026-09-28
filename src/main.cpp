@@ -31,6 +31,10 @@ int main(int argc, char** argv)
     parser.addHelpOption();
     QCommandLineOption geometryOption("geometry", "Initial window size WxH.", "WxH");
     parser.addOption(geometryOption);
+    QCommandLineOption rpcPortOption(
+        "rpc-port", "Start the json-rpc remote-control server on 127.0.0.1:PORT (see RpcServer.h). Not started by default.",
+        "PORT");
+    parser.addOption(rpcPortOption);
     parser.addPositionalArgument("files", "giv file(s) to open.", "[file.giv ...]");
     parser.process(app);
 
@@ -69,6 +73,16 @@ int main(int argc, char** argv)
     // shown yet - which otherwise left the dialog an orphaned, unresponsive
     // top-level with no visible parent underneath it.
     window.show();
+
+    if (parser.isSet(rpcPortOption))
+    {
+        bool ok = false;
+        int port = parser.value(rpcPortOption).toInt(&ok);
+        if (ok && port > 0 && port <= 65535)
+            window.startRpcServer(port);
+        else
+            spdlog::error("Invalid --rpc-port value: {}", parser.value(rpcPortOption).toStdString());
+    }
 
     auto files = parser.positionalArguments();
     if (!files.isEmpty())

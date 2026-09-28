@@ -561,6 +561,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     panZoom_ = giv::PanZoomHandler::create(camera_);
     panZoom_->onCursorMove = [this](double x, double y) { emit cursorWorldPosition(x, y); };
     panZoom_->onViewChanged = [this]() { updateScrollBars(); };
+    panZoom_->onClick = [this](double x, double y, int button, int modifiers) { emit clicked(x, y, button, modifiers); };
     viewer_->addEventHandler(panZoom_);
 
     bool wasBalloonEnabled = isInitialLoad ? false : balloonEnabled_;
@@ -1202,6 +1203,67 @@ void VulkanViewport::zoomOut()
     projection_->right = halfW;
     projection_->bottom = -halfH;
     projection_->top = halfH;
+    viewer_->request();
+    updateScrollBars();
+}
+
+bool VulkanViewport::applyGivString(const std::string& text, bool append, QString* error)
+{
+    if (!append)
+    {
+        scene_.datasets.clear();
+        scene_.minX = 1e30;
+        scene_.minY = 1e30;
+        scene_.maxX = -1e30;
+        scene_.maxY = -1e30;
+    }
+
+    giv::GivParser parser;
+    std::string parseError;
+    parser.parseString(text, scene_, parseError);
+
+    return rebuildSceneGraph(error, /*isInitialLoad=*/false);
+}
+
+void VulkanViewport::getTransformation(double& scaleX, double& scaleY, double& shiftX, double& shiftY) const
+{
+    scaleX = scaleY = 1.0;
+    shiftX = shiftY = 0.0;
+    if (!camera_ || !projection_ || !window_ || !window_->windowAdapter) return;
+
+    auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
+    auto extent = window_->windowAdapter->extent2D();
+    if (!lookAt || extent.width == 0 || extent.height == 0) return;
+
+    double halfW = (projection_->right - projection_->left) * 0.5;
+    double halfH = (projection_->top - projection_->bottom) * 0.5;
+    if (halfW <= 0.0 || halfH <= 0.0) return;
+
+    scaleX = extent.width / (2.0 * halfW);
+    scaleY = extent.height / (2.0 * halfH);
+    shiftX = lookAt->center.x;
+    shiftY = lookAt->center.y;
+}
+
+void VulkanViewport::setTransformation(double scaleX, double scaleY, double shiftX, double shiftY)
+{
+    if (!camera_ || !projection_ || !window_ || !window_->windowAdapter) return;
+    if (scaleX <= 0.0 || scaleY <= 0.0) return;
+
+    auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
+    auto extent = window_->windowAdapter->extent2D();
+    if (!lookAt || extent.width == 0 || extent.height == 0) return;
+
+    double halfW = extent.width / (2.0 * scaleX);
+    double halfH = extent.height / (2.0 * scaleY);
+
+    lookAt->eye = vsg::dvec3(shiftX, shiftY, 1.0);
+    lookAt->center = vsg::dvec3(shiftX, shiftY, 0.0);
+    projection_->left = -halfW;
+    projection_->right = halfW;
+    projection_->bottom = -halfH;
+    projection_->top = halfH;
+
     viewer_->request();
     updateScrollBars();
 }
