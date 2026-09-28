@@ -558,20 +558,8 @@ void GivParser::parseLine(Dataset& ds, const char* line, size_t len, SceneData& 
     }
 }
 
-bool GivParser::parseFile(const std::string& filename, SceneData& scene, std::string& error)
+void GivParser::parseBuffer(const char* data, size_t size, SceneData& scene)
 {
-    if (filename.size() >= 4 && toLower(filename.substr(filename.size() - 4)) == ".svg")
-        return loadSvgFile(filename, scene, error);
-
-    MappedFile file;
-    if (!file.load(filename))
-    {
-        error = "could not open file: " + filename;
-        return false;
-    }
-
-    const char* data = file.data;
-    size_t size = file.size;
     size_t pos = 0;
 
     bool needNewDataset = true;
@@ -622,7 +610,28 @@ bool GivParser::parseFile(const std::string& filename, SceneData& scene, std::st
         if (last.pointCount() == 0 && last.texts.empty())
             scene.datasets.pop_back();
     }
+}
 
+bool GivParser::parseFile(const std::string& filename, SceneData& scene, std::string& error)
+{
+    if (filename.size() >= 4 && toLower(filename.substr(filename.size() - 4)) == ".svg")
+        return loadSvgFile(filename, scene, error);
+
+    MappedFile file;
+    if (!file.load(filename))
+    {
+        error = "could not open file: " + filename;
+        return false;
+    }
+
+    parseBuffer(file.data, file.size, scene);
+    return true;
+}
+
+bool GivParser::parseString(const std::string& text, SceneData& scene, std::string& error)
+{
+    (void)error;
+    parseBuffer(text.data(), text.size(), scene);
     return true;
 }
 

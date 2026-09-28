@@ -180,11 +180,30 @@ public:
     // image has no raw sample buffer.
     std::array<uint32_t, 256> computeHistogram() const;
 
+    // json-rpc giv_string command: parses `text` as a .giv scene-description
+    // buffer (see GivParser::parseString()) and merges it into the current
+    // scene. If `append` is false, existing datasets (marks) are cleared
+    // first - the loaded image itself is untouched either way, matching
+    // giv's own giv_widget_clear_giv(), which only ever clears marks. Returns
+    // false (and sets *error, if non-null) on rebuild failure.
+    bool applyGivString(const std::string& text, bool append, QString* error = nullptr);
+
+    // json-rpc get_transformation/set_transformation: the current view's
+    // scale (world-units-per-pixel^-1, i.e. pixels per world unit, matching
+    // giv's convention) and world-space pan center, per axis.
+    void getTransformation(double& scaleX, double& scaleY, double& shiftX, double& shiftY) const;
+    void setTransformation(double scaleX, double scaleY, double shiftX, double shiftY);
+
 signals:
     void sceneLoaded();
     void cursorWorldPosition(double x, double y);
     void imageChanged(int index, int count, QString filename);
     void measurementChanged(QString text);
+
+    // Emitted on every left/middle/right button press, with the click's
+    // world-space (x,y), the vsg button number (1/2/3), and Qt keyboard
+    // modifiers - feeds the json-rpc pick_coordinate command (RpcServer).
+    void clicked(double x, double y, int button, int modifiers);
 
     // Emitted whenever the current slice changes: on nextSlice()/
     // previousSlice(), and whenever decodeImageAt() (re)selects an image

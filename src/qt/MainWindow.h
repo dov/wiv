@@ -7,6 +7,7 @@
 #include <QMainWindow>
 #include <QStringList>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,7 @@ class VulkanViewport;
 class MarkTreeView;
 class ContrastDialog;
 class ColorTableDialog;
+class RpcServer;
 
 class MainWindow : public QMainWindow
 {
@@ -31,10 +33,18 @@ class MainWindow : public QMainWindow
 
 public:
     explicit MainWindow(QWidget* parent = nullptr);
+    ~MainWindow() override;
 
     // Loads `paths` into the viewport (used for files given on the command
     // line at startup).
     void loadFiles(const std::vector<std::string>& paths);
+
+    // Starts the json-rpc remote-control server (see RpcServer.h) on
+    // 127.0.0.1:port. Not started unless explicitly requested (--rpc-port),
+    // unlike giv's own always-on-by-default json-rpc server - an image
+    // viewer shouldn't open a listening socket by default. Returns false on
+    // failure (e.g. the port is already in use).
+    bool startRpcServer(int port);
 
 protected:
     void showEvent(QShowEvent* event) override;
@@ -81,6 +91,8 @@ private:
     // state survives, and refreshed whenever the displayed image changes.
     ContrastDialog* contrastDialog_ = nullptr;
     ColorTableDialog* colorTableDialog_ = nullptr;
+
+    std::unique_ptr<RpcServer> rpcServer_;
 
     void buildMenus();
     void buildStatusBar();

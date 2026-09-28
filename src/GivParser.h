@@ -25,7 +25,19 @@ public:
     // which route .svg the same way).
     bool parseFile(const std::string& filename, SceneData& scene, std::string& error);
 
+    // Parses `text` as an in-memory .giv scene-description buffer (no mmap,
+    // no .svg dispatch - matches giv's json-rpc giv_string command, which
+    // only ever injects the plain-text mark grammar). Appends to `scene`
+    // like parseFile(); `error` is unused today but kept for symmetry with
+    // parseFile() and future validation.
+    bool parseString(const std::string& text, SceneData& scene, std::string& error);
+
 private:
+    // Shared line-parsing loop over an in-memory buffer, used by both
+    // parseFile() (mmap'd file contents) and parseString() (a caller-owned
+    // buffer, e.g. from an RPC request).
+    void parseBuffer(const char* data, size_t size, SceneData& scene);
+
     // $def_style <name> <key value...> - definitions accumulate per key.
     std::unordered_map<std::string, std::vector<std::string>> styleDefs_;
 
