@@ -13,9 +13,21 @@ endif()
 
 find_package(vsg CONFIG REQUIRED)
 find_package(vsgXchange CONFIG REQUIRED)
-find_package(vsgQt CONFIG REQUIRED)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Concurrent Network)
 find_package(spdlog CONFIG REQUIRED)
+
+# The system-wide vsgQt install (/usr/local) was built against Qt5, so it
+# can't be used by this (Qt6) app - vsgQt is a thin library, so build it
+# from source against our own Qt6 + the system vsg instead of vendoring a
+# Qt6 build of all of Qt itself via vcpkg.
+include(FetchContent)
+set(QT_PACKAGE_NAME Qt6 CACHE STRING "" FORCE)
+FetchContent_Declare(vsgQt
+  GIT_REPOSITORY https://github.com/vsg-dev/vsgQt.git
+  GIT_TAG v0.4.0
+  GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(vsgQt)
 
 # ---------------------------------------------------------------------------
 # Shader compilation (GLSL -> SPIR-V) via glslangValidator
