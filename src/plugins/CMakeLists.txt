@@ -12,7 +12,11 @@ function(wiv_add_plugin name)
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/plugins
   )
   target_include_directories(wiv_plugin_${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-  install(TARGETS wiv_plugin_${name} LIBRARY DESTINATION lib/wiv/plugins RUNTIME DESTINATION lib/wiv/plugins)
+  if(WIN32)
+    install(TARGETS wiv_plugin_${name} RUNTIME DESTINATION plugins)
+  else()
+    install(TARGETS wiv_plugin_${name} LIBRARY DESTINATION lib/wiv/plugins)
+  endif()
 endfunction()
 
 wiv_add_plugin(stbimage stbimage/stbimage_plugin.cpp)

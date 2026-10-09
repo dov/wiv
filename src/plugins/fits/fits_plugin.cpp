@@ -21,6 +21,7 @@
 
 #include <cctype>
 #include <cstring>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -56,6 +57,13 @@ extern "C" bool wiv_plugin_supports_file(const char* filename)
 
 extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** error_msg)
 {
+    // cfitsio keeps global state (I/O driver table, file handle table) and is
+    // only thread-safe when built reentrant, which the Windows vcpkg build is
+    // not. The Open dialog decodes thumbnails on several worker threads, so
+    // serialize all calls.
+    static std::mutex cfitsioMutex;
+    std::lock_guard<std::mutex> lock(cfitsioMutex);
+
     fitsfile* fptr = nullptr;
     int status = 0;
 

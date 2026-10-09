@@ -2,6 +2,7 @@
 
 #include "plugins/wiv_plugin.h"
 #include "plugins/wiv_plugin_common.h"
+#include "AppPaths.h"
 
 #include <spdlog/spdlog.h>
 
@@ -170,7 +171,7 @@ std::vector<Plugin>& loadedPlugins()
     scanned = true;
 
     const char* dirOverride = std::getenv("WIV_PLUGIN_DIR");
-    std::string dir = dirOverride ? dirOverride : WIV_PLUGIN_DIR;
+    std::string dir = dirOverride ? std::string(dirOverride) : resourceDir("plugins", WIV_PLUGIN_DIR);
 
     std::error_code ec;
     if (!fs::is_directory(dir, ec))
