@@ -168,6 +168,8 @@ void MainWindow::buildMenus()
     zoomOutAction->setShortcut(QKeySequence::ZoomOut);
     auto fitAction = viewMenu->addAction("Fit to Window", viewport_, &VulkanViewport::fitToWindow);
     fitAction->setShortcuts({QKeySequence("Ctrl+0"), QKeySequence("F")});
+    auto actualPixelsAction = viewMenu->addAction("Actual Pixels (1:1)", viewport_, &VulkanViewport::zoomActualPixels);
+    actualPixelsAction->setShortcut(QKeySequence("1"));
 
     balloonAction_ = viewMenu->addAction("Balloon Tooltips", viewport_, &VulkanViewport::toggleBalloon);
     balloonAction_->setCheckable(true);
