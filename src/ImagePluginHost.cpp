@@ -5,7 +5,19 @@
 
 #include <spdlog/spdlog.h>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#define dlopen(p, f) static_cast<void*>(LoadLibraryExA(p, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH))
+#define dlsym(h, s) reinterpret_cast<void*>(GetProcAddress(static_cast<HMODULE>(h), s))
+#define dlclose(h) FreeLibrary(static_cast<HMODULE>(h))
+#define dlerror() "LoadLibrary failed"
+#define RTLD_NOW 0
+#define RTLD_LOCAL 0
+#else
 #include <dlfcn.h>
+#endif
 
 #include <algorithm>
 #include <cstdlib>
@@ -18,6 +30,15 @@ namespace giv
 
 namespace
 {
+#ifdef _WIN32
+constexpr const char* kPluginExt = ".dll";
+// Dependency DLLs (tiff.dll, ...) are copied next to the plugins; only load ours.
+bool isPluginName(const std::string& stem) { return stem.rfind("wiv_", 0) == 0; }
+#else
+constexpr const char* kPluginExt = ".so";
+bool isPluginName(const std::string&) { return true; }
+#endif
+
 
 namespace fs = std::filesystem;
 
@@ -161,7 +182,7 @@ std::vector<Plugin>& loadedPlugins()
     std::vector<std::string> candidates;
     for (const auto& entry : fs::directory_iterator(dir, ec))
     {
-        if (entry.path().extension() == ".so")
+        if (entry.path().extension() == kPluginExt && isPluginName(entry.path().stem().string()))
             candidates.push_back(entry.path().string());
     }
     std::sort(candidates.begin(), candidates.end());

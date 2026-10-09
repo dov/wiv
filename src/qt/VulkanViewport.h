@@ -296,6 +296,7 @@ private:
     // See checkResizeSettling()/GivViewer::isResizeSettling's doc comment.
     bool resizeSettling_ = false;
     QSize pendingResizeExtent_;
+    int settleTicks_ = 0;
 
     // "Contain": scales the content down to the smaller of scaleX/scaleY so
     // the whole thing is visible, possibly with letterbox margins on one axis.
