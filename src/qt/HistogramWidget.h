@@ -44,6 +44,7 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void leaveEvent(QEvent* event) override;
 
 private:
     enum class DragMode
@@ -62,12 +63,16 @@ private:
     double strength_ = 1.0;
 
     DragMode dragMode_ = DragMode::None;
+    DragMode hoverMode_ = DragMode::None;
     int dragStartX_ = 0;
     float dragStartMin_ = 0.0f;
     float dragStartMax_ = 0.0f;
 
     float xToValue(int x) const;
     int valueToX(float v) const;
+    int handleX(float v) const;
+    DragMode hitTest(int x) const;
+    void updateCursor(DragMode mode);
 };
 
 } // namespace givqt
