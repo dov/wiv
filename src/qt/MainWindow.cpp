@@ -570,7 +570,13 @@ void MainWindow::setMarkBrowserPlacement(bool asPanel)
 void MainWindow::showContrastDialog()
 {
     spdlog::info("User opened Adjust Contrast dialog");
-    if (!contrastDialog_) contrastDialog_ = new ContrastDialog(viewport_, this);
+    if (!contrastDialog_)
+    {
+        contrastDialog_ = new ContrastDialog(viewport_, this);
+        connect(contrastDialog_, &ContrastDialog::colormapChanged, this, [this] {
+            if (colorTableDialog_) colorTableDialog_->refreshForImage();
+        });
+    }
     contrastDialog_->refreshForImage();
     contrastDialog_->show();
     contrastDialog_->raise();
@@ -580,7 +586,13 @@ void MainWindow::showContrastDialog()
 void MainWindow::showColorTableDialog()
 {
     spdlog::info("User opened Color Table dialog");
-    if (!colorTableDialog_) colorTableDialog_ = new ColorTableDialog(viewport_, this);
+    if (!colorTableDialog_)
+    {
+        colorTableDialog_ = new ColorTableDialog(viewport_, this);
+        connect(colorTableDialog_, &ColorTableDialog::colormapChanged, this, [this] {
+            if (contrastDialog_) contrastDialog_->refreshForImage();
+        });
+    }
     colorTableDialog_->refreshForImage();
     colorTableDialog_->show();
     colorTableDialog_->raise();

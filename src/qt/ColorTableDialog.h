@@ -7,7 +7,10 @@
 // ContrastDialog/MarkTreeView's "live tool" pattern rather than
 // CalibrateDialog's one-shot modal).
 //
+#include "Colormaps.h"
+
 #include <QDialog>
+#include <QPixmap>
 
 class QListWidget;
 
@@ -15,6 +18,10 @@ namespace givqt
 {
 
 class VulkanViewport;
+
+// Horizontal gradient preview of a colormap, shared with ContrastDialog's
+// color table combo box.
+QPixmap colormapSwatch(giv::colormaps::Id id, int width, int height);
 
 class ColorTableDialog final : public QDialog
 {
@@ -26,6 +33,11 @@ public:
     // Re-selects the current image's colormap in the list. Call whenever
     // the displayed image changes while this dialog is open.
     void refreshForImage();
+
+signals:
+    // Emitted when the user picks a colormap here (so other views of the
+    // colormap, e.g. ContrastDialog's combo box, can resync).
+    void colormapChanged();
 
 private:
     VulkanViewport* viewport_ = nullptr;
