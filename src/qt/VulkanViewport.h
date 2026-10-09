@@ -295,6 +295,10 @@ private:
     int lastWidth_ = 0;
     int lastHeight_ = 0;
     bool autoFit_ = true; // see setAutoFit()
+    // True while switchToImage() rebuilds the scene before re-fitting: the
+    // interim scrollbar state (old zoom, new bounds) is never shown, avoiding a
+    // show-then-hide flicker.
+    bool deferScrollBarUpdate_ = false;
 
     // See checkResizeSettling()/GivViewer::isResizeSettling's doc comment.
     bool resizeSettling_ = false;
