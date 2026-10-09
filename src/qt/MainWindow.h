@@ -50,8 +50,6 @@ public:
 
 protected:
     void showEvent(QShowEvent* event) override;
-    void dragEnterEvent(QDragEnterEvent* event) override;
-    void dropEvent(QDropEvent* event) override;
 
 private:
     VulkanViewport* viewport_ = nullptr;

@@ -197,6 +197,8 @@ public:
 
 signals:
     void sceneLoaded();
+    // Local files dropped onto the view (see DropOverlay in the .cpp).
+    void filesDropped(QStringList files);
     void cursorWorldPosition(double x, double y);
     void imageChanged(int index, int count, QString filename);
     void measurementChanged(QString text);
