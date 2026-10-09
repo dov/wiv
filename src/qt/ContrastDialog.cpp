@@ -1,18 +1,23 @@
 #include "ContrastDialog.h"
 
+#include "ColorTableDialog.h"
+#include "Colormaps.h"
 #include "HistogramWidget.h"
 #include "ImagePluginHost.h"
 #include "VulkanViewport.h"
 
 #include <QAbstractButton>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDoubleValidator>
+#include <QIcon>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QSignalBlocker>
 #include <QSlider>
 #include <QVBoxLayout>
 
@@ -22,7 +27,7 @@ namespace givqt
 ContrastDialog::ContrastDialog(VulkanViewport* viewport, QWidget* parent) : QDialog(parent), viewport_(viewport)
 {
     setWindowTitle("Giv Contrast");
-    resize(400, 350);
+    resize(420, 380);
 
     auto* grid = new QGridLayout();
     minMaxRadio_ = new QRadioButton(this);
@@ -53,6 +58,17 @@ ContrastDialog::ContrastDialog(VulkanViewport* viewport, QWidget* parent) : QDia
     auto* updateButton = new QPushButton("Update", this);
     connect(updateButton, &QPushButton::clicked, this, &ContrastDialog::onUpdateClicked);
     grid->addWidget(updateButton, 2, 0, 1, 2);
+
+    colormapCombo_ = new QComboBox(this);
+    colormapCombo_->setIconSize(QSize(80, 14));
+    for (int i = 0; i < static_cast<int>(giv::colormaps::Id::Count); ++i)
+    {
+        auto id = static_cast<giv::colormaps::Id>(i);
+        colormapCombo_->addItem(QIcon(colormapSwatch(id, 80, 14)), giv::colormaps::name(id), i);
+    }
+    connect(colormapCombo_, &QComboBox::activated, this, &ContrastDialog::onColormapPicked);
+    grid->addWidget(new QLabel("Color table:", this), 3, 0, 1, 2);
+    grid->addWidget(colormapCombo_, 3, 2, 1, 3);
 
     auto* contrastBox = new QGroupBox("Contrast", this);
     contrastBox->setLayout(grid);
@@ -109,6 +125,12 @@ void ContrastDialog::refreshForImage()
     maxEdit_->setText(QString::number(state.max, 'g', 6));
     centerEdit_->setText(QString::number((state.min + state.max) / 2.0, 'g', 6));
     windowEdit_->setText(QString::number(state.max - state.min, 'g', 6));
+
+    {
+        QSignalBlocker blocker(colormapCombo_);
+        colormapCombo_->setCurrentIndex(
+            state.colormapEnabled ? static_cast<int>(state.colormapId) : static_cast<int>(giv::colormaps::Id::None));
+    }
 }
 
 void ContrastDialog::onRadioToggled()
@@ -162,6 +184,14 @@ void ContrastDialog::applyContrast(float min, float max)
     windowEdit_->setText(QString::number(max - min, 'g', 6));
     histogram_->setContrastRange(min, max);
     viewport_->setContrast(min, max);
+}
+
+
+void ContrastDialog::onColormapPicked(int row)
+{
+    auto id = static_cast<giv::colormaps::Id>(colormapCombo_->itemData(row).toInt());
+    viewport_->setColormap(id, id != giv::colormaps::Id::None);
+    emit colormapChanged();
 }
 
 } // namespace givqt

@@ -13,6 +13,7 @@
 //
 #include <QDialog>
 
+class QComboBox;
 class QLineEdit;
 class QRadioButton;
 class QSlider;
@@ -35,6 +36,11 @@ public:
     // image changes while this dialog is open (see MainWindow::imageChanged).
     void refreshForImage();
 
+signals:
+    // Emitted when the user picks a colormap here (so ColorTableDialog can
+    // resync its selection).
+    void colormapChanged();
+
 private:
     VulkanViewport* viewport_ = nullptr;
     HistogramWidget* histogram_ = nullptr;
@@ -45,10 +51,12 @@ private:
     QLineEdit* centerEdit_ = nullptr;
     QLineEdit* windowEdit_ = nullptr;
     QSlider* strengthSlider_ = nullptr;
+    QComboBox* colormapCombo_ = nullptr;
 
     void onRadioToggled();
     void onUpdateClicked();
     void onAutoContrast();
+    void onColormapPicked(int row);
     void onHandlesDragged(float min, float max);
 
     // Sets both field-pairs (min/max and center/window) from `min`/`max`,

@@ -5,53 +5,93 @@
 #include "VulkanViewport.h"
 
 #include <QColor>
-#include <QIcon>
 #include <QImage>
 #include <QListWidget>
-#include <QPixmap>
+#include <QPainter>
 #include <QSignalBlocker>
-#include <QSize>
+#include <QStyledItemDelegate>
 #include <QVBoxLayout>
 
 namespace givqt
 {
 
-namespace
+QPixmap colormapSwatch(giv::colormaps::Id id, int width, int height)
 {
-constexpr int kSwatchWidth = 200;
-constexpr int kSwatchHeight = 16;
-
-QPixmap swatchFor(giv::colormaps::Id id)
-{
-    QImage img(kSwatchWidth, kSwatchHeight, QImage::Format_RGB32);
+    QImage img(width, height, QImage::Format_RGB32);
     const uint8_t* lut = giv::colormaps::lut(id);
-    for (int x = 0; x < kSwatchWidth; ++x)
+    for (int x = 0; x < width; ++x)
     {
-        int idx = x * 255 / (kSwatchWidth - 1);
+        int idx = width > 1 ? x * 255 / (width - 1) : 0;
         QColor c(lut[idx * 3 + 0], lut[idx * 3 + 1], lut[idx * 3 + 2]);
-        for (int y = 0; y < kSwatchHeight; ++y)
+        for (int y = 0; y < height; ++y)
             img.setPixelColor(x, y, c);
     }
     return QPixmap::fromImage(img);
 }
+
+namespace
+{
+constexpr int kSwatchRole = Qt::UserRole + 1;
+constexpr int kSwatchSrcWidth = 256;
+constexpr int kSwatchHeight = 14;
+constexpr int kPad = 4;
+
+// Draws the colormap name on one line and a full-width swatch beneath it, so
+// a row always fits the list's width (no horizontal scroll, whatever the
+// dialog size or name length).
+class ColormapDelegate final : public QStyledItemDelegate
+{
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex&) const override
+    {
+        return QSize(0, option.fontMetrics.height() + kSwatchHeight + 3 * kPad);
+    }
+
+    void paint(QPainter* p, const QStyleOptionViewItem& option, const QModelIndex& index) const override
+    {
+        const bool selected = option.state & QStyle::State_Selected;
+        if (selected)
+            p->fillRect(option.rect, option.palette.highlight());
+        else if (option.state & QStyle::State_MouseOver)
+            p->fillRect(option.rect, option.palette.alternateBase());
+
+        QRect r = option.rect.adjusted(kPad, kPad, -kPad, -kPad);
+        p->setPen(selected ? option.palette.highlightedText().color() : option.palette.text().color());
+        QRect textRect(r.left(), r.top(), r.width(), option.fontMetrics.height());
+        p->drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter,
+                    option.fontMetrics.elidedText(index.data(Qt::DisplayRole).toString(), Qt::ElideRight, r.width()));
+
+        QRect swatchRect(r.left(), textRect.bottom() + kPad, r.width(), kSwatchHeight);
+        p->setRenderHint(QPainter::SmoothPixmapTransform);
+        p->drawPixmap(swatchRect, index.data(kSwatchRole).value<QPixmap>());
+        p->setPen(option.palette.mid().color());
+        p->drawRect(swatchRect.adjusted(0, 0, -1, -1));
+    }
+};
 
 } // namespace
 
 ColorTableDialog::ColorTableDialog(VulkanViewport* viewport, QWidget* parent) : QDialog(parent), viewport_(viewport)
 {
     setWindowTitle("Color Table");
-    resize(260, 320);
+    resize(320, 420);
+    setMinimumWidth(200);
 
     list_ = new QListWidget(this);
-    list_->setIconSize(QSize(kSwatchWidth, kSwatchHeight));
+    list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    list_->setMouseTracking(true);
+    list_->setItemDelegate(new ColormapDelegate(list_));
 
     // "None" first (giv's PseudoColorNone), then every static/procedural
     // colormap in Colormaps::Id order.
     for (int i = 0; i < static_cast<int>(giv::colormaps::Id::Count); ++i)
     {
         auto id = static_cast<giv::colormaps::Id>(i);
-        auto* item = new QListWidgetItem(QIcon(swatchFor(id)), giv::colormaps::name(id), list_);
+        auto* item = new QListWidgetItem(giv::colormaps::name(id), list_);
         item->setData(Qt::UserRole, i);
+        item->setData(kSwatchRole, colormapSwatch(id, kSwatchSrcWidth, kSwatchHeight));
     }
 
     connect(list_, &QListWidget::currentRowChanged, this, &ColorTableDialog::onSelectionChanged);
@@ -85,6 +125,7 @@ void ColorTableDialog::onSelectionChanged()
     if (!item) return;
     auto id = static_cast<giv::colormaps::Id>(item->data(Qt::UserRole).toInt());
     viewport_->setColormap(id, id != giv::colormaps::Id::None);
+    emit colormapChanged();
 }
 
 } // namespace givqt
