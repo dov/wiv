@@ -1042,9 +1042,13 @@ void VulkanViewport::switchToImage(int index)
     }
     spdlog::info("Switched to image {}/{}: {}", index + 1, loadedImageNames_.size(), loadedImageNames_[static_cast<size_t>(index)]);
     QString error;
-    if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
+    deferScrollBarUpdate_ = autoFit_;
+    bool rebuilt = rebuildSceneGraph(&error, /*isInitialLoad=*/false);
+    deferScrollBarUpdate_ = false;
+    if (!rebuilt)
     {
         spdlog::error("{}", error.toStdString());
+        updateScrollBars();
         return;
     }
     if (autoFit_)
@@ -1202,6 +1206,7 @@ void VulkanViewport::currentFitBoundsYDown(double& minX, double& minY, double& m
 
 void VulkanViewport::updateScrollBars()
 {
+    if (deferScrollBarUpdate_) return;
     // Every zoom/pan/resize/fit path in this file ends by calling
     // updateScrollBars(), so this is the one hook that keeps the caliper's
     // on-screen size pixel-constant even when the view changes without the
