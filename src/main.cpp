@@ -5,6 +5,7 @@
 // actual VSG/Vulkan rendering. CLI subset (see plan/README): positional
 // .giv file(s); --geometry WxH sets the initial window size.
 #include "Logging.h"
+#include "SceneBuilder.h"
 #include "qt/MainWindow.h"
 
 #include <QApplication>
@@ -12,9 +13,37 @@
 
 #include <spdlog/spdlog.h>
 
+#include <vsg/all.h>
+#include <vsgXchange/all.h>
+#include <vsgXchange/freetype.h>
+
+#include <string>
+
 int main(int argc, char** argv)
 {
     giv::log::init();
+
+    // --warm-fonts: rasterize the stock font faces into the on-disk font
+    // cache and exit, so the first real scene doesn't pay ~3 s per face (see
+    // SceneBuilder::resolveFont). Run by the Windows installer after copying
+    // files. Handled before QApplication: no GUI is needed.
+    for (int i = 1; i < argc; ++i)
+    {
+        if (std::string(argv[i]) != "--warm-fonts") continue;
+        auto options = vsg::Options::create();
+        options->paths = vsg::getEnvPaths("VSG_FILE_PATH");
+        options->add(vsgXchange::all::create());
+        options->setValue(vsgXchange::freetype::texel_margin_ratio, 0.5f);
+        options->setValue(vsgXchange::freetype::quad_margin_ratio, 0.25f);
+        giv::SceneBuilder builder(options);
+        for (const char* family : {"Sans", "Serif", "Monospace"})
+            for (const char* style : {"", " Bold", " Italic", " Bold Italic"})
+            {
+                double size = -1;
+                builder.resolveFont(std::string(family) + style, size);
+            }
+        return 0;
+    }
 
     QApplication app(argc, argv);
     QApplication::setOrganizationName("wiv");

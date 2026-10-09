@@ -1,4 +1,5 @@
 #include "VulkanViewport.h"
+#include "AppPaths.h"
 
 #include "DisplayImage.h"
 #include "GivParser.h"
@@ -223,7 +224,7 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
 #ifndef WIV_SHADER_DIR
 #    define WIV_SHADER_DIR "shaders"
 #endif
-    shaderDir_ = WIV_SHADER_DIR;
+    shaderDir_ = giv::resourceDir("shaders", WIV_SHADER_DIR);
 
     // Set the real (saved-preference) background color before the bootstrap
     // loadFiles({}) below builds the first RenderGraph: RenderGraph::
