@@ -1230,6 +1230,23 @@ void VulkanViewport::zoomOut()
     updateScrollBars();
 }
 
+void VulkanViewport::zoomActualPixels()
+{
+    spdlog::info("Zoom 1:1");
+    if (!projection_ || !window_ || !window_->windowAdapter) return;
+    auto extent = window_->windowAdapter->extent2D();
+    if (extent.width == 0 || extent.height == 0) return;
+    // One world unit == one image pixel, so half the extent in device pixels.
+    double halfW = extent.width * 0.5;
+    double halfH = extent.height * 0.5;
+    projection_->left = -halfW;
+    projection_->right = halfW;
+    projection_->bottom = -halfH;
+    projection_->top = halfH;
+    viewer_->request();
+    updateScrollBars();
+}
+
 bool VulkanViewport::applyGivString(const std::string& text, bool append, QString* error)
 {
     if (!append)

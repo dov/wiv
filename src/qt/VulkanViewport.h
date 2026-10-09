@@ -62,6 +62,7 @@ public:
     void zoomIn();
     void zoomOut();
     void fitToWindow();
+    void zoomActualPixels();
 
     // Spins the Qt event loop (bounded - never blocks indefinitely) until
     // window_->windowAdapter->extent2D() reflects this widget's actual
