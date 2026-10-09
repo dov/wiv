@@ -7,11 +7,12 @@ function(wiv_add_plugin name)
   add_library(wiv_plugin_${name} SHARED ${ARGN} ${CMAKE_CURRENT_SOURCE_DIR}/wiv_plugin_common.cpp)
   set_target_properties(wiv_plugin_${name} PROPERTIES
     PREFIX ""
-    OUTPUT_NAME "${name}"
+    OUTPUT_NAME "$<IF:$<BOOL:${WIN32}>,wiv_${name},${name}>"
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/plugins
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/plugins
   )
   target_include_directories(wiv_plugin_${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-  install(TARGETS wiv_plugin_${name} LIBRARY DESTINATION lib/wiv/plugins)
+  install(TARGETS wiv_plugin_${name} LIBRARY DESTINATION lib/wiv/plugins RUNTIME DESTINATION lib/wiv/plugins)
 endfunction()
 
 wiv_add_plugin(stbimage stbimage/stbimage_plugin.cpp)

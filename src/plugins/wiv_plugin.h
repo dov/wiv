@@ -13,6 +13,12 @@
 //
 #include <stdbool.h>
 
+#ifdef _WIN32
+#define WIV_PLUGIN_API __declspec(dllexport)
+#else
+#define WIV_PLUGIN_API __attribute__((visibility("default")))
+#endif
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -62,18 +68,18 @@ extern "C"
     // Does this plugin recognize `filename` (by extension)? Called by the
     // host for every loaded plugin, in sorted-filename order, until one
     // returns true (first-match-wins).
-    bool wiv_plugin_supports_file(const char* filename);
+    WIV_PLUGIN_API bool wiv_plugin_supports_file(const char* filename);
 
     // Load `filename` into a freshly heap-allocated WivPluginImage. On
     // failure returns NULL and, if error_msg is non-NULL, sets *error_msg
     // to a freshly heap-allocated message (free with wiv_plugin_free_error).
-    WivPluginImage* wiv_plugin_load_image(const char* filename, char** error_msg);
+    WIV_PLUGIN_API WivPluginImage* wiv_plugin_load_image(const char* filename, char** error_msg);
 
     // Frees an image returned by wiv_plugin_load_image.
-    void wiv_plugin_free_image(WivPluginImage* img);
+    WIV_PLUGIN_API void wiv_plugin_free_image(WivPluginImage* img);
 
     // Frees an error message set by wiv_plugin_load_image.
-    void wiv_plugin_free_error(char* error_msg);
+    WIV_PLUGIN_API void wiv_plugin_free_error(char* error_msg);
 
 #ifdef __cplusplus
 }

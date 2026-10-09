@@ -1,6 +1,10 @@
 {
   "version": 6,
-  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
   "configurePresets": [
     {
       "name": "base",
@@ -21,6 +25,20 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "windows-release",
+      "inherits": "base",
+      "toolchainFile": "c:/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
+        "VCPKG_INSTALL_OPTIONS": "--x-buildtrees-root=C:/vbt"
+      }
     }
   ],
   "buildPresets": [
@@ -31,6 +49,10 @@
     {
       "name": "linux-release",
       "configurePreset": "linux-release"
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release"
     }
   ]
 }

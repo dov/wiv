@@ -8,10 +8,12 @@
 #include <cstdio>
 #include <cstring>
 
+#ifndef _WIN32
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#endif
 
 namespace giv
 {
@@ -134,9 +136,13 @@ struct MappedFile
 {
     const char* data = nullptr;
     size_t size = 0;
+    std::vector<char> buffer;
+
+    // Reads the whole file (or stdin-like stream) into memory. On POSIX
+    // regular files are mmap'd instead of copied.
+#ifndef _WIN32
     void* mmapBase = nullptr;
     size_t mmapLen = 0;
-    std::vector<char> fallbackBuffer;
 
     ~MappedFile()
     {
@@ -170,12 +176,27 @@ struct MappedFile
         char buf[1 << 16];
         ssize_t n;
         while ((n = ::read(fd, buf, sizeof(buf))) > 0)
-            fallbackBuffer.insert(fallbackBuffer.end(), buf, buf + n);
+            buffer.insert(buffer.end(), buf, buf + n);
         ::close(fd);
-        data = fallbackBuffer.data();
-        size = fallbackBuffer.size();
+        data = buffer.data();
+        size = buffer.size();
         return true;
     }
+#else
+    bool load(const std::string& filename)
+    {
+        FILE* f = std::fopen(filename.c_str(), "rb");
+        if (!f) return false;
+        char buf[1 << 16];
+        size_t n;
+        while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0)
+            buffer.insert(buffer.end(), buf, buf + n);
+        std::fclose(f);
+        data = buffer.data();
+        size = buffer.size();
+        return true;
+    }
+#endif
 };
 
 } // namespace

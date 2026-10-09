@@ -15,7 +15,11 @@ namespace
 {
 std::filesystem::path logDir()
 {
+#ifdef _WIN32
+    const char* home = std::getenv("USERPROFILE");
+#else
     const char* home = std::getenv("HOME");
+#endif
     std::filesystem::path base = home && *home ? std::filesystem::path(home) : std::filesystem::current_path();
     return base / ".wiv" / "logs";
 }
@@ -25,7 +29,11 @@ std::string timestampedFilename()
     auto now = std::chrono::system_clock::now();
     auto t = std::chrono::system_clock::to_time_t(now);
     std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &t);
+#else
     localtime_r(&t, &tm);
+#endif
     char buf[32];
     std::strftime(buf, sizeof(buf), "wiv-%Y%m%d-%H%M%S.log", &tm);
     return buf;

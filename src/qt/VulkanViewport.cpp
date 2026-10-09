@@ -144,6 +144,12 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
 
     window_ = new vsgQt::Window(viewer_, traits_, static_cast<QWindow*>(nullptr));
     window_->setTitle("wiv");
+#ifdef _WIN32
+    // The window is created as a decorated top-level and only later embedded
+    // via createWindowContainer(); on Windows the leftover frame margins offset
+    // and oversize the child HWND (covering the menu bar), so make it frameless.
+    window_->setFlags(Qt::FramelessWindowHint);
+#endif
 
     // Create the Vulkan surface/device/swapchain while the QWindow is still
     // a plain top-level (unparented) window, *then* reparent/embed it via
@@ -330,6 +336,22 @@ bool VulkanViewport::checkResizeSettling()
         static_cast<int>(extent.height) == pendingResizeExtent_.height())
     {
         resizeSettling_ = false;
+        settleTicks_ = 0;
+        return false;
+    }
+
+    // On Windows the native child window's client size can settle on a value
+    // that never exactly matches the requested one (DPI rounding / the
+    // container's own sizing), which would hold off rendering forever. Nudge
+    // the swapchain to re-read the surface size a few times, then accept
+    // whatever extent the surface really has and resync the camera to it.
+    ++settleTicks_;
+    if (settleTicks_ % 10 == 0) window_->windowAdapter->resize();
+    if (settleTicks_ > 60)
+    {
+        resizeSettling_ = false;
+        settleTicks_ = 0;
+        syncRenderExtent(window_->windowAdapter->extent2D());
         return false;
     }
     return true;

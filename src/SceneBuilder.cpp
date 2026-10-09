@@ -79,10 +79,58 @@ std::string fontCacheDir()
 {
     const char* xdgCache = std::getenv("XDG_CACHE_HOME");
     if (xdgCache && *xdgCache) return std::string(xdgCache) + "/wiv/fonts";
+#ifdef _WIN32
+    if (const char* local = std::getenv("LOCALAPPDATA"); local && *local)
+        return std::string(local) + "/wiv/fonts";
+    return (std::filesystem::temp_directory_path() / "wiv-font-cache").string();
+#else
     const char* home = std::getenv("HOME");
     if (home && *home) return std::string(home) + "/.cache/wiv/fonts";
     return "/tmp/wiv-font-cache";
+#endif
 }
+
+#ifdef _WIN32
+// No fontconfig on Windows: map the common generic/Pango family names onto
+// the stock fonts in %WINDIR%\Fonts, else try "<family>.ttf" as given.
+std::string findWindowsFontFile(const std::string& family, bool bold, bool italic)
+{
+    namespace fs = std::filesystem;
+    const char* windir = std::getenv("WINDIR");
+    fs::path dir = fs::path(windir && *windir ? windir : "C:\\Windows") / "Fonts";
+
+    std::string lower;
+    for (char c : family) lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+    // {regular, bold, italic, bold-italic}
+    struct Set { const char* f[4]; };
+    static const Set sans = {{"arial.ttf", "arialbd.ttf", "ariali.ttf", "arialbi.ttf"}};
+    static const Set serif = {{"times.ttf", "timesbd.ttf", "timesi.ttf", "timesbi.ttf"}};
+    static const Set mono = {{"consola.ttf", "consolab.ttf", "consolai.ttf", "consolaz.ttf"}};
+    const Set* set = &sans;
+    if (lower == "serif") set = &serif;
+    else if (lower == "monospace" || lower == "mono") set = &mono;
+
+    int idx = (bold ? 1 : 0) + (italic ? 2 : 0);
+    std::error_code ec;
+    if (lower != "sans" && lower != "sans-serif" && lower != "serif" && lower != "monospace" && lower != "mono")
+    {
+        std::string stem;
+        for (char c : lower)
+            if (c != ' ') stem += c;
+        for (const char* suffix : {"", "bd", "i", "bi"})
+        {
+            if (std::string(suffix) != std::string(idx == 0 ? "" : idx == 1 ? "bd" : idx == 2 ? "i" : "bi"))
+                continue;
+            fs::path p = dir / (stem + suffix + ".ttf");
+            if (fs::exists(p, ec)) return p.string();
+        }
+    }
+    fs::path p = dir / set->f[idx];
+    if (fs::exists(p, ec)) return p.string();
+    return {};
+}
+#endif
 
 vsg::ref_ptr<vsg::ShaderStage> loadShader(VkShaderStageFlagBits stage, const std::string& dir, const std::string& file)
 {
@@ -644,6 +692,9 @@ vsg::ref_ptr<vsg::Font> SceneBuilder::resolveFont(const std::string& fontSpec, d
     // Resolve an actual font file via fontconfig (Linux). Falls back to
     // whatever vsgXchange's default search turns up if fc-match is absent.
     std::string path;
+#ifdef _WIN32
+    path = findWindowsFontFile(family, bold, italic || oblique);
+#else
     std::string cmd = "fc-match -f '%{file}' \"" + pattern + "\" 2>/dev/null";
     if (FILE* p = popen(cmd.c_str(), "r"))
     {
@@ -651,6 +702,7 @@ vsg::ref_ptr<vsg::Font> SceneBuilder::resolveFont(const std::string& fontSpec, d
         if (fgets(buf, sizeof(buf), p)) path = buf;
         pclose(p);
     }
+#endif
 
     vsg::ref_ptr<vsg::Font> font;
     if (!path.empty())

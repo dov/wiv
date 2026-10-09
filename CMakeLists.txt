@@ -118,6 +118,18 @@ if(UNIX AND NOT APPLE)
   target_link_libraries(wiv PRIVATE pthread ${CMAKE_DL_LIBS})
 endif()
 
+
+if(WIN32)
+  # Qt needs its platform plugin next to the exe (vcpkg's applocal step only
+  # copies DLLs linked at build time, not runtime-loaded plugins).
+  find_file(WIV_QWINDOWS_PLUGIN qwindows.dll
+    PATHS ${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/Qt6/plugins/platforms
+    NO_DEFAULT_PATH)
+  add_custom_command(TARGET wiv POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:wiv>/platforms
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${WIV_QWINDOWS_PLUGIN} $<TARGET_FILE_DIR:wiv>/platforms/
+  )
+endif()
 install(TARGETS wiv RUNTIME DESTINATION bin)
 install(DIRECTORY ${CMAKE_BINARY_DIR}/shaders DESTINATION share/wiv)
 

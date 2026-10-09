@@ -23,6 +23,21 @@ and `vsgxchange` (with its `freetype` feature, for font loading) via the
 vcpkg manifest (`vcpkg.json`) and builds `build/linux-release/wiv`. A
 `linux-debug` preset is also provided.
 
+### Windows
+
+Requires Visual Studio (C++ workload), CMake, Ninja, the Vulkan SDK
+(`glslangValidator`) and a vcpkg checkout at `c:\vcpkg` (the `windows-release`
+preset points there). Qt6 comes from vcpkg (`qtbase`, Windows only). The
+manifest baseline is pinned to the same vcpkg commit the reference application uses, so Qt is
+restored from the shared binary cache (`%LOCALAPPDATA%\vcpkg\archives`) instead
+of being rebuilt. Run from a VS developer prompt:
+
+```bat
+cmake --preset windows-release
+cmake --build --preset windows-release
+build\windows-release\wiv.exe file.giv
+```
+
 ## Usage
 
 ```sh
