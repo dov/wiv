@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/">
+    <file alias="wiv-app-icon.png">wiv-app-icon.png</file>
+  </qresource>
+</RCC>
