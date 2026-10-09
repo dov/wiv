@@ -110,6 +110,10 @@ add_executable(wiv
   src/qt/OpenFileDialog.cpp
   src/qt/RpcServer.cpp
 )
+if(WIN32)
+  target_sources(wiv PRIVATE src/qt/WinDropTarget.cpp)
+  target_link_libraries(wiv PRIVATE ole32 shell32 uuid)
+endif()
 
 add_dependencies(wiv wiv_shaders)
 

@@ -9,11 +9,9 @@
 #include "PreferencesDialog.h"
 #include "RpcServer.h"
 #include "VulkanViewport.h"
-
-#include <QDragEnterEvent>
-#include <QDropEvent>
-#include <QMimeData>
-#include <QUrl>
+#ifdef _WIN32
+#include "WinDropTarget.h"
+#endif
 
 #include <spdlog/spdlog.h>
 
@@ -60,8 +58,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 
     viewport_ = new VulkanViewport(this);
     setCentralWidget(viewport_);
-    // Drops over the embedded Vulkan surface bubble up to this window.
-    setAcceptDrops(true);
+    connect(viewport_, &VulkanViewport::filesDropped, this, [this](QStringList files) {
+        std::vector<std::string> paths;
+        for (const QString& f : files) paths.push_back(f.toStdString());
+        loadFiles(paths);
+    });
 
     viewport_->setBackgroundColor(PreferencesDialog::loadBackgroundColor());
 
@@ -309,26 +310,20 @@ void MainWindow::loadFiles(const std::vector<std::string>& paths)
     for (const auto& p : paths) addRecentFile(QString::fromStdString(p));
 }
 
-void MainWindow::dragEnterEvent(QDragEnterEvent* event)
-{
-    if (event->mimeData()->hasUrls()) event->acceptProposedAction();
-}
-
-void MainWindow::dropEvent(QDropEvent* event)
-{
-    std::vector<std::string> paths;
-    for (const QUrl& url : event->mimeData()->urls())
-        if (url.isLocalFile()) paths.push_back(url.toLocalFile().toStdString());
-    if (paths.empty()) return;
-    event->acceptProposedAction();
-    loadFiles(paths);
-}
-
 void MainWindow::showEvent(QShowEvent* event)
 {
     QMainWindow::showEvent(event);
     if (!firstShow_) return;
     firstShow_ = false;
+
+#ifdef _WIN32
+    // Custom OLE drop target (no "Copy" label); see WinDropTarget.h.
+    installFileDropTarget(this, [this](QStringList files) {
+        std::vector<std::string> paths;
+        for (const QString& f : files) paths.push_back(f.toStdString());
+        loadFiles(paths);
+    });
+#endif
 
     // The very first fit computed at load time (VulkanViewport::
     // rebuildSceneGraph()'s isInitialLoad path, since loadFiles() is called

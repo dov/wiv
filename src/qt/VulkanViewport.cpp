@@ -13,6 +13,10 @@
 #include <vsgXchange/freetype.h>
 
 #include <QCoreApplication>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QMimeData>
+#include <QUrl>
 #include <QGridLayout>
 #include <QLabel>
 #include <QScrollBar>
@@ -25,10 +29,42 @@
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <functional>
 #include <string>
 
 namespace givqt
 {
+
+// Transparent widget laid over the embedded native Vulkan surface purely to
+// receive file drops (same trick as the reference application's DragDropOverlay): Qt picks
+// the drop target by its own widget z-order, not native window stacking.
+class DropOverlay : public QWidget
+{
+public:
+    explicit DropOverlay(QWidget* parent, std::function<void(QStringList)> onDrop)
+        : QWidget(parent), onDrop_(std::move(onDrop))
+    {
+        setAcceptDrops(true);
+    }
+
+protected:
+    void dragEnterEvent(QDragEnterEvent* event) override
+    {
+        if (event->mimeData()->hasUrls()) event->acceptProposedAction();
+    }
+    void dropEvent(QDropEvent* event) override
+    {
+        QStringList files;
+        for (const QUrl& url : event->mimeData()->urls())
+            if (url.isLocalFile()) files << url.toLocalFile();
+        if (files.isEmpty()) return;
+        event->acceptProposedAction();
+        onDrop_(files);
+    }
+
+private:
+    std::function<void(QStringList)> onDrop_;
+};
 
 namespace
 {
@@ -167,6 +203,12 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
     layout->setSpacing(0);
     container_ = QWidget::createWindowContainer(window_, this);
     layout->addWidget(container_, 0, 0);
+    // Same grid cell, added after the container so it sits above it.
+#ifndef _WIN32
+    auto* dropOverlay = new DropOverlay(this, [this](QStringList f) { emit filesDropped(f); });
+    layout->addWidget(dropOverlay, 0, 0);
+    dropOverlay->raise();
+#endif // Windows uses WinDropTarget on the top-level window instead.
 
     hScrollBar_ = new QScrollBar(Qt::Horizontal, this);
     vScrollBar_ = new QScrollBar(Qt::Vertical, this);
