@@ -11,8 +11,14 @@ namespace givqt
 
 namespace
 {
-constexpr int kHandleGrabPx = 6;
-}
+constexpr int kHandleGrabPx = 7;
+// Blank space kept on each side of the plot so a handle sitting at the axis
+// min/max (or clamped there, when the contrast range extends past the axis)
+// is fully visible and always grabbable.
+constexpr int kMarginPx = 10;
+constexpr int kGripW = 10;
+constexpr int kGripH = 16;
+} // namespace
 
 HistogramWidget::HistogramWidget(QWidget* parent) : QWidget(parent)
 {
@@ -43,16 +49,54 @@ void HistogramWidget::setStrength(double value)
 
 float HistogramWidget::xToValue(int x) const
 {
-    if (width() <= 0) return axisMin_;
-    double t = static_cast<double>(x) / width();
+    int w = width() - 2 * kMarginPx;
+    if (w <= 0) return axisMin_;
+    double t = static_cast<double>(x - kMarginPx) / w;
     return static_cast<float>(axisMin_ + t * (axisMax_ - axisMin_));
 }
 
 int HistogramWidget::valueToX(float v) const
 {
-    if (axisMax_ == axisMin_) return 0;
+    if (axisMax_ == axisMin_) return kMarginPx;
     double t = (v - axisMin_) / (axisMax_ - axisMin_);
-    return static_cast<int>(std::lround(t * width()));
+    return kMarginPx + static_cast<int>(std::lround(t * (width() - 2 * kMarginPx)));
+}
+
+// Handle x for drawing/hit-testing: pinned inside the widget so it stays
+// reachable even if the contrast value lies outside the histogram axis.
+int HistogramWidget::handleX(float v) const
+{
+    int lo = kMarginPx / 2;
+    int hi = std::max(lo, width() - kMarginPx / 2);
+    return std::clamp(valueToX(v), lo, hi);
+}
+
+HistogramWidget::DragMode HistogramWidget::hitTest(int x) const
+{
+    int xMin = handleX(contrastMin_);
+    int xMax = handleX(contrastMax_);
+    int dMin = std::abs(x - xMin);
+    int dMax = std::abs(x - xMax);
+    if (dMin <= kHandleGrabPx || dMax <= kHandleGrabPx)
+    {
+        // Nearest wins; on a tie (handles coincide) pick by side so both
+        // stay reachable.
+        if (dMin == dMax) return x <= xMin ? DragMode::Min : DragMode::Max;
+        return dMin < dMax ? DragMode::Min : DragMode::Max;
+    }
+    if (x > xMin && x < xMax) return DragMode::Window;
+    return DragMode::None;
+}
+
+void HistogramWidget::updateCursor(DragMode mode)
+{
+    switch (mode)
+    {
+        case DragMode::Min:
+        case DragMode::Max: setCursor(Qt::SizeHorCursor); break;
+        case DragMode::Window: setCursor(Qt::OpenHandCursor); break;
+        default: unsetCursor(); break;
+    }
 }
 
 void HistogramWidget::paintEvent(QPaintEvent*)
@@ -70,7 +114,7 @@ void HistogramWidget::paintEvent(QPaintEvent*)
 
         p.setPen(Qt::NoPen);
         p.setBrush(palette().text());
-        const double barW = static_cast<double>(width()) / 256.0;
+        const double barW = static_cast<double>(width() - 2 * kMarginPx) / 256.0;
         for (int i = 0; i < 256; ++i)
         {
             if (counts_[static_cast<size_t>(i)] == 0) continue;
@@ -78,46 +122,65 @@ void HistogramWidget::paintEvent(QPaintEvent*)
                            ? std::log1p(static_cast<double>(counts_[static_cast<size_t>(i)]) * scale) / logMax
                            : 0.0;
             int barH = static_cast<int>(h * (height() - 2));
-            p.drawRect(QRectF(i * barW, height() - barH, std::max(1.0, barW), barH));
+            p.drawRect(QRectF(kMarginPx + i * barW, height() - barH, std::max(1.0, barW), barH));
         }
     }
 
     // Draggable contrast window overlay.
-    int xMin = valueToX(contrastMin_);
-    int xMax = valueToX(contrastMax_);
-    p.setBrush(QColor(80, 140, 255, 50));
+    int xMin = handleX(contrastMin_);
+    int xMax = handleX(contrastMax_);
+    p.setBrush(QColor(80, 140, 255, dragMode_ == DragMode::Window ? 80 : 50));
     p.setPen(Qt::NoPen);
     p.drawRect(QRect(xMin, 0, xMax - xMin, height()));
 
-    QPen handlePen(QColor(30, 100, 220), 2);
-    p.setPen(handlePen);
+    const QColor lineCol(30, 100, 220);
+    p.setPen(QPen(lineCol, 2));
     p.drawLine(xMin, 0, xMin, height());
     p.drawLine(xMax, 0, xMax, height());
+
+    // Grip tabs so the handles are visibly grabbable; the highlighted one is
+    // under the cursor or being dragged.
+    const bool dragging = dragMode_ != DragMode::None;
+    auto grip = [&](int x, DragMode m)
+    {
+        bool hot = dragging ? dragMode_ == m : hoverMode_ == m;
+        p.setPen(Qt::NoPen);
+        p.setBrush(hot ? QColor(255, 170, 40) : lineCol);
+        p.drawRoundedRect(QRect(x - kGripW / 2, height() / 2 - kGripH / 2, kGripW, kGripH), 2, 2);
+        p.setPen(QPen(Qt::white, 1));
+        p.drawLine(x - 1, height() / 2 - 4, x - 1, height() / 2 + 4);
+        p.drawLine(x + 1, height() / 2 - 4, x + 1, height() / 2 + 4);
+    };
+    grip(xMin, DragMode::Min);
+    grip(xMax, DragMode::Max);
 }
 
 void HistogramWidget::mousePressEvent(QMouseEvent* event)
 {
+    if (event->button() != Qt::LeftButton) return;
     int x = event->pos().x();
-    int xMin = valueToX(contrastMin_);
-    int xMax = valueToX(contrastMax_);
-
-    if (std::abs(x - xMin) <= kHandleGrabPx)
-        dragMode_ = DragMode::Min;
-    else if (std::abs(x - xMax) <= kHandleGrabPx)
-        dragMode_ = DragMode::Max;
-    else if (x > xMin && x < xMax)
-        dragMode_ = DragMode::Window;
-    else
-        dragMode_ = DragMode::None;
+    dragMode_ = hitTest(x);
+    if (dragMode_ == DragMode::Window) setCursor(Qt::ClosedHandCursor);
 
     dragStartX_ = x;
     dragStartMin_ = contrastMin_;
     dragStartMax_ = contrastMax_;
+    update();
 }
 
 void HistogramWidget::mouseMoveEvent(QMouseEvent* event)
 {
-    if (dragMode_ == DragMode::None) return;
+    if (dragMode_ == DragMode::None)
+    {
+        DragMode m = hitTest(event->pos().x());
+        if (m != hoverMode_)
+        {
+            hoverMode_ = m;
+            update();
+        }
+        updateCursor(m);
+        return;
+    }
 
     float newMin = contrastMin_, newMax = contrastMax_;
     switch (dragMode_)
@@ -145,9 +208,18 @@ void HistogramWidget::mouseMoveEvent(QMouseEvent* event)
     emit rangeChanged(contrastMin_, contrastMax_);
 }
 
-void HistogramWidget::mouseReleaseEvent(QMouseEvent*)
+void HistogramWidget::mouseReleaseEvent(QMouseEvent* event)
 {
     dragMode_ = DragMode::None;
+    hoverMode_ = hitTest(event->pos().x());
+    updateCursor(hoverMode_);
+    update();
+}
+
+void HistogramWidget::leaveEvent(QEvent*)
+{
+    hoverMode_ = DragMode::None;
+    update();
 }
 
 } // namespace givqt
