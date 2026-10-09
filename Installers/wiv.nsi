@@ -17,6 +17,8 @@
 Name "wiv"
 OutFile "Installwiv-v${VERSION}-${SHORTSHA1}.exe"
 BrandingText "wiv Installer"
+Icon "giv-logo.ico"
+UninstallIcon "giv-logo-install.ico"
 
 SetCompress force
 CRCCheck on
@@ -70,7 +72,7 @@ Section "Install"
   # Associate .giv files with wiv (per-user)
   WriteRegStr HKCU "Software\Classes\.giv" "" "wiv.GivFile"
   WriteRegStr HKCU "Software\Classes\wiv.GivFile" "" "giv File"
-  WriteRegStr HKCU "Software\Classes\wiv.GivFile\DefaultIcon" "" "$INSTDIR\wiv.exe,0"
+  WriteRegStr HKCU "Software\Classes\wiv.GivFile\DefaultIcon" "" "$INSTDIR\wiv.exe,1"
   WriteRegStr HKCU "Software\Classes\wiv.GivFile\shell" "" "open"
   WriteRegStr HKCU "Software\Classes\wiv.GivFile\shell\open\command" "" '"$INSTDIR\wiv.exe" "%1"'
   System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
