@@ -10,6 +10,11 @@
 #include "RpcServer.h"
 #include "VulkanViewport.h"
 
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QMimeData>
+#include <QUrl>
+
 #include <spdlog/spdlog.h>
 
 #include <QAction>
@@ -55,6 +60,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 
     viewport_ = new VulkanViewport(this);
     setCentralWidget(viewport_);
+    // Drops over the embedded Vulkan surface bubble up to this window.
+    setAcceptDrops(true);
 
     viewport_->setBackgroundColor(PreferencesDialog::loadBackgroundColor());
 
@@ -300,6 +307,21 @@ void MainWindow::loadFiles(const std::vector<std::string>& paths)
 {
     loadFilesInternal(paths);
     for (const auto& p : paths) addRecentFile(QString::fromStdString(p));
+}
+
+void MainWindow::dragEnterEvent(QDragEnterEvent* event)
+{
+    if (event->mimeData()->hasUrls()) event->acceptProposedAction();
+}
+
+void MainWindow::dropEvent(QDropEvent* event)
+{
+    std::vector<std::string> paths;
+    for (const QUrl& url : event->mimeData()->urls())
+        if (url.isLocalFile()) paths.push_back(url.toLocalFile().toStdString());
+    if (paths.empty()) return;
+    event->acceptProposedAction();
+    loadFiles(paths);
 }
 
 void MainWindow::showEvent(QShowEvent* event)
