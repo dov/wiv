@@ -108,6 +108,7 @@ add_executable(wiv
   src/qt/CalibrateDialog.cpp
   src/qt/HistogramWidget.cpp
   src/qt/ContrastDialog.cpp
+  src/qt/InfoDialog.cpp
   src/qt/ColorTableDialog.cpp
   src/qt/MainWindow.cpp
   src/qt/MarkTreeView.cpp
