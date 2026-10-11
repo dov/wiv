@@ -185,7 +185,7 @@ void MainWindow::buildMenus()
 
     auto fileMenu = menuBar()->addMenu("&File");
     auto openAction = fileMenu->addAction("&Open...", this, &MainWindow::openFiles);
-    openAction->setShortcuts({QKeySequence("Ctrl+O"), QKeySequence::Open});
+    openAction->setShortcut(QKeySequence("Ctrl+O"));
 
     recentFilesMenu_ = fileMenu->addMenu("Recent Files");
     updateRecentFilesMenu();
