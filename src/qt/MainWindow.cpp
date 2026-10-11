@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 
 #include "CalibrateDialog.h"
+#include "ColorMapBar.h"
 #include "ColorTableDialog.h"
 #include "ContrastDialog.h"
 #include "ImagePluginHost.h"
@@ -34,6 +35,9 @@
 #include <QDateTime>
 #include <QVBoxLayout>
 
+#include <algorithm>
+#include <cmath>
+
 namespace givqt
 {
 
@@ -60,7 +64,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     resize(1024, 768);
 
     viewport_ = new VulkanViewport(this);
-    setCentralWidget(viewport_);
+    // The canvas plus giv's optional colormap bar underneath it.
+    auto* central = new QWidget(this);
+    auto* centralLayout = new QVBoxLayout(central);
+    centralLayout->setContentsMargins(0, 0, 0, 0);
+    centralLayout->setSpacing(0);
+    centralLayout->addWidget(viewport_, 1);
+    colorMapBar_ = new ColorMapBar(viewport_, central);
+    colorMapBar_->hide();
+    centralLayout->addWidget(colorMapBar_);
+    setCentralWidget(central);
     connect(viewport_, &VulkanViewport::filesDropped, this, [this](QStringList files) {
         std::vector<std::string> paths;
         for (const QString& f : files) paths.push_back(f.toStdString());
@@ -91,7 +104,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         }
     });
     connect(viewport_, &VulkanViewport::cursorWorldPosition, this, [this](double x, double y) {
-        lastCursorText_ = QString("(%1, %2)").arg(x, 0, 'f', 2).arg(y, 0, 'f', 2) + viewport_->pixelValueText(x, y);
+        // giv's do_show_sub_pixel: 3-decimal coordinates, otherwise the
+        // integer pixel under the cursor.
+        lastCursorText_ = (subPixelAction_ && subPixelAction_->isChecked()
+                               ? QString("(%1, %2)").arg(x, 7, 'f', 3).arg(y, 7, 'f', 3)
+                               : QString("(%1, %2)").arg(std::floor(x), 4, 'f', 0).arg(std::floor(y), 4, 'f', 0))
+                          + viewport_->pixelValueText(x, y);
         infoLabel_->setText(statusLineText());
     });
     connect(viewport_, &VulkanViewport::measurementChanged, this, [this](QString text) {
@@ -181,6 +199,14 @@ void MainWindow::buildMenus()
     quitAction->setShortcuts({QKeySequence::Quit, QKeySequence("Q")});
 
     auto viewMenu = menuBar()->addMenu("&View");
+    // giv's View > Menu Bar. The action is also added to the window so its
+    // shortcut still works - and can bring the menu back - while it is hidden.
+    menuBarAction_ = viewMenu->addAction("Menu Bar", this, [this](bool show) { menuBar()->setVisible(show); });
+    menuBarAction_->setCheckable(true);
+    menuBarAction_->setChecked(true);
+    menuBarAction_->setShortcut(QKeySequence("Ctrl+M"));
+    addAction(menuBarAction_);
+    viewMenu->addSeparator();
     auto zoomInAction = viewMenu->addAction("Zoom In", viewport_, &VulkanViewport::zoomIn);
     zoomInAction->setShortcut(QKeySequence::ZoomIn);
     auto zoomOutAction = viewMenu->addAction("Zoom Out", viewport_, &VulkanViewport::zoomOut);
@@ -201,6 +227,23 @@ void MainWindow::buildMenus()
     pixelGridAction_ = viewMenu->addAction("Pixel Grid", viewport_, &VulkanViewport::toggleShowPixelGrid);
     pixelGridAction_->setCheckable(true);
     pixelGridAction_->setShortcut(QKeySequence("G"));
+
+    subPixelAction_ = viewMenu->addAction("Sub-pixel Coordinates");
+    subPixelAction_->setCheckable(true);
+
+    horizontalFlipAction_ = viewMenu->addAction("Horizontal Flip", viewport_, &VulkanViewport::setFlipHorizontal);
+    horizontalFlipAction_->setCheckable(true);
+    verticalFlipAction_ = viewMenu->addAction("Vertical Flip", viewport_, &VulkanViewport::setFlipVertical);
+    verticalFlipAction_->setCheckable(true);
+    verticalZoomLockAction_ = viewMenu->addAction("Vertical Zoom Lock", viewport_, &VulkanViewport::setVerticalZoomLock);
+    verticalZoomLockAction_->setCheckable(true);
+
+    showImageAction_ = viewMenu->addAction("Image", viewport_, &VulkanViewport::setShowImage);
+    showImageAction_->setCheckable(true);
+    showImageAction_->setChecked(true);
+
+    colorMapBarAction_ = viewMenu->addAction("Colormap Bar", this, [this](bool show) { colorMapBar_->setVisible(show); });
+    colorMapBarAction_->setCheckable(true);
 
     viewMenu->addSeparator();
     showMarksAction_ = viewMenu->addAction("Show Marks", viewport_, &VulkanViewport::toggleShowMarks);
@@ -229,6 +272,15 @@ void MainWindow::buildMenus()
     autoFitAction_->setCheckable(true);
     autoFitAction_->setChecked(true);
 
+    autoContrastAction_ = viewMenu->addAction("Auto Contrast", viewport_, &VulkanViewport::setAutoContrast);
+    autoContrastAction_->setCheckable(true);
+    autoContrastAction_->setChecked(true);
+
+    // giv's do_auto_reload: poll the loaded file(s) and reload on change.
+    autoReloadAction_ = viewMenu->addAction("Auto Reload", this, &MainWindow::setAutoReload);
+    autoReloadAction_->setCheckable(true);
+
+    viewMenu->addSeparator();
     nextImageAction_ = viewMenu->addAction("Next Image", this, &MainWindow::goNextImage);
     nextImageAction_->setShortcuts({QKeySequence("Shift+Up"), QKeySequence("Space"), QKeySequence("Right")});
     nextImageAction_->setEnabled(false);
@@ -474,6 +526,51 @@ void MainWindow::loadFilesInternal(const std::vector<std::string>& paths)
     balloonAction_->setChecked(false);
     measureDistanceAction_->setChecked(false);
     spdlog::info("Loaded {} file(s) successfully", paths.size());
+}
+
+// Newest modification time and total size over the loaded files.
+static std::pair<qint64, qint64> loadedFilesStamp(const std::vector<std::string>& paths)
+{
+    qint64 mtime = 0, size = 0;
+    for (const auto& p : paths)
+    {
+        QFileInfo fi(QString::fromStdString(p));
+        mtime = std::max(mtime, fi.lastModified().toMSecsSinceEpoch());
+        size += fi.size();
+    }
+    return {mtime, size};
+}
+
+void MainWindow::setAutoReload(bool enable)
+{
+    spdlog::info("Auto Reload set to {}", enable);
+    if (!autoReloadTimer_)
+    {
+        autoReloadTimer_ = new QTimer(this);
+        autoReloadTimer_->setInterval(500);
+        connect(autoReloadTimer_, &QTimer::timeout, this, [this]() {
+            if (lastPaths_.empty()) return;
+            auto stamp = loadedFilesStamp(lastPaths_);
+            // Like giv, reload only once the size has settled (the writer is
+            // done) after the modification time changed.
+            if (stamp.first != autoReloadStamp_.first && stamp.second == autoReloadStamp_.second)
+            {
+                autoReloadStamp_ = stamp;
+                reloadFiles();
+                return;
+            }
+            autoReloadStamp_.second = stamp.second;
+        });
+    }
+    if (enable)
+    {
+        autoReloadStamp_ = loadedFilesStamp(lastPaths_);
+        autoReloadTimer_->start();
+    }
+    else
+    {
+        autoReloadTimer_->stop();
+    }
 }
 
 void MainWindow::reloadFiles()

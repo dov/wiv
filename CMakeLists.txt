@@ -108,6 +108,7 @@ add_executable(wiv
   src/qt/VulkanViewport.cpp
   src/qt/PreferencesDialog.cpp
   src/qt/CalibrateDialog.cpp
+  src/qt/ColorMapBar.cpp
   src/qt/HistogramWidget.cpp
   src/qt/ContrastDialog.cpp
   src/qt/InfoDialog.cpp

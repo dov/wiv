@@ -27,6 +27,7 @@ namespace givqt
 class VulkanViewport;
 class MarkTreeView;
 class ContrastDialog;
+class ColorMapBar;
 class ColorTableDialog;
 class InfoDialog;
 class RpcServer;
@@ -68,6 +69,18 @@ private:
     QStringList loadedPaths_; // absolute paths of the file(s) last passed to loadFilesInternal()
     QString lastLoadSummary_;
 
+    QAction* menuBarAction_ = nullptr;
+    QAction* subPixelAction_ = nullptr;
+    QAction* horizontalFlipAction_ = nullptr;
+    QAction* verticalFlipAction_ = nullptr;
+    QAction* verticalZoomLockAction_ = nullptr;
+    QAction* showImageAction_ = nullptr;
+    QAction* colorMapBarAction_ = nullptr;
+    QAction* autoContrastAction_ = nullptr;
+    QAction* autoReloadAction_ = nullptr;
+    ColorMapBar* colorMapBar_ = nullptr;
+    QTimer* autoReloadTimer_ = nullptr;
+    std::pair<qint64, qint64> autoReloadStamp_{0, 0}; // (newest mtime ms, total size) at last poll
     QAction* balloonAction_ = nullptr;
     QAction* forceOpaqueAction_ = nullptr;
     QAction* pixelGridAction_ = nullptr;
@@ -140,6 +153,7 @@ private:
     void addRecentFile(const QString& path);
     void loadFilesInternal(const std::vector<std::string>& paths);
     void reloadFiles();
+    void setAutoReload(bool enable);
 
     // Rescans the directory of `loadedPath` for giv-compatible files (see
     // isGivCompatibleFile() in MainWindow.cpp) and updates directoryFiles_/

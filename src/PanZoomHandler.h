@@ -35,6 +35,9 @@ public:
     // keyboard-modifiers bitmask - feeds the json-rpc pick_coordinate command.
     std::function<void(double, double, int, int)> onClick;
 
+    // giv's View > Vertical Zoom Lock: wheel/drag zoom changes only the X scale.
+    bool verticalLock = false;
+
 private:
     vsg::ref_ptr<vsg::Camera> camera_;
     bool dragging_ = false;

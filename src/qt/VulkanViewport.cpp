@@ -7,6 +7,7 @@
 #include "GivParser.h"
 #include "ImagePluginHost.h"
 #include "PreferencesDialog.h"
+#include "ViewFlip.h"
 
 #include <spdlog/spdlog.h>
 
@@ -240,7 +241,8 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
         double scaleX = extent.width / (2.0 * halfW);
         double minXyd, minYyd, maxXyd, maxYyd;
         currentFitBoundsYDown(minXyd, minYyd, maxXyd, maxYyd);
-        double newCenterX = minXyd + static_cast<double>(value) / scaleX + halfW;
+        double newCenterX = flipHorizontal_ ? maxXyd - static_cast<double>(value) / scaleX - halfW
+                                            : minXyd + static_cast<double>(value) / scaleX + halfW;
         double shift = newCenterX - lookAt->center.x;
         lookAt->eye.x += shift;
         lookAt->center.x += shift;
@@ -256,7 +258,8 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
         double minXyd, minYyd, maxXyd, maxYyd;
         currentFitBoundsYDown(minXyd, minYyd, maxXyd, maxYyd);
         double contentMaxY = -minYyd; // world-space top edge, see currentFitBoundsYDown()/fitToBounds()
-        double newCenterY = contentMaxY - static_cast<double>(value) / scaleY - halfH;
+        double newCenterY = flipVertical_ ? -maxYyd + static_cast<double>(value) / scaleY + halfH
+                                          : contentMaxY - static_cast<double>(value) / scaleY - halfH;
         double shift = newCenterY - lookAt->center.y;
         lookAt->eye.y += shift;
         lookAt->center.y += shift;
@@ -609,7 +612,10 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     if (needsNewCamera)
     {
         auto lookAt = vsg::LookAt::create(vsg::dvec3(0.0, 0.0, 1.0), vsg::dvec3(0.0, 0.0, 0.0), vsg::dvec3(0.0, 1.0, 0.0));
-        projection_ = vsg::Orthographic::create(-100.0, 100.0, -100.0, 100.0, 0.01, 100.0);
+        flipProjection_ = giv::FlipOrthographic::create(-100.0, 100.0, -100.0, 100.0, 0.01, 100.0);
+        flipProjection_->flipX = flipHorizontal_;
+        flipProjection_->flipY = flipVertical_;
+        projection_ = flipProjection_;
         camera_ = vsg::Camera::create(projection_, lookAt, vsg::ViewportState::create(window_->windowAdapter->extent2D()));
     }
 
@@ -633,6 +639,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     panZoom_->onCursorMove = [this](double x, double y) { emit cursorWorldPosition(x, y); };
     panZoom_->onViewChanged = [this]() { updateScrollBars(); };
     panZoom_->onClick = [this](double x, double y, int button, int modifiers) { emit clicked(x, y, button, modifiers); };
+    panZoom_->verticalLock = verticalZoomLock_;
     viewer_->addEventHandler(panZoom_);
 
     bool wasBalloonEnabled = isInitialLoad ? false : balloonEnabled_;
@@ -692,6 +699,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     // indexes into loadedImageNames_, the full $image candidate list).
     imageSwitch_ = builder.imageSwitch();
     if (imageSwitch_) imageSwitch_->setSingleChildOn(0);
+    applyShowImage();
 
     if (!isInitialLoad)
     {
@@ -971,8 +979,10 @@ VulkanViewport::ContrastState VulkanViewport::currentContrastState()
     if (it == contrastState_.end())
     {
         ContrastState defaultState;
-        defaultState.min = src.sampleMin;
-        defaultState.max = src.sampleMax;
+        // With Auto Contrast off (giv's do_auto_contrast), a new image keeps
+        // the window last dialed in instead of stretching to its own range.
+        defaultState.min = (!autoContrast_ && hasLastContrast_) ? lastContrastMin_ : src.sampleMin;
+        defaultState.max = (!autoContrast_ && hasLastContrast_) ? lastContrastMax_ : src.sampleMax;
         defaultState.colormapId = lastColormapId_;
         defaultState.colormapEnabled = lastColormapEnabled_;
         it = contrastState_.emplace(path, defaultState).first;
@@ -988,11 +998,15 @@ void VulkanViewport::setContrast(float min, float max)
     state.min = min;
     state.max = max;
     contrastState_[currentImageName()] = state;
+    lastContrastMin_ = min;
+    lastContrastMax_ = max;
+    hasLastContrast_ = true;
 
     recomputeDisplayImage();
     QString error;
     if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
         spdlog::error("Failed to apply contrast: {}", error.toStdString());
+    emit contrastChanged();
 }
 
 void VulkanViewport::setColormap(giv::colormaps::Id id, bool enabled)
@@ -1010,6 +1024,7 @@ void VulkanViewport::setColormap(giv::colormaps::Id id, bool enabled)
     QString error;
     if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
         spdlog::error("Failed to apply color table: {}", error.toStdString());
+    emit contrastChanged();
 }
 
 std::array<uint32_t, 256> VulkanViewport::computeHistogram() const
@@ -1271,11 +1286,13 @@ void VulkanViewport::updateScrollBars()
     double scaleY = extent.height / (2.0 * halfH);
 
     double contentWidthPx = (maxXyd - minXyd) * scaleX;
-    double viewLeftPx = (lookAt->center.x - halfW - minXyd) * scaleX;
+    double viewLeftPx = flipHorizontal_ ? (maxXyd - (lookAt->center.x + halfW)) * scaleX
+                                        : (lookAt->center.x - halfW - minXyd) * scaleX;
     applyScrollBarRange(hScrollBar_, contentWidthPx, static_cast<double>(extent.width), viewLeftPx);
 
     double contentHeightPx = (maxYyd - minYyd) * scaleY;
-    double viewTopPx = (contentMaxY - (lookAt->center.y + halfH)) * scaleY;
+    double viewTopPx = flipVertical_ ? (lookAt->center.y - halfH + maxYyd) * scaleY
+                                     : (contentMaxY - (lookAt->center.y + halfH)) * scaleY;
     applyScrollBarRange(vScrollBar_, contentHeightPx, static_cast<double>(extent.height), viewTopPx);
 }
 
@@ -1439,6 +1456,58 @@ void VulkanViewport::setAutoFit(bool enable)
     autoFit_ = enable;
     spdlog::info("Auto Fit set to {}", enable);
     if (enable) fitContentToWindow();
+}
+
+void VulkanViewport::setFlipHorizontal(bool flip)
+{
+    flipHorizontal_ = flip;
+    spdlog::info("Horizontal Flip set to {}", flip);
+    if (flipProjection_) flipProjection_->flipX = flip;
+    viewer_->request();
+    updateScrollBars();
+}
+
+void VulkanViewport::setFlipVertical(bool flip)
+{
+    flipVertical_ = flip;
+    spdlog::info("Vertical Flip set to {}", flip);
+    if (flipProjection_) flipProjection_->flipY = flip;
+    viewer_->request();
+    updateScrollBars();
+}
+
+void VulkanViewport::setVerticalZoomLock(bool lock)
+{
+    verticalZoomLock_ = lock;
+    spdlog::info("Vertical Zoom Lock set to {}", lock);
+    if (panZoom_) panZoom_->verticalLock = lock;
+}
+
+void VulkanViewport::applyShowImage()
+{
+    if (!imageSwitch_) return;
+    if (showImage_)
+        imageSwitch_->setSingleChildOn(0);
+    else
+        imageSwitch_->setAllChildren(false);
+}
+
+void VulkanViewport::setShowImage(bool show)
+{
+    showImage_ = show;
+    spdlog::info("Show Image set to {}", show);
+    applyShowImage();
+    viewer_->request();
+}
+
+void VulkanViewport::setAutoContrast(bool enable)
+{
+    autoContrast_ = enable;
+    spdlog::info("Auto Contrast set to {}", enable);
+    // Re-stretch the displayed image to its own range, like giv reloading
+    // with do_auto_contrast on.
+    if (enable && !loadedImages_.empty() && loadedImages_.front().sampleType != WIV_SAMPLE_NONE)
+        setContrast(loadedImages_.front().sampleMin, loadedImages_.front().sampleMax);
 }
 
 void VulkanViewport::setBackgroundColor(const QColor& color)

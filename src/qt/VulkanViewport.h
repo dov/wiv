@@ -15,6 +15,7 @@
 #include "ImagePluginHost.h"
 #include "LabelPicker.h"
 #include "PanZoomHandler.h"
+#include "ViewFlip.h"
 #include "SceneBuilder.h"
 
 #include <vsgQt/Window.h>
@@ -132,6 +133,16 @@ public:
     void toggleShowPixelGrid();
     bool showPixelGrid() const { return showPixelGrid_; }
 
+    // View > Horizontal/Vertical Flip, Vertical Zoom Lock, Image, Auto
+    // Contrast (giv's gtk_image_viewer_set_flip/_set_vertical_lock/
+    // _set_show_image and do_auto_contrast).
+    void setFlipHorizontal(bool flip);
+    void setFlipVertical(bool flip);
+    void setVerticalZoomLock(bool lock);
+    void setShowImage(bool show);
+    void setAutoContrast(bool enable);
+    bool autoContrast() const { return autoContrast_; }
+
     // Tools > Measure Distance Diagonal (giv's caliper tool) - see
     // CaliperTool.h.
     void toggleMeasureDistance();
@@ -208,6 +219,8 @@ public:
 
 signals:
     void sceneLoaded();
+    // The contrast window or colormap of the displayed image changed.
+    void contrastChanged();
     // Local files dropped onto the view (see DropOverlay in the .cpp).
     void filesDropped(QStringList files);
     void cursorWorldPosition(double x, double y);
@@ -261,6 +274,18 @@ private:
     bool globalShowMarks_ = true;
     bool forceOpaque_ = false;
     bool showPixelGrid_ = false;
+    bool flipHorizontal_ = false;
+    bool flipVertical_ = false;
+    bool verticalZoomLock_ = false;
+    bool showImage_ = true;
+    bool autoContrast_ = true;
+    float lastContrastMin_ = 0.0f;
+    float lastContrastMax_ = 0.0f;
+    bool hasLastContrast_ = false;
+    vsg::ref_ptr<giv::FlipOrthographic> flipProjection_;
+
+    // Re-applies showImage_ to imageSwitch_ (which is rebuilt with the scene).
+    void applyShowImage();
 
     vsg::ref_ptr<vsg::Camera> camera_;
     vsg::ref_ptr<vsg::Orthographic> projection_;
