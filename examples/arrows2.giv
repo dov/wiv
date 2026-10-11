@@ -1,0 +1,21 @@
+$path frame
+$color red
+0 0
+100 0
+100 100
+0 100
+0 0
+
+$path arrow both
+$arrow both 
+$color green
+$lw 10
+10 10
+90 10
+
+$path a simple line
+$color green
+$lw 10
+10 20
+90 20
+

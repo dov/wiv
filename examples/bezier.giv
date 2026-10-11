@@ -1,0 +1,17 @@
+$lw 5
+$balloon Bezier curve!
+$polygon
+100 100
+C 250 200 50 200 200 100
+
+$lw 5
+$balloon Bezier outline
+$color black
+100 100
+C 250 200 50 200 200 100
+
+$balloon Bezier outline
+$color black
+$font Sans 24
+T2 150 100 Bezier Curve
+

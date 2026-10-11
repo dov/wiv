@@ -1,6 +1,7 @@
 #pragma once
 // Locates resources relative to the running executable so an installed copy
-// (shaders/ and plugins/ next to wiv.exe) works as well as the build tree.
+// (<prefix>/bin/wiv.exe with <prefix>/share/wiv/shaders and
+// <prefix>/lib/wiv/plugins) works as well as the build tree.
 
 #include <filesystem>
 #include <string>
@@ -29,13 +30,18 @@ inline std::filesystem::path executableDir()
 #endif
 }
 
-// `<exe dir>/<name>` if that directory exists, else `fallback` (the
-// build-tree path compiled in by CMake).
-inline std::string resourceDir(const char* name, const char* fallback)
+// First existing of `<exe dir>/<name>` and `<exe dir>/../<installRel>`
+// (the installed layout), else `fallback` (the build-tree path compiled in
+// by CMake).
+inline std::string resourceDir(const char* name, const char* installRel, const char* fallback)
 {
     std::error_code ec;
-    auto dir = executableDir() / name;
-    if (!executableDir().empty() && std::filesystem::is_directory(dir, ec)) return dir.string();
+    auto exe = executableDir();
+    if (!exe.empty()) {
+        for (auto dir : {exe / name, exe.parent_path() / installRel}) {
+            if (std::filesystem::is_directory(dir, ec)) return dir.string();
+        }
+    }
     return fallback;
 }
 
