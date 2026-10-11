@@ -11,6 +11,11 @@ set(TOOLCHAIN_PREFIX x86_64-w64-mingw32)
 set(CMAKE_C_COMPILER /usr/bin/${TOOLCHAIN_PREFIX}-gcc CACHE FILEPATH "" FORCE)
 set(CMAKE_CXX_COMPILER /usr/bin/${TOOLCHAIN_PREFIX}-g++ CACHE FILEPATH "" FORCE)
 set(CMAKE_RC_COMPILER /usr/bin/${TOOLCHAIN_PREFIX}-windres CACHE FILEPATH "" FORCE)
+# Qt6's toolchain chain-loads Fedora's /usr/share/mingw/toolchain-mingw64.cmake,
+# which sets bare compiler names (shadowing the paths above, breaking project()
+# in FetchContent subprojects on reconfigure) unless CC/CXX are in the env.
+set(ENV{CC} /usr/bin/${TOOLCHAIN_PREFIX}-gcc)
+set(ENV{CXX} /usr/bin/${TOOLCHAIN_PREFIX}-g++)
 
 set(MINGW_SYSROOT /usr/${TOOLCHAIN_PREFIX}/sys-root/mingw)
 if(NOT MINGW_DEPS_PREFIX)

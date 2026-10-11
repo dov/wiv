@@ -13,7 +13,7 @@
 #define dlopen(p, f) static_cast<void*>(LoadLibraryExA(p, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH))
 #define dlsym(h, s) reinterpret_cast<void*>(GetProcAddress(static_cast<HMODULE>(h), s))
 #define dlclose(h) FreeLibrary(static_cast<HMODULE>(h))
-#define dlerror() "LoadLibrary failed"
+#define dlerror() ("LoadLibrary failed, error " + std::to_string(GetLastError())).c_str()
 #define RTLD_NOW 0
 #define RTLD_LOCAL 0
 #else
@@ -25,6 +25,7 @@
 #include <cstring>
 #include <filesystem>
 #include <limits>
+#include <string>
 
 namespace giv
 {
