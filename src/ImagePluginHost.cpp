@@ -171,7 +171,7 @@ std::vector<Plugin>& loadedPlugins()
     scanned = true;
 
     const char* dirOverride = std::getenv("WIV_PLUGIN_DIR");
-    std::string dir = dirOverride ? std::string(dirOverride) : resourceDir("plugins", WIV_PLUGIN_DIR);
+    std::string dir = dirOverride ? std::string(dirOverride) : resourceDir("plugins", "lib/wiv/plugins", WIV_PLUGIN_DIR);
 
     std::error_code ec;
     if (!fs::is_directory(dir, ec))

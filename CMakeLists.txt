@@ -188,27 +188,29 @@ if(WIN32)
   )
 endif()
 if(WIN32)
-  # Flat layout next to wiv.exe (see AppPaths.h): shaders/, plugins/,
-  # platforms/ and every runtime DLL that vcpkg's applocal step put in the
-  # build tree. The NSIS installer (Installers/) packages this prefix.
-  install(TARGETS wiv RUNTIME DESTINATION .)
-  install(DIRECTORY ${CMAKE_BINARY_DIR}/shaders DESTINATION .)
+  # Installed layout (see AppPaths.h): bin/ holds wiv.exe, every runtime DLL
+  # that vcpkg's applocal step put in the build tree and Qt's platforms/
+  # plugin dir; shaders in share/wiv/, image plugins in lib/wiv/plugins/
+  # (installed by src/plugins), examples/ at the top. The NSIS installer
+  # (Installers/) packages this prefix.
+  install(TARGETS wiv RUNTIME DESTINATION bin)
+  install(DIRECTORY ${CMAKE_BINARY_DIR}/shaders DESTINATION share/wiv)
+  install(DIRECTORY ${CMAKE_SOURCE_DIR}/examples/ DESTINATION examples)
   install(CODE "
     file(GLOB _wiv_dlls \"${CMAKE_BINARY_DIR}/*.dll\")
-    file(INSTALL \${_wiv_dlls} DESTINATION \"\${CMAKE_INSTALL_PREFIX}\")
-    file(GLOB _wiv_plugin_dlls \"${CMAKE_BINARY_DIR}/plugins/*.dll\")
-    file(INSTALL \${_wiv_plugin_dlls} DESTINATION \"\${CMAKE_INSTALL_PREFIX}/plugins\")
-    file(INSTALL \"${CMAKE_BINARY_DIR}/platforms/qwindows.dll\" DESTINATION \"\${CMAKE_INSTALL_PREFIX}/platforms\")
+    file(INSTALL \${_wiv_dlls} DESTINATION \"\${CMAKE_INSTALL_PREFIX}/bin\")
+    file(INSTALL \"${CMAKE_BINARY_DIR}/platforms/qwindows.dll\" DESTINATION \"\${CMAKE_INSTALL_PREFIX}/bin/platforms\")
   ")
   # App-local MSVC runtime, so no separate vc_redist install is needed.
   # (MinGW cross builds: tools/build-mingw.sh copies the DLLs instead.)
   if(MSVC)
-    set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION .)
+    set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION bin)
     include(InstallRequiredSystemLibraries)
   endif()
 else()
   install(TARGETS wiv RUNTIME DESTINATION bin)
   install(DIRECTORY ${CMAKE_BINARY_DIR}/shaders DESTINATION share/wiv)
+  install(DIRECTORY ${CMAKE_SOURCE_DIR}/examples/ DESTINATION share/wiv/examples)
 endif()
 
 # ---------------------------------------------------------------------------
