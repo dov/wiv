@@ -1431,7 +1431,7 @@ void OpenFileDialog::fillThumbnailCache(const QString& directoryPath)
     // place - revisiting a directory reuses whatever it already decoded
     // instead of clearing everything and re-decoding from scratch.
 
-    fileSystemWatcher_->removePaths(fileSystemWatcher_->directories());
+    if (!fileSystemWatcher_->directories().isEmpty()) fileSystemWatcher_->removePaths(fileSystemWatcher_->directories());
 
     // Scan the directory on a BACKGROUND thread (directory_iterator +
     // file_size() are syscalls, slow on network drives/huge dirs) and sort

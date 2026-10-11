@@ -68,6 +68,7 @@ int main(int argc, char** argv)
     parser.addOption(rpcPortOption);
     parser.addPositionalArgument("files", "giv file(s) to open.", "[file.giv ...]");
     parser.process(app);
+    giv::log::captureStdStreams();
 
     givqt::MainWindow window;
 
