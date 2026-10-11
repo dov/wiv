@@ -189,6 +189,21 @@ std::vector<Plugin>& loadedPlugins()
     }
     std::sort(candidates.begin(), candidates.end());
 
+#ifdef _WIN32
+    // Plugins live in lib/wiv/plugins but their dependency DLLs (cfitsio,
+    // libtiff, ...) sit next to wiv.exe in bin/; LOAD_WITH_ALTERED_SEARCH_PATH
+    // only searches the plugin's own directory, so add the exe directory.
+    {
+        wchar_t exePath[MAX_PATH];
+        const DWORD n = GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+        if (n > 0 && n < MAX_PATH)
+        {
+            const fs::path exeDir = fs::path(exePath).parent_path();
+            SetDllDirectoryW(exeDir.c_str());
+        }
+    }
+#endif
+
     for (const auto& path : candidates)
     {
         void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
