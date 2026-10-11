@@ -950,17 +950,23 @@ void OpenFileDialog::refreshRecentNode()
     }
 }
 
-void OpenFileDialog::addRecentDirectory(const QString& path)
+void OpenFileDialog::recordRecentDirectory(QSettings& settings, const QString& path)
 {
-    if (path.isEmpty() || !settings_) return;
+    if (path.isEmpty()) return;
     const QString normalized = QDir(path).absolutePath();
     if (normalized.isEmpty()) return;
 
-    QStringList paths = settings_->value("openDialog/recentDirectories").toStringList();
+    QStringList paths = settings.value("openDialog/recentDirectories").toStringList();
     paths.removeAll(normalized);
     paths.prepend(normalized);
     while (paths.size() > kMaxRecents) paths.removeLast();
-    settings_->setValue("openDialog/recentDirectories", paths);
+    settings.setValue("openDialog/recentDirectories", paths);
+}
+
+void OpenFileDialog::addRecentDirectory(const QString& path)
+{
+    if (!settings_) return;
+    recordRecentDirectory(*settings_, path);
 }
 
 void OpenFileDialog::onDirectoryEnteredForRecents(const QString& path)
