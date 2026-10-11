@@ -4,6 +4,7 @@
 #include "ColorTableDialog.h"
 #include "ContrastDialog.h"
 #include "ImagePluginHost.h"
+#include "InfoDialog.h"
 #include "MarkTreeView.h"
 #include "OpenFileDialog.h"
 #include "PreferencesDialog.h"
@@ -28,7 +29,9 @@
 #include <QSettings>
 #include <QShowEvent>
 #include <QStatusBar>
+#include <QTimer>
 #include <QThread>
+#include <QDateTime>
 #include <QVBoxLayout>
 
 namespace givqt
@@ -71,6 +74,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 
     connect(viewport_, &VulkanViewport::sceneLoaded, this, [this]() {
         if (markTreeView_) markTreeView_->rebuildFromScene();
+        refreshInfoDialog();
         const auto& scene = viewport_->sceneData();
         if (!scene.datasets.empty())
         {
@@ -97,6 +101,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     connect(viewport_, &VulkanViewport::sliceChanged, this, [this](int slice, int count) {
         lastSliceText_ = count > 1 ? QString("Slice %1/%2").arg(slice + 1).arg(count) : QString();
         infoLabel_->setText(statusLineText());
+        refreshInfoDialog();
     });
     connect(viewport_, &VulkanViewport::imageChanged, this, [this](int index, int count, QString filename) {
         updateNavigationActionsEnabled();
@@ -104,6 +109,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         updateContrastToolsEnabled();
         if (contrastDialog_ && contrastDialog_->isVisible()) contrastDialog_->refreshForImage();
         if (colorTableDialog_ && colorTableDialog_->isVisible()) colorTableDialog_->refreshForImage();
+        refreshInfoDialog();
         // Sole owner of the title/status-label text for both the initial
         // load and every next/previousImage() step (loadFilesInternal only
         // updates loadedBaseName_, before calling viewport_->loadFiles() -
@@ -200,6 +206,10 @@ void MainWindow::buildMenus()
     markBrowserPanelAction_->setCheckable(true);
     connect(markBrowserPanelAction_, &QAction::toggled, this, &MainWindow::setMarkBrowserPlacement);
     viewMenu->addAction(markBrowserPanelAction_);
+
+    viewMenu->addSeparator();
+    auto infoAction = viewMenu->addAction("Image Info...", this, &MainWindow::toggleInfoDialog);
+    infoAction->setShortcut(QKeySequence("I"));
 
     viewMenu->addSeparator();
     // giv's do_auto_fit_marks: on (default), next/previousImage() re-fits
@@ -626,6 +636,154 @@ void MainWindow::showContrastDialog()
     contrastDialog_->show();
     contrastDialog_->raise();
     contrastDialog_->activateWindow();
+}
+
+void MainWindow::toggleInfoDialog()
+{
+    if (infoDialog_ && infoDialog_->isVisible())
+    {
+        infoDialog_->close();
+        return;
+    }
+    spdlog::info("User opened Image Info dialog");
+    if (!infoDialog_)
+    {
+        infoDialog_ = new InfoDialog(this);
+        infoDialog_->setAttribute(Qt::WA_DeleteOnClose, false);
+        // Zoom/pan and contrast/colormap changes have no signal to hook, so
+        // poll while visible; InfoDialog::setInfo() ignores unchanged text.
+        infoRefreshTimer_ = new QTimer(infoDialog_);
+        infoRefreshTimer_->setInterval(500);
+        connect(infoRefreshTimer_, &QTimer::timeout, this, &MainWindow::refreshInfoDialog);
+    }
+    infoRefreshTimer_->start();
+    connect(infoDialog_, &QDialog::finished, infoRefreshTimer_, &QTimer::stop, Qt::UniqueConnection);
+    refreshInfoDialog();
+    infoDialog_->show();
+    infoDialog_->raise();
+    infoDialog_->activateWindow();
+}
+
+void MainWindow::refreshInfoDialog()
+{
+    if (!infoDialog_ || !infoDialog_->isVisible()) return;
+    QString name = QFileInfo(QString::fromStdString(viewport_->currentImageName())).fileName();
+    if (name.isEmpty()) name = loadedBaseName_;
+    infoDialog_->setInfo(QString("Info: %1").arg(name), buildInfoText());
+}
+
+namespace
+{
+QString humanBytes(qint64 n)
+{
+    if (n < 1024) return QString("%1 B").arg(n);
+    double v = n;
+    const char* units[] = {"KiB", "MiB", "GiB", "TiB"};
+    int u = -1;
+    while (v >= 1024.0 && u < 3)
+    {
+        v /= 1024.0;
+        ++u;
+    }
+    return QString("%1 %2 (%3 bytes)").arg(v, 0, 'f', 1).arg(units[u]).arg(n);
+}
+
+const char* sampleTypeName(WivSampleType t)
+{
+    switch (t)
+    {
+        case WIV_SAMPLE_U8: return "uint8";
+        case WIV_SAMPLE_U16: return "uint16";
+        case WIV_SAMPLE_FLOAT: return "float32";
+        default: return "none (RGBA8 only)";
+    }
+}
+}
+
+QString MainWindow::buildInfoText() const
+{
+    // Rich text: each section is a heading followed by a two-column table.
+    QString t;
+    bool inTable = false;
+    auto closeTable = [&]() {
+        if (inTable) t += "</table>";
+        inTable = false;
+    };
+    auto row = [&](const QString& key, const QString& value) {
+        t += QString("<tr><td><b>%1</b></td><td>%2</td></tr>").arg(key.toHtmlEscaped(), value.toHtmlEscaped());
+    };
+    auto section = [&](const QString& title) {
+        closeTable();
+        t += QString("<h3>%1</h3><table cellspacing='0' cellpadding='3'>").arg(title.toHtmlEscaped());
+        inTable = true;
+    };
+
+    // ---- Current image ----
+    const giv::LoadedImage* img = viewport_->currentImage();
+    if (img)
+    {
+        section("Image");
+        const QString path = QString::fromStdString(viewport_->currentImageName());
+        QFileInfo fi(path);
+        row("Path", fi.absoluteFilePath());
+        if (fi.exists())
+        {
+            row("File size", humanBytes(fi.size()));
+            row("Modified", fi.lastModified().toString(Qt::ISODate).replace('T', ' '));
+        }
+        // "\u00d7" is giv's multiplication sign.
+        row("Resolution", QString("%1\u00d7%2").arg(img->width).arg(img->height));
+        row("Megapixels", QString::number(double(img->width) * img->height / 1e6, 'f', 2));
+        const auto& size = viewport_->currentImageSize();
+        if (viewport_->pixelSize() != 1.0 || !viewport_->pixelSizeUnit().empty())
+        {
+            const QString unit = QString::fromStdString(viewport_->pixelSizeUnit());
+            row("Pixel size", QString("%1 %2").arg(viewport_->pixelSize(), 0, 'g', 6).arg(unit));
+            if (size)
+                row("Physical size", QString("%1\u00d7%2 %3")
+                                          .arg(size->first * viewport_->pixelSize(), 0, 'g', 6)
+                                          .arg(size->second * viewport_->pixelSize(), 0, 'g', 6)
+                                          .arg(unit));
+        }
+        row("Sample type", sampleTypeName(img->sampleType));
+        if (img->sampleType != WIV_SAMPLE_NONE)
+        {
+            row("min max", QString("%1 %2").arg(img->sampleMin, 0, 'g', 6).arg(img->sampleMax, 0, 'g', 6));
+            const auto state = viewport_->currentContrastState();
+            row("Contrast window", QString("%1 .. %2").arg(state.min, 0, 'g', 6).arg(state.max, 0, 'g', 6));
+            row("Color table", state.colormapEnabled ? QString::fromLatin1(giv::colormaps::name(state.colormapId))
+                                                      : QString("gray"));
+        }
+        row("Slices", img->depth > 1 ? QString("%1 (showing %2)").arg(img->depth).arg(viewport_->currentSlice() + 1)
+                                       : QString("1"));
+        const qint64 mem = qint64(img->rgba.size()) + qint64(img->samples.size());
+        row("Decoded memory", humanBytes(mem));
+    }
+
+    // ---- Scene (.giv marks) ----
+    const auto& scene = viewport_->sceneData();
+    if (!scene.datasets.empty())
+    {
+        section("Marks");
+        size_t points = 0, visible = 0, sprites = 0, texts = 0;
+        for (const auto& ds : scene.datasets)
+        {
+            points += ds.pointCount();
+            texts += ds.texts.size();
+            if (ds.isVisible) ++visible;
+            if (ds.isSprite) ++sprites;
+        }
+        row("Datasets", QString("%1 (%2 visible)").arg(scene.datasets.size()).arg(visible));
+        row("Points", QString::number(points));
+        if (texts) row("Text labels", QString::number(texts));
+        if (sprites) row("Sprites", QString::number(sprites));
+        if (scene.hasBounds())
+            row("Bounds", QString("x %1..%2, y %3..%4")
+                              .arg(scene.minX, 0, 'g', 6).arg(scene.maxX, 0, 'g', 6)
+                              .arg(scene.minY, 0, 'g', 6).arg(scene.maxY, 0, 'g', 6));
+    }
+    closeTable();
+    return t;
 }
 
 void MainWindow::showColorTableDialog()

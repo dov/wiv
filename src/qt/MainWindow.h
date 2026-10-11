@@ -19,6 +19,7 @@ class QDockWidget;
 class QShowEvent;
 class QDragEnterEvent;
 class QDropEvent;
+class QTimer;
 
 namespace givqt
 {
@@ -27,6 +28,7 @@ class VulkanViewport;
 class MarkTreeView;
 class ContrastDialog;
 class ColorTableDialog;
+class InfoDialog;
 class RpcServer;
 
 class MainWindow : public QMainWindow
@@ -94,6 +96,12 @@ private:
     ContrastDialog* contrastDialog_ = nullptr;
     ColorTableDialog* colorTableDialog_ = nullptr;
 
+    // View > Image Info ("i"): giv's info dialog, lazily created. While
+    // visible it is rebuilt on image/slice/scene changes and by
+    // infoRefreshTimer_ (for state with no change signal: zoom, contrast).
+    InfoDialog* infoDialog_ = nullptr;
+    QTimer* infoRefreshTimer_ = nullptr;
+
     std::unique_ptr<RpcServer> rpcServer_;
 
     void buildMenus();
@@ -155,6 +163,10 @@ private:
     void showContrastDialog();
     void showColorTableDialog();
     void updateContrastToolsEnabled();
+
+    void toggleInfoDialog();
+    void refreshInfoDialog();
+    QString buildInfoText() const;
 };
 
 } // namespace givqt
