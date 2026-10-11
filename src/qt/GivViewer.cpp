@@ -3,7 +3,7 @@
 #include <QCoreApplication>
 
 #include <cstdlib>
-#include <iostream>
+#include <spdlog/spdlog.h>
 
 namespace givqt
 {
@@ -68,8 +68,8 @@ void GivViewer::render(double simulationTime)
         if (elapsed >= 1.0 && frameCount_ > 0)
         {
             double n = static_cast<double>(frameCount_);
-            std::cerr << "wiv: per-frame ms: animate=" << tAnimate_ / n << " advance=" << tAdvance_ / n
-                      << " update=" << tUpdate_ / n << " record=" << tRecord_ / n << " present=" << tPresent_ / n << "\n";
+            spdlog::info("per-frame ms: animate={} advance={} update={} record={} present={}", tAnimate_ / n,
+                         tAdvance_ / n, tUpdate_ / n, tRecord_ / n, tPresent_ / n);
             tAnimate_ = tAdvance_ = tUpdate_ = tRecord_ = tPresent_ = 0.0;
             frameCount_ = 0;
             fpsWindowStart_ = now;
