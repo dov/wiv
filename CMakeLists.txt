@@ -15,10 +15,22 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
 
+if(MINGW AND NOT EXISTS "${MINGW_DEPS_PREFIX}/lib/cmake/vsg/vsgConfig.cmake"
+   AND NOT EXISTS "${MINGW_DEPS_PREFIX}/lib64/cmake/vsg/vsgConfig.cmake")
+  # Cross build: vsg/vsgXchange/spdlog aren't packaged for MinGW; build them once.
+  message(STATUS "Building MinGW dependencies (tools/build-mingw-deps.sh)...")
+  execute_process(COMMAND ${CMAKE_COMMAND} -E env MINGW_DEPS_PREFIX=${MINGW_DEPS_PREFIX}
+                          ${CMAKE_SOURCE_DIR}/tools/build-mingw-deps.sh
+                  RESULT_VARIABLE _deps_rc)
+  if(NOT _deps_rc EQUAL 0)
+    message(FATAL_ERROR "tools/build-mingw-deps.sh failed")
+  endif()
+endif()
 find_package(vsg CONFIG REQUIRED)
 find_package(vsgXchange CONFIG REQUIRED)
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Concurrent Network)
+# (before Qt6, whose cross config rewrites the find root path)
 find_package(spdlog CONFIG REQUIRED)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Concurrent Network)
 
 # The system-wide vsgQt install (/usr/local) was built against Qt5, so it
 # can't be used by this (Qt6) app - vsgQt is a thin library, so build it
@@ -159,9 +171,17 @@ endif()
 if(WIN32)
   # Qt needs its platform plugin next to the exe (vcpkg's applocal step only
   # copies DLLs linked at build time, not runtime-loaded plugins).
-  find_file(WIV_QWINDOWS_PLUGIN qwindows.dll
-    PATHS ${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/Qt6/plugins/platforms
-    NO_DEFAULT_PATH)
+  if(MINGW)
+    # Cross build with Fedora's mingw64-qt6-qtbase: <sysroot>/lib/qt6/plugins.
+    find_file(WIV_QWINDOWS_PLUGIN qwindows.dll
+      PATHS ${CMAKE_FIND_ROOT_PATH} ${CMAKE_PREFIX_PATH}
+      PATH_SUFFIXES lib/qt6/plugins/platforms plugins/platforms
+      NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+  else()
+    find_file(WIV_QWINDOWS_PLUGIN qwindows.dll
+      PATHS ${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/Qt6/plugins/platforms
+      NO_DEFAULT_PATH)
+  endif()
   add_custom_command(TARGET wiv POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:wiv>/platforms
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${WIV_QWINDOWS_PLUGIN} $<TARGET_FILE_DIR:wiv>/platforms/
@@ -181,8 +201,11 @@ if(WIN32)
     file(INSTALL \"${CMAKE_BINARY_DIR}/platforms/qwindows.dll\" DESTINATION \"\${CMAKE_INSTALL_PREFIX}/platforms\")
   ")
   # App-local MSVC runtime, so no separate vc_redist install is needed.
-  set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION .)
-  include(InstallRequiredSystemLibraries)
+  # (MinGW cross builds: tools/build-mingw.sh copies the DLLs instead.)
+  if(MSVC)
+    set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION .)
+    include(InstallRequiredSystemLibraries)
+  endif()
 else()
   install(TARGETS wiv RUNTIME DESTINATION bin)
   install(DIRECTORY ${CMAKE_BINARY_DIR}/shaders DESTINATION share/wiv)
