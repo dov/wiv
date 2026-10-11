@@ -299,6 +299,7 @@ void MainWindow::openFiles()
 
     std::vector<std::string> paths;
     for (const auto& f : files) paths.push_back(f.toStdString());
+    browseList_.clear();
     loadFilesInternal(paths);
 
     for (const auto& f : files) addRecentFile(f);
@@ -306,8 +307,40 @@ void MainWindow::openFiles()
 
 void MainWindow::loadFiles(const std::vector<std::string>& paths)
 {
-    loadFilesInternal(paths);
-    for (const auto& p : paths) addRecentFile(QString::fromStdString(p));
+    // Directories expand to their giv-compatible files (sorted). More than
+    // one resulting file is browsed one at a time via Next/Previous Image
+    // (like images) rather than merged into a single scene.
+    QStringList expanded;
+    for (const auto& p : paths)
+    {
+        QFileInfo info(QString::fromStdString(p));
+        if (info.isDir())
+        {
+            for (const auto& entry : QDir(info.absoluteFilePath()).entryInfoList(QDir::Files, QDir::Name | QDir::IgnoreCase))
+                if (isGivCompatibleFile(entry.absoluteFilePath())) expanded << entry.absoluteFilePath();
+        }
+        else
+        {
+            expanded << QString::fromStdString(p);
+        }
+    }
+    if (expanded.isEmpty())
+    {
+        spdlog::warn("No giv-compatible files found in the given path(s)");
+        return;
+    }
+
+    browseList_.clear();
+    if (expanded.size() > 1)
+    {
+        for (auto& f : expanded) f = QFileInfo(f).absoluteFilePath();
+        browseList_ = expanded;
+        loadFilesInternal({expanded.first().toStdString()});
+        addRecentFile(expanded.first());
+        return;
+    }
+    loadFilesInternal({expanded.first().toStdString()});
+    addRecentFile(expanded.first());
 }
 
 void MainWindow::showEvent(QShowEvent* event)
@@ -426,6 +459,13 @@ void MainWindow::updateDirectoryFileList(const std::vector<std::string>& paths)
     }
 
     QFileInfo loadedInfo(QString::fromStdString(paths.front()));
+    int listIdx = browseList_.indexOf(loadedInfo.absoluteFilePath());
+    if (listIdx >= 0)
+    {
+        directoryFiles_ = browseList_;
+        directoryFileIndex_ = listIdx;
+        return;
+    }
     QDir dir = loadedInfo.absoluteDir();
 
     QStringList files;
