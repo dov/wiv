@@ -10,6 +10,7 @@
 
 #include <QApplication>
 #include <QIcon>
+#include <QKeyEvent>
 #include <QCommandLineParser>
 
 #include <spdlog/spdlog.h>
@@ -19,6 +20,27 @@
 #include <vsgXchange/freetype.h>
 
 #include <string>
+
+namespace
+{
+class KeyLogger : public QObject
+{
+public:
+    bool eventFilter(QObject*, QEvent* event) override
+    {
+        if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease)
+        {
+            auto* ke = static_cast<QKeyEvent*>(event);
+            spdlog::info("Key {} key=0x{:x} text='{}' mods=0x{:x} vk=0x{:x} scan=0x{:x} nativeMods=0x{:x} app mods=0x{:x}",
+                         event->type() == QEvent::KeyPress ? "press" : "release", ke->key(),
+                         ke->text().toStdString(), static_cast<int>(ke->modifiers()),
+                         ke->nativeVirtualKey(), ke->nativeScanCode(), ke->nativeModifiers(),
+                         static_cast<int>(QGuiApplication::keyboardModifiers()));
+        }
+        return false;
+    }
+};
+} // namespace
 
 int main(int argc, char** argv)
 {
@@ -50,6 +72,13 @@ int main(int argc, char** argv)
     QApplication::setOrganizationName("wiv");
     QApplication::setApplicationName("wiv");
     QApplication::setWindowIcon(QIcon(":/wiv-app-icon.png"));
+
+    // Diagnostic: WIV_LOG_KEYS=1 logs every key press with the modifiers Qt
+    // sees and the native virtual key / scan code (e.g. to debug key
+    // remappers such as PowerToys).
+    KeyLogger keyLogger;
+    if (qEnvironmentVariableIsSet("WIV_LOG_KEYS"))
+        app.installEventFilter(&keyLogger);
 
     {
         QStringList argList;
