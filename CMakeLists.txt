@@ -58,6 +58,8 @@ set(WIV_SHADER_SOURCES
   ${CMAKE_SOURCE_DIR}/shaders/fill.frag
   ${CMAKE_SOURCE_DIR}/shaders/image.vert
   ${CMAKE_SOURCE_DIR}/shaders/image.frag
+  ${CMAKE_SOURCE_DIR}/shaders/grid.vert
+  ${CMAKE_SOURCE_DIR}/shaders/grid.frag
 )
 
 set(WIV_SPIRV_BINARIES)

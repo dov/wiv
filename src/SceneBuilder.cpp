@@ -24,6 +24,7 @@ void ViewParams::update(float worldPerPixel)
     if (!value) return;
     value->value().x = worldPerPixel;
     value->value().y = forceOpaque_ ? 1.0f : 0.0f;
+    value->value().z = showPixelGrid_ ? 1.0f : 0.0f;
     // Written (16 bytes, whatever the scene's size) and dirtied on *every*
     // frame, not just when the value actually changes: vsg::TransferTask
     // keeps one GPU copy of a DYNAMIC_DATA buffer per in-flight frame and
@@ -1013,6 +1014,19 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
 
         auto imageQuadIndices = vsg::ushortArray::create({0, 1, 2, 2, 3, 0});
 
+        // Pixel grid overlay pipeline (grid.vert/frag), shared across calls
+        // like the image pipeline. Reads the vector batches' ViewParams
+        // set, so it shares their pipeline layout.
+        if (!gridBind_)
+        {
+            vsg::VertexInputState::Bindings gridBindings{
+                VkVertexInputBindingDescription{0, sizeof(vsg::vec2), VK_VERTEX_INPUT_RATE_VERTEX}};
+            vsg::VertexInputState::Attributes gridAttributes{
+                VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32_SFLOAT, 0}};
+            gridBind_ = makePipeline(shaderDir, "grid.vert.spv", "grid.frag.spv", gridBindings, gridAttributes,
+                                     vectorPipelineLayout);
+        }
+
         imageSwitch_ = vsg::Switch::create();
         imageFilterAnimator_ = ImageFilterAnimator::create();
 
@@ -1057,7 +1071,22 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             innerSwitch->setSingleChildOn(0); // default: nearest (worldPerPixel unknown until first update())
             imageFilterAnimator_->filterSwitches.push_back(innerSwitch);
 
-            imageSwitch_->addChild(true, innerSwitch);
+            // The pixel grid quad covers the image and is drawn right after
+            // it. It re-binds the ViewParams set itself since the image's
+            // own descriptor set was bound to set 0 just before.
+            auto gridDraw = vsg::Commands::create();
+            gridDraw->addChild(vsg::BindVertexBuffers::create(0, vsg::DataList{positions}));
+            gridDraw->addChild(vsg::BindIndexBuffer::create(imageQuadIndices));
+            gridDraw->addChild(vsg::DrawIndexed::create(6, 1, 0, 0, 0));
+            auto gridGroup = vsg::StateGroup::create();
+            gridGroup->add(gridBind_);
+            gridGroup->add(bindViewParams);
+            gridGroup->addChild(gridDraw);
+
+            auto imageNode = vsg::Group::create();
+            imageNode->addChild(innerSwitch);
+            imageNode->addChild(gridGroup);
+            imageSwitch_->addChild(true, imageNode);
         }
         imageSwitch_->setSingleChildOn(0); // default: first image
 

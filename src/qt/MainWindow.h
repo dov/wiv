@@ -70,6 +70,7 @@ private:
 
     QAction* balloonAction_ = nullptr;
     QAction* forceOpaqueAction_ = nullptr;
+    QAction* pixelGridAction_ = nullptr;
     QAction* autoFitAction_ = nullptr;
     QAction* nextImageAction_ = nullptr;
     QAction* previousImageAction_ = nullptr;
