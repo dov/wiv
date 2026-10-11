@@ -109,6 +109,9 @@ private:
     // $image list (VulkanViewport::imageCount() takes priority - see
     // goNextImage()/goPreviousImage()).
     QStringList directoryFiles_;
+    // Explicit browse list from a multi-file/directory loadFiles() call; takes
+    // precedence over the sibling-file scan while the loaded file is in it.
+    QStringList browseList_;
     int directoryFileIndex_ = -1;
 
     // showEvent()'s guard for the deferred initial-load auto-fit - see its
