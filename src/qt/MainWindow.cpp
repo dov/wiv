@@ -122,10 +122,15 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
             return;
         }
         QString baseName = QFileInfo(filename).fileName();
-        setWindowTitle(QString("wiv: %1").arg(baseName));
+        // Name the loaded file first so a multi-image .giv is identifiable;
+        // the current $image is appended as "[n/count: image]".
+        QString label = loadedBaseName_;
+        if (count > 1) label += QString(" [%1/%2: %3]").arg(index + 1).arg(count).arg(baseName);
+        else if (baseName != loadedBaseName_) label += QString(" [%1]").arg(baseName);
+        setWindowTitle(QString("wiv: %1").arg(label));
         lastCursorText_.clear();
         lastMeasureText_.clear();
-        infoLabel_->setText(QString("Loading %1").arg(baseName));
+        infoLabel_->setText(QString("Loading %1").arg(label));
     });
 }
 
@@ -226,6 +231,14 @@ void MainWindow::buildMenus()
     previousImageAction_ = viewMenu->addAction("Previous Image", this, &MainWindow::goPreviousImage);
     previousImageAction_->setShortcuts({QKeySequence("Shift+Down"), QKeySequence("Backspace"), QKeySequence("Left")});
     previousImageAction_->setEnabled(false);
+    // Pages through the $image references of the current file (e.g. a
+    // multi-image .giv); Next/Previous Image above move between files.
+    nextFileImageAction_ = viewMenu->addAction("Next Image in File", viewport_, &VulkanViewport::nextImage);
+    nextFileImageAction_->setShortcut(QKeySequence("PgDown"));
+    nextFileImageAction_->setEnabled(false);
+    previousFileImageAction_ = viewMenu->addAction("Previous Image in File", viewport_, &VulkanViewport::previousImage);
+    previousFileImageAction_->setShortcut(QKeySequence("PgUp"));
+    previousFileImageAction_->setEnabled(false);
 
     // Slice navigation (giv's plain Up/Down) for multi-slice images (npy 3D
     // arrays, FITS NAXIS=3, multi-frame DICOM) - distinct from Next/Previous
@@ -408,6 +421,8 @@ void MainWindow::loadFilesInternal(const std::vector<std::string>& paths)
     QStringList baseNames;
     for (const auto& p : paths) baseNames << QFileInfo(QString::fromStdString(p)).fileName();
     loadedBaseName_ = baseNames.join(", ");
+    loadedPaths_.clear();
+    for (const auto& p : paths) loadedPaths_ << QFileInfo(QString::fromStdString(p)).absoluteFilePath();
     updateDirectoryFileList(paths);
 
     QString error;
@@ -498,6 +513,9 @@ void MainWindow::updateNavigationActionsEnabled()
     bool canNavigate = viewport_->imageCount() > 1 || directoryFiles_.size() > 1;
     nextImageAction_->setEnabled(canNavigate);
     previousImageAction_->setEnabled(canNavigate);
+    bool multiImage = viewport_->imageCount() > 1;
+    nextFileImageAction_->setEnabled(multiImage);
+    previousFileImageAction_->setEnabled(multiImage);
 }
 
 void MainWindow::updateSliceActionsEnabled()
@@ -510,12 +528,12 @@ void MainWindow::updateSliceActionsEnabled()
 void MainWindow::goNextImage()
 {
     spdlog::info("User invoked Next Image");
-    if (viewport_->imageCount() > 1)
+    if (directoryFiles_.size() < 2)
     {
-        viewport_->nextImage();
+        // No sibling files: page through the file's own images instead.
+        if (viewport_->imageCount() > 1) viewport_->nextImage();
         return;
     }
-    if (directoryFiles_.size() < 2) return;
     directoryFileIndex_ = (directoryFileIndex_ + 1) % directoryFiles_.size();
     spdlog::info("Directory navigation: switching to {}", directoryFiles_[directoryFileIndex_].toStdString());
     loadFilesInternal({directoryFiles_[directoryFileIndex_].toStdString()});
@@ -524,12 +542,12 @@ void MainWindow::goNextImage()
 void MainWindow::goPreviousImage()
 {
     spdlog::info("User invoked Previous Image");
-    if (viewport_->imageCount() > 1)
+    if (directoryFiles_.size() < 2)
     {
-        viewport_->previousImage();
+        // No sibling files: page through the file's own images instead.
+        if (viewport_->imageCount() > 1) viewport_->previousImage();
         return;
     }
-    if (directoryFiles_.size() < 2) return;
     directoryFileIndex_ = (directoryFileIndex_ - 1 + directoryFiles_.size()) % directoryFiles_.size();
     spdlog::info("Directory navigation: switching to {}", directoryFiles_[directoryFileIndex_].toStdString());
     loadFilesInternal({directoryFiles_[directoryFileIndex_].toStdString()});
@@ -765,6 +783,7 @@ QString MainWindow::buildInfoText() const
     if (!scene.datasets.empty())
     {
         section("Marks");
+        for (const auto& path : loadedPaths_) row("Path", path);
         size_t points = 0, visible = 0, sprites = 0, texts = 0;
         for (const auto& ds : scene.datasets)
         {

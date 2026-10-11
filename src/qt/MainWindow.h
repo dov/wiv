@@ -65,6 +65,7 @@ private:
     QString lastMeasureText_;
     QString lastSliceText_; // "Slice N/D" for the current multi-slice image, empty otherwise - see sliceChanged
     QString loadedBaseName_;
+    QStringList loadedPaths_; // absolute paths of the file(s) last passed to loadFilesInternal()
     QString lastLoadSummary_;
 
     QAction* balloonAction_ = nullptr;
@@ -72,6 +73,8 @@ private:
     QAction* autoFitAction_ = nullptr;
     QAction* nextImageAction_ = nullptr;
     QAction* previousImageAction_ = nullptr;
+    QAction* nextFileImageAction_ = nullptr;
+    QAction* previousFileImageAction_ = nullptr;
     QAction* nextSliceAction_ = nullptr;
     QAction* previousSliceAction_ = nullptr;
     QAction* showMarksAction_ = nullptr;
@@ -144,10 +147,9 @@ private:
     void updateDirectoryFileList(const std::vector<std::string>& paths);
 
     // Next/Previous Image handlers wired to the QActions instead of directly
-    // to VulkanViewport::nextImage()/previousImage(): prefer paging through
-    // the current scene's own $image references when there's more than one
-    // (VulkanViewport::imageCount() > 1), otherwise fall back to paging
-    // through directoryFiles_.
+    // to VulkanViewport::nextImage()/previousImage(): page through
+    // directoryFiles_; with no sibling files, fall back to the current
+    // scene's own $image references (PgUp/PgDown always page those).
     void goNextImage();
     void goPreviousImage();
     void updateNavigationActionsEnabled();
