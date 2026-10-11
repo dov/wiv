@@ -106,6 +106,12 @@ public:
     // own isVisible state (which the Mark Browser tree controls) - the two
     // are combined (AND) only at scene-build time, so toggling this back on
     // restores whatever the tree had set. Camera/pan state is preserved.
+    // Multiplies every dataset's quiverScale by `factor` and rebuilds the
+    // scene (giv's Alt+wheel quiver-arrow zoom).
+    void scaleQuivers(double factor);
+
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
     void setShowMarks(bool show);
     void toggleShowMarks();
     bool showMarks() const { return globalShowMarks_; }

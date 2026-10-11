@@ -1,4 +1,6 @@
 #include "VulkanViewport.h"
+
+#include <QWheelEvent>
 #include "AppPaths.h"
 
 #include "DisplayImage.h"
@@ -181,6 +183,10 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
 
     window_ = new vsgQt::Window(viewer_, traits_, static_cast<QWindow*>(nullptr));
     window_->setTitle("wiv");
+    // Alt+wheel (giv's quiver-arrow zoom): Qt moves the delta to the x axis
+    // when Alt is held, which vsgQt::Window ignores (it would report every
+    // such event as scroll-up), so intercept it before vsgQt sees it.
+    window_->installEventFilter(this);
 #ifdef _WIN32
     // The window is created as a decorated top-level and only later embedded
     // via createWindowContainer(); on Windows the leftover frame margins offset
@@ -774,6 +780,31 @@ void VulkanViewport::setDatasetsVisible(const std::vector<size_t>& indices, bool
     }
     if (!changed) return;
     spdlog::info("Dataset visibility changed for {} dataset(s), now {}", indices.size(), visible ? "visible" : "hidden");
+    QString error;
+    if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
+        spdlog::error("{}", error.toStdString());
+}
+
+bool VulkanViewport::eventFilter(QObject* watched, QEvent* event)
+{
+    if (watched == window_ && event->type() == QEvent::Wheel)
+    {
+        auto* we = static_cast<QWheelEvent*>(event);
+        if (we->modifiers() & Qt::AltModifier)
+        {
+            QPoint d = we->angleDelta();
+            int amount = d.y() != 0 ? d.y() : d.x();
+            if (amount != 0) scaleQuivers(amount > 0 ? 1.2 : 0.8);
+            return true;
+        }
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
+void VulkanViewport::scaleQuivers(double factor)
+{
+    if (!hasScene_) return;
+    for (auto& ds : scene_.datasets) ds.quiverScale *= factor;
     QString error;
     if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
         spdlog::error("{}", error.toStdString());
