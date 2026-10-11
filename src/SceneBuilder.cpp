@@ -587,6 +587,10 @@ void triangulatePolygon(std::vector<FillVertex>& tris, const std::vector<vsg::ve
             for (size_t k = 0; k < idx.size(); ++k)
             {
                 if (k == i || k == iPrev || k == iNext) continue;
+                // Hole bridging duplicates vertices; a coincident vertex
+                // isn't "inside" the ear.
+                const vsg::vec2& q = ring[idx[k]];
+                if ((q.x == a.x && q.y == a.y) || (q.x == b.x && q.y == b.y) || (q.x == c.x && q.y == c.y)) continue;
                 if (pointInTriangle(ring[idx[k]], a, b, c)) ++violations;
             }
             if (violations == 0)
@@ -621,6 +625,177 @@ void triangulatePolygon(std::vector<FillVertex>& tris, const std::vector<vsg::ve
         tris.push_back({ring[idx[0]], color, labelColor});
         tris.push_back({ring[idx[1]], color, labelColor});
         tris.push_back({ring[idx[2]], color, labelColor});
+    }
+}
+
+double ringSignedArea(const std::vector<vsg::vec2>& r)
+{
+    double a = 0.0;
+    for (size_t i = 0; i < r.size(); ++i)
+    {
+        const vsg::vec2& p = r[i];
+        const vsg::vec2& q = r[(i + 1) % r.size()];
+        a += static_cast<double>(p.x) * q.y - static_cast<double>(q.x) * p.y;
+    }
+    return 0.5 * a;
+}
+
+bool pointInRing(const vsg::vec2& p, const std::vector<vsg::vec2>& r)
+{
+    bool in = false;
+    for (size_t i = 0, j = r.size() - 1; i < r.size(); j = i++)
+    {
+        if (((r[i].y > p.y) != (r[j].y > p.y)) &&
+            (p.x < (r[j].x - r[i].x) * (p.y - r[i].y) / (r[j].y - r[i].y) + r[i].x))
+            in = !in;
+    }
+    return in;
+}
+
+// Proper crossing of segments ab and cd (shared endpoints / touching don't count).
+bool segmentsCross(const vsg::vec2& a, const vsg::vec2& b, const vsg::vec2& c, const vsg::vec2& d)
+{
+    auto orient = [](const vsg::vec2& p, const vsg::vec2& q, const vsg::vec2& r) {
+        return (static_cast<double>(q.x) - p.x) * (static_cast<double>(r.y) - p.y) -
+               (static_cast<double>(q.y) - p.y) * (static_cast<double>(r.x) - p.x);
+    };
+    double o1 = orient(a, b, c), o2 = orient(a, b, d), o3 = orient(c, d, a), o4 = orient(c, d, b);
+    return ((o1 > 0) != (o2 > 0)) && ((o3 > 0) != (o4 > 0)) && o1 != 0 && o2 != 0 && o3 != 0 && o4 != 0;
+}
+
+// Merges `hole` into `outer` through a zero-width bridge between the hole's
+// rightmost vertex and the nearest outer vertex whose connecting segment
+// crosses no ring edge, yielding one weakly-simple ring for ear clipping.
+void bridgeHole(std::vector<vsg::vec2>& outer, const std::vector<vsg::vec2>& hole,
+                const std::vector<const std::vector<vsg::vec2>*>& allHoles)
+{
+    size_t m = 0;
+    for (size_t i = 1; i < hole.size(); ++i)
+        if (hole[i].x > hole[m].x) m = i;
+    const vsg::vec2& M = hole[m];
+
+    auto blocked = [&](const vsg::vec2& V) {
+        auto crossesRing = [&](const std::vector<vsg::vec2>& r) {
+            for (size_t i = 0; i < r.size(); ++i)
+                if (segmentsCross(M, V, r[i], r[(i + 1) % r.size()])) return true;
+            return false;
+        };
+        if (crossesRing(outer)) return true;
+        for (const auto* h : allHoles)
+            if (crossesRing(*h)) return true;
+        return false;
+    };
+
+    size_t best = outer.size();
+    double bestD = 1e300;
+    for (size_t i = 0; i < outer.size(); ++i)
+    {
+        double dx = outer[i].x - M.x, dy = outer[i].y - M.y, d = dx * dx + dy * dy;
+        if (d < bestD && !blocked(outer[i]))
+        {
+            bestD = d;
+            best = i;
+        }
+    }
+    if (best == outer.size()) return; // no visible vertex: leave the hole filled rather than corrupt the ring
+
+    std::vector<vsg::vec2> merged;
+    merged.reserve(outer.size() + hole.size() + 2);
+    for (size_t i = 0; i <= best; ++i) merged.push_back(outer[i]);
+    for (size_t k = 0; k <= hole.size(); ++k) merged.push_back(hole[(m + k) % hole.size()]);
+    for (size_t i = best; i < outer.size(); ++i) merged.push_back(outer[i]);
+    outer = std::move(merged);
+}
+
+// Fills a set of subpaths of one shape with even-odd nesting semantics: a
+// contour nested inside an odd number of others is a hole (eyes, letter
+// counters...), so painter's-order content below it shows through - as
+// Inkscape/cairo render it. Falls back to independent fills for huge sets.
+void triangulateSubpaths(std::vector<FillVertex>& tris, const std::vector<std::vector<vsg::vec2>>& subpaths,
+                         const vsg::vec4& color, const vsg::vec4& labelColor)
+{
+    const size_t n = subpaths.size();
+    if (n < 2 || n > 2000)
+    {
+        for (const auto& sp : subpaths) triangulatePolygon(tris, sp, color, labelColor);
+        return;
+    }
+
+    std::vector<std::vector<vsg::vec2>> rings(n);
+    std::vector<float> minX(n), minY(n), maxX(n), maxY(n);
+    std::vector<double> area(n);
+    for (size_t i = 0; i < n; ++i)
+    {
+        rings[i] = subpaths[i];
+        if (rings[i].size() > 1 && rings[i].front().x == rings[i].back().x && rings[i].front().y == rings[i].back().y)
+            rings[i].pop_back();
+        minX[i] = maxX[i] = rings[i].empty() ? 0 : rings[i][0].x;
+        minY[i] = maxY[i] = rings[i].empty() ? 0 : rings[i][0].y;
+        for (const auto& p : rings[i])
+        {
+            minX[i] = std::min(minX[i], p.x);
+            maxX[i] = std::max(maxX[i], p.x);
+            minY[i] = std::min(minY[i], p.y);
+            maxY[i] = std::max(maxY[i], p.y);
+        }
+        area[i] = rings[i].size() >= 3 ? std::abs(ringSignedArea(rings[i])) : 0.0;
+    }
+
+    // containers[i]: indices of contours that enclose contour i.
+    std::vector<std::vector<size_t>> containers(n);
+    for (size_t i = 0; i < n; ++i)
+    {
+        if (rings[i].size() < 3) continue;
+        for (size_t j = 0; j < n; ++j)
+        {
+            if (i == j || rings[j].size() < 3 || area[j] <= area[i]) continue;
+            if (minX[i] < minX[j] || maxX[i] > maxX[j] || minY[i] < minY[j] || maxY[i] > maxY[j]) continue;
+            if (pointInRing(rings[i][0], rings[j])) containers[i].push_back(j);
+        }
+    }
+
+    std::vector<std::vector<size_t>> holesOf(n);
+    std::vector<bool> isHole(n, false);
+    for (size_t i = 0; i < n; ++i)
+    {
+        if (containers[i].size() % 2 == 1)
+        {
+            // Parent = the smallest enclosing contour.
+            size_t parent = containers[i][0];
+            for (size_t j : containers[i])
+                if (area[j] < area[parent]) parent = j;
+            isHole[i] = true;
+            holesOf[parent].push_back(i);
+        }
+    }
+
+    for (size_t i = 0; i < n; ++i)
+    {
+        if (isHole[i] || rings[i].size() < 3) continue;
+        std::vector<vsg::vec2> outer = rings[i];
+        if (ringSignedArea(outer) < 0) std::reverse(outer.begin(), outer.end());
+
+        std::vector<std::vector<vsg::vec2>> holes;
+        for (size_t h : holesOf[i])
+        {
+            holes.push_back(rings[h]);
+            if (ringSignedArea(holes.back()) > 0) std::reverse(holes.back().begin(), holes.back().end());
+        }
+        std::sort(holes.begin(), holes.end(), [](const auto& a, const auto& b) {
+            auto mx = [](const std::vector<vsg::vec2>& r) {
+                float m = r[0].x;
+                for (const auto& p : r) m = std::max(m, p.x);
+                return m;
+            };
+            return mx(a) > mx(b);
+        });
+        for (size_t h = 0; h < holes.size(); ++h)
+        {
+            std::vector<const std::vector<vsg::vec2>*> others;
+            for (size_t k = h + 1; k < holes.size(); ++k) others.push_back(&holes[k]);
+            bridgeHole(outer, holes[h], others);
+        }
+        triangulatePolygon(tris, outer, color, labelColor);
     }
 }
 
@@ -1180,12 +1355,12 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
 
         if (needSubpaths)
         {
+            if (ds.doDrawPolygon) triangulateSubpaths(fillTris, subpaths, fillColor, labelColor);
             for (size_t spIdx = 0; spIdx < subpaths.size(); ++spIdx)
             {
                 const auto& sp = subpaths[spIdx];
                 const bool spClosed = subpathClosed[spIdx];
 
-                if (ds.doDrawPolygon) triangulatePolygon(fillTris, sp, fillColor, labelColor);
                 if (ds.doDrawPolygonOutline && ds.doDrawPolygon)
                 {
                     float cum = 0.0f;
