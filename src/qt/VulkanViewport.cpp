@@ -683,6 +683,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
 
     viewer_->viewParams = builder.viewParams();
     viewer_->viewParams->setForceOpaque(forceOpaque_);
+    viewer_->viewParams->setShowPixelGrid(showPixelGrid_);
     viewer_->imageFilterAnimator = builder.imageFilterAnimator();
 
     // loadedImages_ only ever holds the single currently-displayed image (see
@@ -1405,6 +1406,14 @@ void VulkanViewport::toggleForceOpaque()
     forceOpaque_ = !forceOpaque_;
     spdlog::info("Force Opaque set to {}", forceOpaque_);
     if (viewer_->viewParams) viewer_->viewParams->setForceOpaque(forceOpaque_);
+    viewer_->request();
+}
+
+void VulkanViewport::toggleShowPixelGrid()
+{
+    showPixelGrid_ = !showPixelGrid_;
+    spdlog::info("Pixel Grid set to {}", showPixelGrid_);
+    if (viewer_->viewParams) viewer_->viewParams->setShowPixelGrid(showPixelGrid_);
     viewer_->request();
 }
 

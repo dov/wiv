@@ -127,6 +127,11 @@ public:
     void toggleForceOpaque();
     bool forceOpaque() const { return forceOpaque_; }
 
+    // giv's 'g' key (do_show_grid): outlines every image pixel once the view
+    // is zoomed in far enough. Takes effect immediately, no scene rebuild.
+    void toggleShowPixelGrid();
+    bool showPixelGrid() const { return showPixelGrid_; }
+
     // Tools > Measure Distance Diagonal (giv's caliper tool) - see
     // CaliperTool.h.
     void toggleMeasureDistance();
@@ -255,6 +260,7 @@ private:
     bool lastColormapEnabled_ = false;
     bool globalShowMarks_ = true;
     bool forceOpaque_ = false;
+    bool showPixelGrid_ = false;
 
     vsg::ref_ptr<vsg::Camera> camera_;
     vsg::ref_ptr<vsg::Orthographic> projection_;

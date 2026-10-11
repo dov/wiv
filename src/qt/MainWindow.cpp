@@ -198,6 +198,10 @@ void MainWindow::buildMenus()
     forceOpaqueAction_->setCheckable(true);
     forceOpaqueAction_->setShortcut(QKeySequence("A"));
 
+    pixelGridAction_ = viewMenu->addAction("Pixel Grid", viewport_, &VulkanViewport::toggleShowPixelGrid);
+    pixelGridAction_->setCheckable(true);
+    pixelGridAction_->setShortcut(QKeySequence("G"));
+
     viewMenu->addSeparator();
     showMarksAction_ = viewMenu->addAction("Show Marks", viewport_, &VulkanViewport::toggleShowMarks);
     showMarksAction_->setCheckable(true);

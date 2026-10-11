@@ -52,7 +52,8 @@ public:
     // key, do_no_transparency: forces every mark/line/fill color's alpha to
     // 1.0 in the shaders rather than its $color/alpha value); z/w unused (a
     // vec4 because std140 pads a uniform block's members to 16 bytes
-    // anyway).
+    // anyway). .z = show-pixel-grid flag (giv's 'g' key, do_show_grid), read
+    // by grid.vert.
     vsg::ref_ptr<vsg::vec4Value> value;
 
     // Call once per frame - not just on zoom, see the implementation - with
@@ -65,8 +66,15 @@ public:
     void setForceOpaque(bool forceOpaque) { forceOpaque_ = forceOpaque; }
     bool forceOpaque() const { return forceOpaque_; }
 
+    // Toggled by the 'G' shortcut / View menu; takes effect on the next
+    // update() call. The grid only actually shows once the view is zoomed in
+    // past giv's pixel_grid_min_zoom (see grid.vert).
+    void setShowPixelGrid(bool show) { showPixelGrid_ = show; }
+    bool showPixelGrid() const { return showPixelGrid_; }
+
 private:
     bool forceOpaque_ = false;
+    bool showPixelGrid_ = false;
 };
 
 // Switches every loaded $image's texture sampler between nearest and
@@ -176,6 +184,7 @@ private:
     vsg::ref_ptr<vsg::BindDescriptorSet> bindViewParams_;
     vsg::ref_ptr<vsg::PipelineLayout> imagePipelineLayout_;
     vsg::ref_ptr<vsg::BindGraphicsPipeline> imageBind_;
+    vsg::ref_ptr<vsg::BindGraphicsPipeline> gridBind_;
     vsg::ref_ptr<vsg::Sampler> nearestSampler_;
     vsg::ref_ptr<vsg::Sampler> linearSampler_;
 };
