@@ -1398,6 +1398,7 @@ void VulkanViewport::setAutoFit(bool enable)
 {
     autoFit_ = enable;
     spdlog::info("Auto Fit set to {}", enable);
+    if (enable) fitContentToWindow();
 }
 
 void VulkanViewport::setBackgroundColor(const QColor& color)
