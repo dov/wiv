@@ -60,6 +60,11 @@ public:
     // MainWindow already uses for its own preferences.
     explicit OpenFileDialog(QWidget* parent, QSettings* settings);
 
+    // Records `path` as the most recent entry of the dialog's Recent
+    // directories list (also usable without a dialog instance, e.g. for
+    // files opened from the command line).
+    static void recordRecentDirectory(QSettings& settings, const QString& path);
+
     // QFileDialog::setFileMode() recomputes the model's filter via
     // QFileDialogPrivate::filterForMode(), which unconditionally ORs in
     // QDir::Dirs | QDir::AllDirs | QDir::Drives - undoing the constructor's
