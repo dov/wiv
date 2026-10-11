@@ -34,8 +34,6 @@ InstallDirRegKey HKLM "Software\wiv" ""
 
 !define MUI_FINISHPAGE_NOAUTOCLOSE
 !define MUI_UNFINISHPAGE_NOAUTOCLOSE
-!define MUI_FINISHPAGE_RUN "$INSTDIR\bin\wiv.exe"
-!define MUI_FINISHPAGE_RUN_TEXT "Start wiv"
 
 !define MUI_LICENSEPAGE_TEXT_TOP "wiv is free software. Here is its license."
 !insertmacro MUI_PAGE_WELCOME
