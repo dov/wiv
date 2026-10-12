@@ -52,6 +52,8 @@ public:
     void render(double simulationTime = vsg::Viewer::UseTimeSinceStartPoint) override;
 
 private:
+    void renderFrame(double simulationTime);
+
     size_t frameCount_ = 0;
     double tAnimate_ = 0.0, tAdvance_ = 0.0, tUpdate_ = 0.0, tRecord_ = 0.0, tPresent_ = 0.0;
     std::chrono::steady_clock::time_point fpsWindowStart_ = std::chrono::steady_clock::now();

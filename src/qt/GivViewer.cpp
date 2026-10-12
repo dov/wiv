@@ -19,6 +19,22 @@ inline double msSince(Clock::time_point t) { return std::chrono::duration<double
 
 void GivViewer::render(double simulationTime)
 {
+    // vsg::Exception (a failed Vulkan call such as device lost / out of
+    // memory) is not a std::exception; left uncaught it terminates the
+    // process from the Qt event loop. Drop the frame instead.
+    try
+    {
+        renderFrame(simulationTime);
+    }
+    catch (const vsg::Exception& e)
+    {
+        requests = 0;
+        spdlog::error("frame render failed: {} (VkResult {})", e.message, e.result);
+    }
+}
+
+void GivViewer::renderFrame(double simulationTime)
+{
     // Left pending (not consumed below) rather than dropped, so whatever
     // requested this frame still gets one once the resize settles - see
     // isResizeSettling's doc comment.

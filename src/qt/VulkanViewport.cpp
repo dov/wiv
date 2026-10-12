@@ -551,6 +551,15 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
         if (error) *error = QString("failed to build scene: %1").arg(e.what());
         return false;
     }
+    catch (const vsg::Exception& e)
+    {
+        // vsg::Exception (e.g. VK_ERROR_OUT_OF_DEVICE_MEMORY) does not derive
+        // from std::exception, so the handler above misses it and the
+        // uncaught throw terminates the process.
+        for (size_t i = 0; i < scene_.datasets.size(); ++i) scene_.datasets[i].isVisible = savedVisible[i];
+        if (error) *error = QString("failed to build scene: %1 (VkResult %2)").arg(QString::fromStdString(e.message)).arg(e.result);
+        return false;
+    }
     for (size_t i = 0; i < scene_.datasets.size(); ++i) scene_.datasets[i].isVisible = savedVisible[i];
 
     // A visibility-only rebuild replaces command/render graphs (and the
@@ -680,7 +689,17 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     // CaliperTool itself waits for the GPU (via waitForGpuIdle_ below)
     // before it ever drops the old geometry's GPU objects, so by the time
     // this runs it's already safe to compile the replacement.
-    caliperTool_->onNeedsCompile = [this]() { viewer_->compile(); viewer_->request(); };
+    caliperTool_->onNeedsCompile = [this]() {
+        try
+        {
+            viewer_->compile();
+            viewer_->request();
+        }
+        catch (const vsg::Exception& e)
+        {
+            spdlog::error("caliper compile failed: {} (VkResult {})", e.message, e.result);
+        }
+    };
     caliperTool_->waitForGpuIdle = [this]() { return waitForGpuIdle(); };
     caliperTool_->onMeasurementText = [this](const std::string& text) { emit measurementChanged(QString::fromStdString(text)); };
     caliperTool_->setPixelSize(pixelSize_, pixelSizeUnit_);
@@ -744,7 +763,15 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     commandGraph->addChild(renderGraph_);
 
     viewer_->assignRecordAndSubmitTaskAndPresentation({labelPicker_->commandGraph(), commandGraph});
-    viewer_->compile();
+    try
+    {
+        viewer_->compile();
+    }
+    catch (const vsg::Exception& e)
+    {
+        if (error) *error = QString("failed to compile scene: %1 (VkResult %2)").arg(QString::fromStdString(e.message)).arg(e.result);
+        return false;
+    }
 
     balloonEnabled_ = wasBalloonEnabled;
     balloonController_->setEnabled(wasBalloonEnabled);
@@ -763,7 +790,15 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
         // libnvidia-glcore.so's poll()); doing it once while still hidden
         // avoids that entirely.
         viewer_->request();
-        viewer_->render();
+        try
+        {
+            viewer_->render();
+        }
+        catch (const vsg::Exception& e)
+        {
+            if (error) *error = QString("failed to render first frame: %1 (VkResult %2)").arg(QString::fromStdString(e.message)).arg(e.result);
+            return false;
+        }
     }
     else
     {
