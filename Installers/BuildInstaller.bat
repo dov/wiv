@@ -1,14 +1,22 @@
 @echo off
 rem Builds the wiv Windows installer with NSIS (makensis).
 rem
-rem   BuildInstaller.bat [build-dir]
+rem   BuildInstaller.bat [build-dir] [--copy-w]
 rem
 rem build-dir defaults to build\windows-release (cmake --preset windows-release).
+rem --copy-w also copies the installer to w:\users\Dov\WinInstall.
 rem Steps: build -> cmake --install into Installers\tmp -> makensis.
 setlocal
 
 set "ROOT=%~dp0.."
-set "BUILD=%~1"
+set "BUILD="
+set "COPY_W="
+:parseargs
+if "%~1"=="" goto argsdone
+if /i "%~1"=="--copy-w" (set "COPY_W=1") else set "BUILD=%~1"
+shift
+goto parseargs
+:argsdone
 if "%BUILD%"=="" set "BUILD=%ROOT%\build\windows-release"
 
 set "VS_VCVARS=C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Auxiliary\Build\vcvars64.bat"
@@ -40,3 +48,10 @@ echo === makensis ===
 
 echo.
 echo Built: %~dp0Installwiv-v%VERSION%-%SHORTSHA1%.exe
+
+set "DEST=w:\users\Dov\WinInstall"
+if defined COPY_W (
+  if not exist "%DEST%" mkdir "%DEST%"
+  copy /y "%~dp0Installwiv-v%VERSION%-%SHORTSHA1%.exe" "%DEST%\" || exit /b 1
+  echo Copied to %DEST%
+)
