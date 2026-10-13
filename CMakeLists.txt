@@ -147,29 +147,27 @@ add_dependencies(wiv wiv_shaders)
 target_include_directories(wiv PRIVATE src ${CMAKE_SOURCE_DIR}/third_party)
 target_link_libraries(wiv PRIVATE vsg::vsg vsgXchange::vsgXchange vsgQt::vsgQt Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent Qt6::Network QtAwesome spdlog::spdlog)
 
-# Version / commit info shown in Help > About.
+# Version / commit info shown in Help > About. Generated at BUILD time by an
+# always-out-of-date target (the header is rewritten only when it changes), so
+# a new commit rebuilds just BuildInfo.cpp - no reconfigure needed.
 file(READ ${CMAKE_SOURCE_DIR}/vcpkg.json _vcpkg_json)
 string(JSON WIV_VERSION GET "${_vcpkg_json}" version)
-set(WIV_COMMIT_ID unknown)
-set(WIV_COMMIT_DATE unknown)
-find_package(Git QUIET)
-if(GIT_FOUND)
-  execute_process(COMMAND ${GIT_EXECUTABLE} log -1 --format=%H
-                  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-                  OUTPUT_VARIABLE _id OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
-  execute_process(COMMAND ${GIT_EXECUTABLE} log -1 --format=%ci
-                  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-                  OUTPUT_VARIABLE _date OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
-  if(_id)
-    set(WIV_COMMIT_ID ${_id})
-    set(WIV_COMMIT_DATE ${_date})
-  endif()
-endif()
+set(WIV_BUILDINFO_HEADER ${CMAKE_BINARY_DIR}/generated/BuildInfo_gen.h)
+add_custom_target(wiv_buildinfo
+  COMMAND ${CMAKE_COMMAND}
+    -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+    -DHEADER_PATH=${WIV_BUILDINFO_HEADER}
+    -DVERSION=${WIV_VERSION}
+    -P ${CMAKE_SOURCE_DIR}/cmake/GenBuildInfo.cmake
+  BYPRODUCTS ${WIV_BUILDINFO_HEADER}
+  COMMENT "Updating build info header"
+  VERBATIM)
+set_source_files_properties(src/BuildInfo.cpp PROPERTIES OBJECT_DEPENDS ${WIV_BUILDINFO_HEADER})
+target_sources(wiv PRIVATE src/BuildInfo.cpp)
+target_include_directories(wiv PRIVATE ${CMAKE_BINARY_DIR}/generated)
+add_dependencies(wiv wiv_buildinfo)
 
 target_compile_definitions(wiv PRIVATE
-  WIV_VERSION="${WIV_VERSION}"
-  WIV_COMMIT_ID="${WIV_COMMIT_ID}"
-  WIV_COMMIT_DATE="${WIV_COMMIT_DATE}"
   WIV_SHADER_DIR="${CMAKE_BINARY_DIR}/shaders"
   WIV_PLUGIN_DIR="${CMAKE_BINARY_DIR}/plugins"
 )
