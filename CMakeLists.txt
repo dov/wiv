@@ -133,7 +133,7 @@ add_executable(wiv
 )
 if(WIN32)
   # wiv.rc embeds the app icon (id 1) and the .giv file icon (id 2).
-  target_sources(wiv PRIVATE src/qt/WinDropTarget.cpp resources/wiv.rc)
+  target_sources(wiv PRIVATE src/qt/WinDropTarget.cpp resources/wiv.rc resources/wiv.manifest)
   # rc.exe doesn't report include dependencies; without this, editing an
   # icon doesn't rebuild the resource and the exe keeps the stale icon.
   set_source_files_properties(resources/wiv.rc PROPERTIES
