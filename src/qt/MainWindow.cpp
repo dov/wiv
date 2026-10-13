@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "BuildInfo.h"
 
 #include "CalibrateDialog.h"
 #include "ColorMapBar.h"
@@ -419,14 +420,14 @@ void MainWindow::showAboutDialog()
     icon->setPixmap(renderLogoPixmap(128, dlg.devicePixelRatioF()));
     layout->addWidget(icon);
 
-    addLabel("wiv " WIV_VERSION, "font-size: 24pt; font-weight: bold;");
+    addLabel(QString("wiv ") + giv::kVersion, "font-size: 24pt; font-weight: bold;");
     addLabel("The Vulkan giv-format-compatible 2D vector viewer");
     addLabel("Based on <a href=\"http://giv.sourceforge.net/giv\">giv</a>");
     addLabel(QString("%1 %2").arg(QSysInfo::currentCpuArchitecture(), QSysInfo::prettyProductName()));
     addLabel("Copyright &copy; Dov Grobgeld, 2026");
     addLabel("Email: <a href=\"mailto:dov.grobgeld@gmail.com\"><code>dov.grobgeld@gmail.com</code></a>");
-    addLabel("Commit-Id: " WIV_COMMIT_ID);
-    addLabel("Commit-Date: " WIV_COMMIT_DATE);
+    addLabel(QString("Commit-Id: ") + giv::kCommitId);
+    addLabel(QString("Commit-Date: ") + giv::kCommitDate);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok, &dlg);
     connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
