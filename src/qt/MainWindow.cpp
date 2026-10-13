@@ -17,11 +17,21 @@
 
 #include <spdlog/spdlog.h>
 
+#include "nanosvg.h"
+#include "nanosvgrast.h"
+
+#include <algorithm>
+#include <vector>
+
 #include <QAction>
 #include <QApplication>
 #include <QDialog>
+#include <QDialogButtonBox>
+#include <QPixmap>
+#include <QSysInfo>
 #include <QDir>
 #include <QDockWidget>
+#include <QFile>
 #include <QFileInfo>
 #include <QLabel>
 #include <QMenu>
@@ -339,8 +349,89 @@ void MainWindow::buildMenus()
 
     auto helpMenu = menuBar()->addMenu("&Help");
     helpMenu->addAction("About wiv", this, [this]() {
-        QMessageBox::about(this, "About wiv", "wiv - Vulkan-based, giv-format-compatible 2D vector viewer.");
+        showAboutDialog();
     });
+}
+
+// Rasterizes the vector mascot (cropped to its drawn extent) at the screen's
+// physical resolution so it stays sharp on high-DPI displays.
+static QPixmap renderLogoPixmap(int logicalSize, qreal dpr)
+{
+    QFile f(":/giv-logo.svg");
+    if (!f.open(QIODevice::ReadOnly))
+        return QPixmap();
+    QByteArray svg = f.readAll();
+    svg.append('\0');
+
+    NSVGimage* image = nsvgParse(svg.data(), "px", 96.0f);
+    if (!image)
+        return QPixmap();
+
+    float minX = 1e30f, minY = 1e30f, maxX = -1e30f, maxY = -1e30f;
+    for (NSVGshape* s = image->shapes; s; s = s->next)
+    {
+        minX = std::min(minX, s->bounds[0]);
+        minY = std::min(minY, s->bounds[1]);
+        maxX = std::max(maxX, s->bounds[2]);
+        maxY = std::max(maxY, s->bounds[3]);
+    }
+    QPixmap result;
+    if (maxX > minX && maxY > minY)
+    {
+        const int px = std::max(1, static_cast<int>(logicalSize * dpr));
+        const float scale = px / std::max(maxX - minX, maxY - minY);
+        const int w = std::max(1, static_cast<int>((maxX - minX) * scale));
+        const int h = std::max(1, static_cast<int>((maxY - minY) * scale));
+        if (NSVGrasterizer* rast = nsvgCreateRasterizer())
+        {
+            std::vector<unsigned char> buf(static_cast<size_t>(w) * h * 4, 0);
+            nsvgRasterize(rast, image, -minX * scale, -minY * scale, scale, buf.data(), w, h, w * 4);
+            result = QPixmap::fromImage(
+                QImage(buf.data(), w, h, w * 4, QImage::Format_RGBA8888).copy());
+            result.setDevicePixelRatio(dpr);
+            nsvgDeleteRasterizer(rast);
+        }
+    }
+    nsvgDelete(image);
+    return result;
+}
+
+void MainWindow::showAboutDialog()
+{
+    QDialog dlg(this);
+    dlg.setWindowTitle("About wiv");
+    auto* layout = new QVBoxLayout(&dlg);
+    layout->setSpacing(8);
+
+    auto addLabel = [&](const QString& text, const QString& style = {}) {
+        auto* l = new QLabel(text, &dlg);
+        l->setAlignment(Qt::AlignCenter);
+        l->setTextFormat(Qt::RichText);
+        l->setOpenExternalLinks(true);
+        l->setTextInteractionFlags(Qt::TextBrowserInteraction);
+        if (!style.isEmpty())
+            l->setStyleSheet(style);
+        layout->addWidget(l);
+    };
+
+    auto* icon = new QLabel(&dlg);
+    icon->setAlignment(Qt::AlignCenter);
+    icon->setPixmap(renderLogoPixmap(128, dlg.devicePixelRatioF()));
+    layout->addWidget(icon);
+
+    addLabel("wiv " WIV_VERSION, "font-size: 24pt; font-weight: bold;");
+    addLabel("The Vulkan giv-format-compatible 2D vector viewer");
+    addLabel("Based on <a href=\"http://giv.sourceforge.net/giv\">giv</a>");
+    addLabel(QString("%1 %2").arg(QSysInfo::currentCpuArchitecture(), QSysInfo::prettyProductName()));
+    addLabel("Copyright &copy; Dov Grobgeld, 2026");
+    addLabel("Email: <a href=\"mailto:dov.grobgeld@gmail.com\"><code>dov.grobgeld@gmail.com</code></a>");
+    addLabel("Commit-Id: " WIV_COMMIT_ID);
+    addLabel("Commit-Date: " WIV_COMMIT_DATE);
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok, &dlg);
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    layout->addWidget(buttons);
+    dlg.exec();
 }
 
 void MainWindow::buildStatusBar()

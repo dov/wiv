@@ -123,6 +123,7 @@ private:
 
     void buildMenus();
     void buildStatusBar();
+    void showAboutDialog();
 
     std::vector<std::string> lastPaths_;
 
