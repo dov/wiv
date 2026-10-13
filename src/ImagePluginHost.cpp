@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include "PathUtils.h"
 #include <filesystem>
 #include <limits>
 #include <string>
@@ -184,8 +185,8 @@ std::vector<Plugin>& loadedPlugins()
     std::vector<std::string> candidates;
     for (const auto& entry : fs::directory_iterator(dir, ec))
     {
-        if (entry.path().extension() == kPluginExt && isPluginName(entry.path().stem().string()))
-            candidates.push_back(entry.path().string());
+        if (entry.path().extension() == kPluginExt && isPluginName(giv::pathToUtf8(entry.path().stem())))
+            candidates.push_back(giv::pathToUtf8(entry.path()));
     }
     std::sort(candidates.begin(), candidates.end());
 

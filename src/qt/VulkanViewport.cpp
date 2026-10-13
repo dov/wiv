@@ -2,6 +2,7 @@
 
 #include <QWheelEvent>
 #include "AppPaths.h"
+#include "PathUtils.h"
 
 #include "DisplayImage.h"
 #include "GivParser.h"
@@ -426,7 +427,7 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
         // go through the text parser - anything else is a bare image file
         // and is loaded directly, the same way a $image reference inside a
         // .giv file is (see the loadedImages loop below).
-        std::string ext = std::filesystem::path(f).extension().string();
+        std::string ext = giv::pathToUtf8(giv::utf8ToPath(f).extension());
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
         if (ext == ".giv" || ext == ".marks" || ext == ".svg")
         {
@@ -467,17 +468,17 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     // the window even shows; see decodeCurrentImage() for the actual, lazy,
     // decode-on-display path.
     std::vector<std::string> newLoadedImageNames;
-    std::filesystem::path givDir = paths.empty() ? std::filesystem::path() : std::filesystem::path(paths.front()).parent_path();
+    std::filesystem::path givDir = paths.empty() ? std::filesystem::path() : giv::utf8ToPath(paths.front()).parent_path();
     for (const auto& imgRef : newScene.images)
     {
-        std::filesystem::path resolved(imgRef);
+        std::filesystem::path resolved = giv::utf8ToPath(imgRef);
         if (!std::filesystem::exists(resolved) && !givDir.empty())
             resolved = givDir / imgRef;
 
-        if (!std::filesystem::exists(resolved) || !giv::ImagePluginHost::isSupported(resolved.string()))
+        if (!std::filesystem::exists(resolved) || !giv::ImagePluginHost::isSupported(giv::pathToUtf8(resolved)))
             continue;
 
-        newLoadedImageNames.push_back(resolved.string());
+        newLoadedImageNames.push_back(giv::pathToUtf8(resolved));
     }
 
     scene_ = std::move(newScene);

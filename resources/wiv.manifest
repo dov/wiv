@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <application>
+    <windowsSettings>
+      <!-- Set the process Active Code Page to UTF-8 (Windows 10 1903+) so
+           narrow char*/std::string file paths (std::ifstream, fopen, plugin
+           libraries) are interpreted as UTF-8 rather than the system ANSI
+           code page, enabling non-ASCII paths. -->
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+</assembly>

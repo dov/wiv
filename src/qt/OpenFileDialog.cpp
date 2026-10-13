@@ -2,6 +2,8 @@
 
 #include "GivThumbnailRenderer.h"
 #include "ImagePluginHost.h"
+#include "PathUtils.h"
+#include "QtPathUtils.h"
 
 #include "nanosvg.h"
 #include "nanosvgrast.h"
@@ -1437,7 +1439,7 @@ void OpenFileDialog::fillThumbnailCache(const QString& directoryPath)
     // file_size() are syscalls, slow on network drives/huge dirs) and sort
     // smallest-first so quick thumbnails appear before large ones finish.
     QPointer<OpenFileDialog> self(this);
-    const fs::path dirPath(directoryPath.toStdString());
+    const fs::path dirPath = qStringToPath(directoryPath);
     std::thread([self, directoryPath, dirPath, normalized, generation]() {
         struct FileEntry
         {
@@ -1446,16 +1448,24 @@ void OpenFileDialog::fillThumbnailCache(const QString& directoryPath)
         };
         std::vector<FileEntry> files;
 
-        std::error_code ec;
-        for (fs::directory_iterator it(dirPath, ec), end; !ec && it != end; it.increment(ec))
+        // An exception escaping a detached thread calls std::terminate, so
+        // never let one out; keep whatever was scanned so far.
+        try
         {
-            const QString rawPath = QString::fromStdString(it->path().string());
-            if (!isSupportedWivFile(rawPath)) continue;
-            std::error_code entryEc;
-            if (!it->is_regular_file(entryEc) || entryEc) continue;
-            uintmax_t sz = it->file_size(entryEc);
-            if (entryEc) sz = 0;
-            files.push_back({QFileInfo(rawPath).absoluteFilePath(), sz});
+            std::error_code ec;
+            for (fs::directory_iterator it(dirPath, ec), end; !ec && it != end; it.increment(ec))
+            {
+                const QString rawPath = pathToQString(it->path());
+                if (!isSupportedWivFile(rawPath)) continue;
+                std::error_code entryEc;
+                if (!it->is_regular_file(entryEc) || entryEc) continue;
+                uintmax_t sz = it->file_size(entryEc);
+                if (entryEc) sz = 0;
+                files.push_back({QFileInfo(rawPath).absoluteFilePath(), sz});
+            }
+        }
+        catch (const std::exception&)
+        {
         }
         std::sort(files.begin(), files.end(), [](const FileEntry& a, const FileEntry& b) { return a.size < b.size; });
 
@@ -1518,13 +1528,13 @@ void OpenFileDialog::onThumbnailReady(const QString& path, const QImage& image, 
 void OpenFileDialog::onDirectoryChanged(const QString& path)
 {
     const quint64 generation = generation_;
-    const fs::path dirPath(path.toStdString());
+    const fs::path dirPath = qStringToPath(path);
     std::error_code ec;
     for (fs::directory_iterator it(dirPath, ec), end; !ec && it != end; it.increment(ec))
     {
         std::error_code entryEc;
         if (!it->is_regular_file(entryEc) || entryEc) continue;
-        const QString filePath = QFileInfo(QString::fromStdString(it->path().string())).absoluteFilePath();
+        const QString filePath = QFileInfo(pathToQString(it->path())).absoluteFilePath();
         if (!isSupportedWivFile(filePath)) continue;
         if (!thumbnailState_.contains(filePath))
         {
