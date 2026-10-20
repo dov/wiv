@@ -24,6 +24,7 @@ void PanZoomHandler::apply(vsg::ButtonPressEvent& event)
     }
     else if (event.button == 3)
     {
+        zoomActive_ = false;
         zoomDragging_ = true;
         zoomAnchorX_ = event.x;
         zoomAnchorY_ = event.y;
@@ -116,8 +117,48 @@ void PanZoomHandler::apply(vsg::ScrollWheelEvent& event)
     // move (not just while dragging); (0,0) only if a scroll arrives before
     // any move has ever been reported, which zooms around the top-left.
     auto extent = window->extent2D();
-    zoom(factor, lastX_, lastY_, extent);
+    if (zoomDuration_ <= 0.0)
+    {
+        zoomActive_ = false;
+        zoom(factor, lastX_, lastY_, extent);
+        if (onViewChanged) onViewChanged();
+        return;
+    }
+
+    // A new motion from the present view to the destination of the previous
+    // one (if it is still under way) zoomed once more.
+    zoomTotal_ = (zoomActive_ ? zoomTotal_ / zoomApplied_ : 1.0) * factor;
+    zoomApplied_ = 1.0;
+    zoomX_ = lastX_;
+    zoomY_ = lastY_;
+    zoomExtent_ = extent;
+    zoomStart_ = Clock::now();
+    zoomActive_ = true;
+    if (onZoomStarted) onZoomStarted();
+}
+
+double PanZoomHandler::zoomProfile(double u)
+{
+    constexpr double a = 0.25;
+    constexpr double v = 1.0 / (1.0 - a);
+    if (u <= 0.0) return 0.0;
+    if (u >= 1.0) return 1.0;
+    if (u < a) return v * u * u / (2.0 * a);
+    if (u > 1.0 - a) return 1.0 - v * (1.0 - u) * (1.0 - u) / (2.0 * a);
+    return v * (0.5 * a + (u - a));
+}
+
+bool PanZoomHandler::advance()
+{
+    if (!zoomActive_) return false;
+    const double elapsed = std::chrono::duration<double>(Clock::now() - zoomStart_).count();
+    const double u = std::min(elapsed / zoomDuration_, 1.0);
+    const double wanted = std::pow(zoomTotal_, zoomProfile(u));
+    zoom(wanted / zoomApplied_, zoomX_, zoomY_, zoomExtent_);
+    zoomApplied_ = wanted;
+    if (u >= 1.0) zoomActive_ = false;
     if (onViewChanged) onViewChanged();
+    return zoomActive_;
 }
 
 bool PanZoomHandler::screenToWorld(int32_t screenX, int32_t screenY, const vsg::ref_ptr<vsg::Window>& window,

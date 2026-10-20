@@ -6,6 +6,8 @@
 //
 #include <vsg/all.h>
 
+#include <chrono>
+#include <algorithm>
 #include <functional>
 
 namespace giv
@@ -35,6 +37,24 @@ public:
     // keyboard-modifiers bitmask - feeds the json-rpc pick_coordinate command.
     std::function<void(double, double, int, int)> onClick;
 
+    // Called (if set) when a wheel step starts or retargets a zoom motion, so
+    // the owner can call advance() every frame until it returns false.
+    std::function<void()> onZoomStarted;
+
+    // The duration of the motion a wheel step zooms with: it accelerates for
+    // a quarter of it, keeps its speed for half, and decelerates for the last
+    // quarter. 0 zooms at once.
+    void setZoomDuration(double seconds) { zoomDuration_ = std::max(0.0, seconds); }
+    double zoomDuration() const { return zoomDuration_; }
+
+    // Moves the view along the zoom motion to the present time. Returns
+    // whether the motion goes on, in which case another frame is needed.
+    bool advance();
+
+    // Stops a zoom motion under way, leaving the view where it is. To be
+    // called when something else sets the view.
+    void cancelZoom() { zoomActive_ = false; }
+
     // giv's View > Vertical Zoom Lock: wheel/drag zoom changes only the X scale.
     bool verticalLock = false;
 
@@ -51,6 +71,21 @@ private:
     int32_t zoomAnchorX_ = 0;
     int32_t zoomAnchorY_ = 0;
     int32_t zoomLastY_ = 0;
+
+    // The zoom motion: the view moves from where it was at zoomStart_ by the
+    // factor zoomTotal_ (a power of the profile) about the screen point
+    // zoomX_/zoomY_; zoomApplied_ is the part of it applied so far.
+    using Clock = std::chrono::steady_clock;
+    double zoomDuration_ = 0.25;
+    bool zoomActive_ = false;
+    Clock::time_point zoomStart_;
+    double zoomTotal_ = 1.0;
+    double zoomApplied_ = 1.0;
+    int32_t zoomX_ = 0;
+    int32_t zoomY_ = 0;
+    VkExtent2D zoomExtent_{};
+
+    static double zoomProfile(double u);
 
     void pan(int32_t dxPix, int32_t dyPix, const VkExtent2D& extent);
     void zoom(double factor, int32_t screenX, int32_t screenY, const VkExtent2D& extent);

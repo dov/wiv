@@ -23,6 +23,7 @@
 #include <QColor>
 #include <QResizeEvent>
 #include <QSize>
+#include <QTimer>
 #include <QWidget>
 
 #include <algorithm>
@@ -305,6 +306,7 @@ private:
     // amount of camera-side fixing could touch).
     vsg::ref_ptr<vsg::RenderGraph> renderGraph_;
     vsg::ref_ptr<giv::PanZoomHandler> panZoom_;
+    QTimer* zoomTimer_ = nullptr; // ticks panZoom_->advance() during a wheel-zoom motion
     vsg::ref_ptr<giv::LabelPicker> labelPicker_;
     QLabel* balloonLabel_ = nullptr; // top-level Qt::ToolTip popup, see BalloonController.h
     vsg::ref_ptr<giv::BalloonController> balloonController_;

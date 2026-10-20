@@ -650,6 +650,15 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     panZoom_->onViewChanged = [this]() { updateScrollBars(); };
     panZoom_->onClick = [this](double x, double y, int button, int modifiers) { emit clicked(x, y, button, modifiers); };
     panZoom_->verticalLock = verticalZoomLock_;
+    // A wheel step zooms over a short motion: tick it from a timer (the
+    // render loop is on demand) until it ends.
+    zoomTimer_ = new QTimer(this);
+    zoomTimer_->setInterval(8);
+    connect(zoomTimer_, &QTimer::timeout, this, [this]() {
+        if (!panZoom_->advance()) zoomTimer_->stop();
+        viewer_->request();
+    });
+    panZoom_->onZoomStarted = [this]() { zoomTimer_->start(); };
     viewer_->addEventHandler(panZoom_);
 
     bool wasBalloonEnabled = isInitialLoad ? false : balloonEnabled_;
@@ -1170,6 +1179,7 @@ void VulkanViewport::syncRenderExtent(VkExtent2D extent)
 
 void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double maxY)
 {
+    if (panZoom_) panZoom_->cancelZoom();
     if (!projection_ || !window_ || !window_->windowAdapter) return;
 
     double centerX = (minX + maxX) * 0.5;
@@ -1334,6 +1344,7 @@ void VulkanViewport::updateScrollBars()
 
 void VulkanViewport::zoomIn()
 {
+    if (panZoom_) panZoom_->cancelZoom();
     spdlog::info("Zoom In");
     if (!projection_) return;
     double factor = 0.8;
@@ -1349,6 +1360,7 @@ void VulkanViewport::zoomIn()
 
 void VulkanViewport::zoomOut()
 {
+    if (panZoom_) panZoom_->cancelZoom();
     spdlog::info("Zoom Out");
     if (!projection_) return;
     double factor = 1.25;
@@ -1364,6 +1376,7 @@ void VulkanViewport::zoomOut()
 
 void VulkanViewport::zoomActualPixels()
 {
+    if (panZoom_) panZoom_->cancelZoom();
     spdlog::info("Zoom 1:1");
     if (!projection_ || !window_ || !window_->windowAdapter) return;
     auto extent = window_->windowAdapter->extent2D();
@@ -1419,6 +1432,7 @@ void VulkanViewport::getTransformation(double& scaleX, double& scaleY, double& s
 
 void VulkanViewport::setTransformation(double scaleX, double scaleY, double shiftX, double shiftY)
 {
+    if (panZoom_) panZoom_->cancelZoom();
     if (!camera_ || !projection_ || !window_ || !window_->windowAdapter) return;
     if (scaleX <= 0.0 || scaleY <= 0.0) return;
 
