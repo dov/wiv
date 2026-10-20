@@ -598,7 +598,11 @@ void GivParser::parseBuffer(const char* data, size_t size, SceneData& scene)
 
         if (len == 0)
         {
-            needNewDataset = true;
+            // Like giv, an empty line only ends the dataset if it already has
+            // points; otherwise (e.g. "$balloon ..." header lines followed by
+            // a blank line) the properties carry over to the next lines.
+            if (current != nullptr && current->pointCount() > 0)
+                needNewDataset = true;
         }
         else
         {
