@@ -115,18 +115,14 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
     traits_->swapchainPreferences.surfaceFormat = {VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
     traits_->samples = VK_SAMPLE_COUNT_4_BIT;
 
-    // The default FIFO present mode makes vkQueuePresentKHR block until the
-    // next vblank; under some compositors/drivers (observed: proprietary
-    // NVIDIA) that wait never wakes up if the window is occluded or not yet
-    // fully composited at the moment of the first present, permanently
-    // hanging the GUI thread inside the driver (window shows only its very
-    // first/cleared frame forever). FIFO_RELAXED still paces to vblank (so it
-    // doesn't tear) in the common case, but - unlike plain FIFO - drops the
-    // wait and presents immediately if a frame is running late, which is the
-    // scenario that produced the original hang. WIV_PRESENT_MODE lets this
-    // be overridden (mailbox/fifo/fifo_relaxed/immediate) in case a given
-    // driver still misbehaves with FIFO_RELAXED at startup.
-    traits_->swapchainPreferences.presentMode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+    // FIFO is the only mode guaranteed never to tear: presents are queued and
+    // flipped at vblank. FIFO_RELAXED was used previously to dodge a hang
+    // (observed: proprietary NVIDIA) where a blocking present never woke up
+    // for an occluded/not-yet-composited window, but it presents immediately
+    // whenever a frame misses vblank, which shows up as visible tearing
+    // during animated zoom. If the startup hang returns, WIV_PRESENT_MODE
+    // (mailbox/fifo/fifo_relaxed/immediate) overrides this.
+    traits_->swapchainPreferences.presentMode = VK_PRESENT_MODE_FIFO_KHR;
     if (const char* mode = std::getenv("WIV_PRESENT_MODE"))
     {
         std::string m(mode);
