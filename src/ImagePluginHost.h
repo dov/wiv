@@ -44,7 +44,8 @@ class ImagePluginHost
 public:
     // Loads plugins (lazily, once) from WIV_PLUGIN_DIR (env var override)
     // or the compile-time default plugin directory, then attempts to load
-    // `filename` with the first plugin that claims it. Returns nullopt and
+    // `filename` with the first plugin that claims it (by suffix, else by
+    // content sniffing - see isSupportedExplicit()). Returns nullopt and
     // prints a "wiv: ..." diagnostic to stderr on failure.
     static std::optional<LoadedImage> load(const std::string& filename);
 
@@ -52,6 +53,11 @@ public:
     // decodes the file - used to build the $image cycling list without
     // paying for a full decode of every candidate up front.
     static bool isSupported(const std::string& filename);
+
+    // Like isSupported(), but falls back to content sniffing (opens the
+    // file) for a name no plugin claims by suffix. Only for a file the user
+    // named explicitly - never call from a directory scan.
+    static bool isSupportedExplicit(const std::string& filename);
 };
 
 // Bounded decode cache for $image cycling (giv's shift-Up/shift-Down):

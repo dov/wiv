@@ -70,6 +70,13 @@ extern "C"
     // returns true (first-match-wins).
     WIV_PLUGIN_API bool wiv_plugin_supports_file(const char* filename);
 
+    // OPTIONAL. Does the *content* of `filename` look like a format this
+    // plugin handles, regardless of its name? Does file I/O, so the host only
+    // calls it for a file the user named explicitly (command line, drop, File
+    // > Open) whose suffix no plugin claims - never from a directory scan.
+    // Plugins that don't export it are simply never sniffed.
+    WIV_PLUGIN_API bool wiv_plugin_sniff_file(const char* filename);
+
     // Load `filename` into a freshly heap-allocated WivPluginImage. On
     // failure returns NULL and, if error_msg is non-NULL, sets *error_msg
     // to a freshly heap-allocated message (free with wiv_plugin_free_error).

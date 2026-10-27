@@ -46,6 +46,7 @@ bool isPluginName(const std::string&) { return true; }
 namespace fs = std::filesystem;
 
 using SupportsFileFn = bool (*)(const char*);
+using SniffFileFn = bool (*)(const char*);
 using LoadImageFn = WivPluginImage* (*)(const char*, char**);
 using FreeImageFn = void (*)(WivPluginImage*);
 using FreeErrorFn = void (*)(char*);
@@ -55,6 +56,7 @@ struct Plugin
     std::string path;
     void* handle = nullptr;
     SupportsFileFn supportsFile = nullptr;
+    SniffFileFn sniffFile = nullptr; // optional
     LoadImageFn loadImage = nullptr;
     FreeImageFn freeImage = nullptr;
     FreeErrorFn freeError = nullptr;
@@ -218,6 +220,7 @@ std::vector<Plugin>& loadedPlugins()
         plugin.path = path;
         plugin.handle = handle;
         plugin.supportsFile = reinterpret_cast<SupportsFileFn>(dlsym(handle, "wiv_plugin_supports_file"));
+        plugin.sniffFile = reinterpret_cast<SniffFileFn>(dlsym(handle, "wiv_plugin_sniff_file"));
         plugin.loadImage = reinterpret_cast<LoadImageFn>(dlsym(handle, "wiv_plugin_load_image"));
         plugin.freeImage = reinterpret_cast<FreeImageFn>(dlsym(handle, "wiv_plugin_free_image"));
         plugin.freeError = reinterpret_cast<FreeErrorFn>(dlsym(handle, "wiv_plugin_free_error"));
@@ -240,9 +243,13 @@ std::vector<Plugin>& loadedPlugins()
 
 std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename)
 {
+    // Sniffing opens the file, so only fall back to it once no plugin
+    // claims the name; a suffix match is still preferred.
+    const bool claimedBySuffix = isSupported(filename);
     for (const Plugin& plugin : loadedPlugins())
     {
-        if (!plugin.supportsFile(filename.c_str()))
+        if (claimedBySuffix ? !plugin.supportsFile(filename.c_str())
+                            : !(plugin.sniffFile && plugin.sniffFile(filename.c_str())))
             continue;
 
         char* errorMsg = nullptr;
@@ -284,6 +291,18 @@ bool ImagePluginHost::isSupported(const std::string& filename)
     for (const Plugin& plugin : loadedPlugins())
     {
         if (plugin.supportsFile(filename.c_str()))
+            return true;
+    }
+    return false;
+}
+
+bool ImagePluginHost::isSupportedExplicit(const std::string& filename)
+{
+    if (isSupported(filename))
+        return true;
+    for (const Plugin& plugin : loadedPlugins())
+    {
+        if (plugin.sniffFile && plugin.sniffFile(filename.c_str()))
             return true;
     }
     return false;

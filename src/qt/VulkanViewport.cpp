@@ -421,6 +421,7 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     giv::SceneData newScene;
     auto parseStart = std::chrono::steady_clock::now();
     size_t totalPoints = 0;
+    std::vector<std::string> explicitImages; // bare image paths named by the user
     for (const auto& f : paths)
     {
         // Mirrors giv's own load_file (giv-win.gob): only .giv/.marks/.svg
@@ -453,6 +454,7 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
                 return false;
             }
             newScene.images.push_back(f);
+            explicitImages.push_back(f);
         }
     }
     for (const auto& ds : newScene.datasets) totalPoints += ds.pointCount();
@@ -475,8 +477,22 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
         if (!std::filesystem::exists(resolved) && !givDir.empty())
             resolved = givDir / imgRef;
 
-        if (!std::filesystem::exists(resolved) || !giv::ImagePluginHost::isSupported(giv::pathToUtf8(resolved)))
+        const bool named = std::find(explicitImages.begin(), explicitImages.end(), imgRef) != explicitImages.end();
+        if (!std::filesystem::exists(resolved))
             continue;
+        if (!giv::ImagePluginHost::isSupported(giv::pathToUtf8(resolved)))
+        {
+            // A file the user named directly gets a content sniff (it may
+            // have an unrecognized suffix) and an error if it still isn't
+            // an image; a $image reference inside a .giv is skipped silently.
+            if (!named)
+                continue;
+            if (!giv::ImagePluginHost::isSupportedExplicit(giv::pathToUtf8(resolved)))
+            {
+                if (error) *error = QString("unsupported file format: %1").arg(QString::fromStdString(imgRef));
+                return false;
+            }
+        }
 
         newLoadedImageNames.push_back(giv::pathToUtf8(resolved));
     }
