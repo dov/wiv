@@ -75,6 +75,20 @@ extern "C" bool wiv_plugin_supports_file(const char* filename)
     return hasExtension(filename, ".dcm");
 }
 
+// Content check for extensionless/oddly named files (e.g. "MR.NO.EXTENSION"):
+// a DICOM Part 10 file has "DICM" at offset 128.
+extern "C" bool wiv_plugin_sniff_file(const char* filename)
+{
+    FILE* fh = std::fopen(filename, "rb");
+    if (!fh)
+        return false;
+    char preamble[132];
+    bool match = std::fread(preamble, 1, sizeof(preamble), fh) == sizeof(preamble) &&
+                 std::memcmp(preamble + 128, "DICM", 4) == 0;
+    std::fclose(fh);
+    return match;
+}
+
 extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** error_msg)
 {
     FILE* fh = std::fopen(filename, "rb");
