@@ -1,14 +1,12 @@
-#include "ContrastDialog.h"
+#include "ContrastPanel.h"
 
-#include "ColorTableDialog.h"
+#include "ColorTablePanel.h"
 #include "Colormaps.h"
 #include "HistogramWidget.h"
 #include "ImagePluginHost.h"
 #include "VulkanViewport.h"
 
-#include <QAbstractButton>
 #include <QComboBox>
-#include <QDialogButtonBox>
 #include <QDoubleValidator>
 #include <QIcon>
 #include <QGridLayout>
@@ -24,10 +22,8 @@
 namespace givqt
 {
 
-ContrastDialog::ContrastDialog(VulkanViewport* viewport, QWidget* parent) : QDialog(parent), viewport_(viewport)
+ContrastPanel::ContrastPanel(VulkanViewport* viewport, QWidget* parent) : QWidget(parent), viewport_(viewport)
 {
-    setWindowTitle("Giv Contrast");
-    resize(420, 380);
 
     auto* grid = new QGridLayout();
     minMaxRadio_ = new QRadioButton(this);
@@ -53,10 +49,10 @@ ContrastDialog::ContrastDialog(VulkanViewport* viewport, QWidget* parent) : QDia
     grid->addWidget(new QLabel("Window:", this), 1, 3);
     grid->addWidget(windowEdit_, 1, 4);
 
-    connect(minMaxRadio_, &QRadioButton::toggled, this, &ContrastDialog::onRadioToggled);
+    connect(minMaxRadio_, &QRadioButton::toggled, this, &ContrastPanel::onRadioToggled);
 
     auto* updateButton = new QPushButton("Update", this);
-    connect(updateButton, &QPushButton::clicked, this, &ContrastDialog::onUpdateClicked);
+    connect(updateButton, &QPushButton::clicked, this, &ContrastPanel::onUpdateClicked);
     grid->addWidget(updateButton, 2, 0, 1, 2);
 
     colormapCombo_ = new QComboBox(this);
@@ -66,7 +62,7 @@ ContrastDialog::ContrastDialog(VulkanViewport* viewport, QWidget* parent) : QDia
         auto id = static_cast<giv::colormaps::Id>(i);
         colormapCombo_->addItem(QIcon(colormapSwatch(id, 80, 14)), giv::colormaps::name(id), i);
     }
-    connect(colormapCombo_, &QComboBox::activated, this, &ContrastDialog::onColormapPicked);
+    connect(colormapCombo_, &QComboBox::activated, this, &ContrastPanel::onColormapPicked);
     grid->addWidget(new QLabel("Color table:", this), 3, 0, 1, 2);
     grid->addWidget(colormapCombo_, 3, 2, 1, 3);
 
@@ -80,7 +76,7 @@ ContrastDialog::ContrastDialog(VulkanViewport* viewport, QWidget* parent) : QDia
             [this](int v) { histogram_->setStrength(v / 100.0); });
 
     histogram_ = new HistogramWidget(this);
-    connect(histogram_, &HistogramWidget::rangeChanged, this, &ContrastDialog::onHandlesDragged);
+    connect(histogram_, &HistogramWidget::rangeChanged, this, &ContrastPanel::onHandlesDragged);
 
     auto* histoLayout = new QGridLayout();
     histoLayout->addWidget(strengthSlider_, 0, 0);
@@ -88,26 +84,20 @@ ContrastDialog::ContrastDialog(VulkanViewport* viewport, QWidget* parent) : QDia
     auto* histoBox = new QGroupBox("Histogram", this);
     histoBox->setLayout(histoLayout);
 
-    auto* buttons = new QDialogButtonBox(this);
-    auto* autoButton = buttons->addButton("Auto Contrast", QDialogButtonBox::ActionRole);
-    connect(autoButton, &QPushButton::clicked, this, &ContrastDialog::onAutoContrast);
-    buttons->addButton(QDialogButtonBox::Close);
-    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::close);
-    connect(buttons, &QDialogButtonBox::clicked, this, [this, buttons](QAbstractButton* b) {
-        if (buttons->buttonRole(b) != QDialogButtonBox::ActionRole) close();
-    });
+    auto* autoButton = new QPushButton("Auto Contrast", this);
+    connect(autoButton, &QPushButton::clicked, this, &ContrastPanel::onAutoContrast);
 
     auto* layout = new QVBoxLayout(this);
     layout->addWidget(contrastBox);
     layout->addWidget(histoBox, /*stretch=*/1);
-    layout->addWidget(buttons);
+    layout->addWidget(autoButton, 0, Qt::AlignRight);
     setLayout(layout);
 
     onRadioToggled();
     refreshForImage();
 }
 
-void ContrastDialog::refreshForImage()
+void ContrastPanel::refreshForImage()
 {
     const giv::LoadedImage* img = viewport_->currentImage();
     if (!img || img->sampleType == WIV_SAMPLE_NONE)
@@ -133,7 +123,7 @@ void ContrastDialog::refreshForImage()
     }
 }
 
-void ContrastDialog::onRadioToggled()
+void ContrastPanel::onRadioToggled()
 {
     bool useMinMax = minMaxRadio_->isChecked();
     minEdit_->setEnabled(useMinMax);
@@ -142,7 +132,7 @@ void ContrastDialog::onRadioToggled()
     windowEdit_->setEnabled(!useMinMax);
 }
 
-void ContrastDialog::onUpdateClicked()
+void ContrastPanel::onUpdateClicked()
 {
     float min, max;
     if (minMaxRadio_->isChecked())
@@ -160,14 +150,14 @@ void ContrastDialog::onUpdateClicked()
     applyContrast(min, max);
 }
 
-void ContrastDialog::onAutoContrast()
+void ContrastPanel::onAutoContrast()
 {
     const giv::LoadedImage* img = viewport_->currentImage();
     if (!img) return;
     applyContrast(img->sampleMin, img->sampleMax);
 }
 
-void ContrastDialog::onHandlesDragged(float min, float max)
+void ContrastPanel::onHandlesDragged(float min, float max)
 {
     minEdit_->setText(QString::number(min, 'g', 6));
     maxEdit_->setText(QString::number(max, 'g', 6));
@@ -176,7 +166,7 @@ void ContrastDialog::onHandlesDragged(float min, float max)
     viewport_->setContrast(min, max);
 }
 
-void ContrastDialog::applyContrast(float min, float max)
+void ContrastPanel::applyContrast(float min, float max)
 {
     minEdit_->setText(QString::number(min, 'g', 6));
     maxEdit_->setText(QString::number(max, 'g', 6));
@@ -187,7 +177,7 @@ void ContrastDialog::applyContrast(float min, float max)
 }
 
 
-void ContrastDialog::onColormapPicked(int row)
+void ContrastPanel::onColormapPicked(int row)
 {
     auto id = static_cast<giv::colormaps::Id>(colormapCombo_->itemData(row).toInt());
     viewport_->setColormap(id, id != giv::colormaps::Id::None);

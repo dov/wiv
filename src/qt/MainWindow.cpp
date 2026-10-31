@@ -3,8 +3,8 @@
 
 #include "CalibrateDialog.h"
 #include "ColorMapBar.h"
-#include "ColorTableDialog.h"
-#include "ContrastDialog.h"
+#include "ColorTablePanel.h"
+#include "ContrastPanel.h"
 #include "ImagePluginHost.h"
 #include "InfoPanel.h"
 #include "MarkTreeView.h"
@@ -96,6 +96,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 
     buildInfoDock();
     buildMarkBrowserDock();
+    buildContrastDock();
+    buildColorTableDock();
     buildMenus();
     buildStatusBar();
 
@@ -145,8 +147,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         updateNavigationActionsEnabled();
         updateSliceActionsEnabled();
         updateContrastToolsEnabled();
-        if (contrastDialog_ && contrastDialog_->isVisible()) contrastDialog_->refreshForImage();
-        if (colorTableDialog_ && colorTableDialog_->isVisible()) colorTableDialog_->refreshForImage();
+        if (contrastDock_->isVisible()) contrastPanel_->refreshForImage();
+        if (colorTableDock_->isVisible()) colorTablePanel_->refreshForImage();
         refreshInfoPanel();
         // Sole owner of the title/status-label text for both the initial
         // load and every next/previousImage() step (loadFilesInternal only
@@ -339,8 +341,12 @@ void MainWindow::buildMenus()
     });
 
     toolsMenu->addSeparator();
-    contrastAction_ = toolsMenu->addAction("Adjust Contrast...", this, &MainWindow::showContrastDialog);
-    colorTableAction_ = toolsMenu->addAction("Color Table...", this, &MainWindow::showColorTableDialog);
+    // The docks' own checkable toggles; disabled until an image with raw
+    // samples is shown (see updateContrastToolsEnabled()).
+    contrastAction_ = contrastDock_->toggleViewAction();
+    colorTableAction_ = colorTableDock_->toggleViewAction();
+    toolsMenu->addAction(contrastAction_);
+    toolsMenu->addAction(colorTableAction_);
     contrastAction_->setEnabled(false);
     colorTableAction_->setEnabled(false);
 
@@ -871,20 +877,16 @@ void MainWindow::addRecentFile(const QString& path)
     updateRecentFilesMenu();
 }
 
-void MainWindow::showContrastDialog()
+void MainWindow::buildContrastDock()
 {
-    spdlog::info("User opened Adjust Contrast dialog");
-    if (!contrastDialog_)
-    {
-        contrastDialog_ = new ContrastDialog(viewport_, this);
-        connect(contrastDialog_, &ContrastDialog::colormapChanged, this, [this] {
-            if (colorTableDialog_) colorTableDialog_->refreshForImage();
-        });
-    }
-    contrastDialog_->refreshForImage();
-    contrastDialog_->show();
-    contrastDialog_->raise();
-    contrastDialog_->activateWindow();
+    contrastPanel_ = new ContrastPanel(viewport_, this);
+    contrastDock_ = new QDockWidget("Adjust Contrast", this);
+    contrastDock_->setWidget(contrastPanel_);
+    registerDock(contrastDock_, "ContrastDock", Qt::RightDockWidgetArea);
+    connect(contrastPanel_, &ContrastPanel::colormapChanged, this, [this] { colorTablePanel_->refreshForImage(); });
+    connect(contrastDock_, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+        if (visible) contrastPanel_->refreshForImage();
+    });
 }
 
 void MainWindow::refreshInfoPanel()
@@ -1023,20 +1025,16 @@ QString MainWindow::buildInfoText() const
     return t;
 }
 
-void MainWindow::showColorTableDialog()
+void MainWindow::buildColorTableDock()
 {
-    spdlog::info("User opened Color Table dialog");
-    if (!colorTableDialog_)
-    {
-        colorTableDialog_ = new ColorTableDialog(viewport_, this);
-        connect(colorTableDialog_, &ColorTableDialog::colormapChanged, this, [this] {
-            if (contrastDialog_) contrastDialog_->refreshForImage();
-        });
-    }
-    colorTableDialog_->refreshForImage();
-    colorTableDialog_->show();
-    colorTableDialog_->raise();
-    colorTableDialog_->activateWindow();
+    colorTablePanel_ = new ColorTablePanel(viewport_, this);
+    colorTableDock_ = new QDockWidget("Color Table", this);
+    colorTableDock_->setWidget(colorTablePanel_);
+    registerDock(colorTableDock_, "ColorTableDock", Qt::RightDockWidgetArea);
+    connect(colorTablePanel_, &ColorTablePanel::colormapChanged, this, [this] { contrastPanel_->refreshForImage(); });
+    connect(colorTableDock_, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+        if (visible) colorTablePanel_->refreshForImage();
+    });
 }
 
 void MainWindow::updateContrastToolsEnabled()
