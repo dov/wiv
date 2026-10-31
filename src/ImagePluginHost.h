@@ -37,6 +37,10 @@ struct LoadedImage
     // image) - see WivPluginImage::depth. VulkanViewport's currentSlice_
     // selects which slice of `samples` is rendered/reported on.
     int depth = 1;
+
+    // Number of pages in the file this image was loaded from (1 unless the
+    // plugin exports wiv_plugin_page_count, e.g. multi-page TIFF).
+    int pageCount = 1;
 };
 
 class ImagePluginHost
@@ -47,7 +51,9 @@ public:
     // `filename` with the first plugin that claims it (by suffix, else by
     // content sniffing - see isSupportedExplicit()). Returns nullopt and
     // prints a "wiv: ..." diagnostic to stderr on failure.
-    static std::optional<LoadedImage> load(const std::string& filename);
+    // `page` (0-based) selects a page of a multi-page file; ignored by
+    // plugins that have a single page.
+    static std::optional<LoadedImage> load(const std::string& filename, int page = 0);
 
     // Cheap check ("does some plugin claim this filename") that never
     // decodes the file - used to build the $image cycling list without
@@ -75,7 +81,7 @@ public:
     // miss. Returns nullptr if no plugin can decode it. The returned
     // pointer is only valid until the next get() call (a subsequent miss
     // may evict it).
-    const LoadedImage* get(const std::string& path);
+    const LoadedImage* get(const std::string& path, int page = 0);
 
 private:
     size_t capacity_;

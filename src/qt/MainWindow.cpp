@@ -148,12 +148,19 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     });
     connect(viewport_, &VulkanViewport::sliceChanged, this, [this](int slice, int count) {
         lastSliceText_ = count > 1 ? QString("Slice %1/%2").arg(slice + 1).arg(count) : QString();
+        updatePageActionsEnabled();
+        infoLabel_->setText(statusLineText());
+        refreshInfoPanel();
+    });
+    connect(viewport_, &VulkanViewport::pageChanged, this, [this](int page, int count) {
+        lastPageText_ = count > 1 ? QString("Page %1/%2").arg(page + 1).arg(count) : QString();
+        updatePageActionsEnabled();
         infoLabel_->setText(statusLineText());
         refreshInfoPanel();
     });
     connect(viewport_, &VulkanViewport::imageChanged, this, [this](int index, int count, QString filename) {
         updateNavigationActionsEnabled();
-        updateSliceActionsEnabled();
+        updatePageActionsEnabled();
         updateContrastToolsEnabled();
         if (contrastDock_->isVisible()) contrastPanel_->refreshForImage();
         if (colorTableDock_->isVisible()) colorTablePanel_->refreshForImage();
@@ -200,6 +207,7 @@ QString MainWindow::statusLineText() const
     QStringList parts;
     if (!lastCursorText_.isEmpty()) parts << lastCursorText_;
     if (!lastMeasureText_.isEmpty()) parts << lastMeasureText_;
+    if (!lastPageText_.isEmpty()) parts << lastPageText_;
     if (!lastSliceText_.isEmpty()) parts << lastSliceText_;
     return parts.join(" ");
 }
@@ -236,12 +244,10 @@ void MainWindow::buildMenus()
     menuBarAction_->setChecked(true);
     menuBarAction_->setShortcut(QKeySequence("Ctrl+M"));
     addAction(menuBarAction_);
-    // Full screen: F11 or a middle click on the view. Added to the window so
-    // F11 still works while the menu bar is hidden.
+    // Full screen on F11. Added to the window so it still works while the menu bar is hidden.
     auto fullScreenAction = viewMenu->addAction("Full Screen", this, &MainWindow::toggleFullScreen);
     fullScreenAction->setShortcut(QKeySequence("F11"));
     addAction(fullScreenAction);
-    connect(viewport_, &VulkanViewport::fullScreenToggleRequested, this, &MainWindow::toggleFullScreen);
     viewMenu->addSeparator();
     auto zoomInAction = viewMenu->addAction("Zoom In", viewport_, &VulkanViewport::zoomIn);
     zoomInAction->setShortcut(QKeySequence::ZoomIn);
@@ -334,18 +340,7 @@ void MainWindow::buildMenus()
     previousImageAction_ = viewMenu->addAction("Previous Image", this, &MainWindow::goPreviousImage);
     previousImageAction_->setShortcuts({QKeySequence("Shift+Down"), QKeySequence("Backspace"), QKeySequence("Left")});
     previousImageAction_->setEnabled(false);
-    // Pages through the $image references of the current file (e.g. a
-    // multi-image .giv); Next/Previous Image above move between files.
-    nextFileImageAction_ = viewMenu->addAction("Next Image in File", viewport_, &VulkanViewport::nextImage);
-    nextFileImageAction_->setShortcut(QKeySequence("PgDown"));
-    nextFileImageAction_->setEnabled(false);
-    previousFileImageAction_ = viewMenu->addAction("Previous Image in File", viewport_, &VulkanViewport::previousImage);
-    previousFileImageAction_->setShortcut(QKeySequence("PgUp"));
-    previousFileImageAction_->setEnabled(false);
 
-    // Slice navigation (giv's plain Up/Down) for multi-slice images (npy 3D
-    // arrays, FITS NAXIS=3, multi-frame DICOM) - distinct from Next/Previous
-    // Image's shift-Up/Down $image cycling above.
     firstImageAction_ = viewMenu->addAction("First Image", this, &MainWindow::goFirstImage);
     firstImageAction_->setShortcut(QKeySequence("Home"));
     lastImageAction_ = viewMenu->addAction("Last Image", this, &MainWindow::goLastImage);
@@ -354,8 +349,7 @@ void MainWindow::buildMenus()
     lastImageAction_->setEnabled(false);
     viewMenu->addSeparator();
 
-    // Keyboard pan (Ctrl+arrows) and zoom (Up/Down, which are the slice keys
-    // when the image has slices - see updateSliceActionsEnabled()).
+    // Keyboard pan (Ctrl+arrows) and zoom (Up/Down).
     struct PanKey { const char* text; const char* key; double fx, fy; };
     for (const PanKey& k : {PanKey{"Pan Left", "Ctrl+Left", -0.1, 0.0}, PanKey{"Pan Right", "Ctrl+Right", 0.1, 0.0},
                             PanKey{"Pan Up", "Ctrl+Up", 0.0, -0.1}, PanKey{"Pan Down", "Ctrl+Down", 0.0, 0.1}})
@@ -363,18 +357,22 @@ void MainWindow::buildMenus()
         auto* a = viewMenu->addAction(k.text, viewport_, [this, k]() { viewport_->panByFraction(k.fx, k.fy); });
         a->setShortcut(QKeySequence(k.key));
     }
-    keyZoomInAction_ = viewMenu->addAction("Key Zoom In", viewport_, &VulkanViewport::zoomIn);
+    auto keyZoomInAction_ = viewMenu->addAction("Key Zoom In", viewport_, &VulkanViewport::zoomIn);
     keyZoomInAction_->setShortcut(QKeySequence("Up"));
-    keyZoomOutAction_ = viewMenu->addAction("Key Zoom Out", viewport_, &VulkanViewport::zoomOut);
+    auto keyZoomOutAction_ = viewMenu->addAction("Key Zoom Out", viewport_, &VulkanViewport::zoomOut);
     keyZoomOutAction_->setShortcut(QKeySequence("Down"));
     viewMenu->addSeparator();
 
-    nextSliceAction_ = viewMenu->addAction("Next Slice", viewport_, &VulkanViewport::nextSlice);
-    nextSliceAction_->setShortcut(QKeySequence("Up"));
-    nextSliceAction_->setEnabled(false);
-    previousSliceAction_ = viewMenu->addAction("Previous Slice", viewport_, &VulkanViewport::previousSlice);
-    previousSliceAction_->setShortcut(QKeySequence("Down"));
-    previousSliceAction_->setEnabled(false);
+    // Pages of a multi-page TIFF, slices of a DICOM/FITS/npy volume and the
+    // images of a multi-image .giv all step with these (see
+    // VulkanViewport::stepPart()).
+    nextPageAction_ = viewMenu->addAction("Next Page", viewport_, &VulkanViewport::nextPage);
+    nextPageAction_->setShortcuts({QKeySequence("Alt+Right"), QKeySequence("PgDown")});
+    nextPageAction_->setEnabled(false);
+    previousPageAction_ = viewMenu->addAction("Previous Page", viewport_, &VulkanViewport::previousPage);
+    previousPageAction_->setShortcuts({QKeySequence("Alt+Left"), QKeySequence("PgUp")});
+    previousPageAction_->setEnabled(false);
+
 
     auto toolsMenu = menuBar()->addMenu("&Tools");
     measureDistanceAction_ = toolsMenu->addAction("Measure Distance Diagonal", viewport_, &VulkanViewport::toggleMeasureDistance);
@@ -868,20 +866,12 @@ void MainWindow::updateNavigationActionsEnabled()
     previousImageAction_->setEnabled(canNavigate);
     firstImageAction_->setEnabled(canNavigate);
     lastImageAction_->setEnabled(canNavigate);
-    bool multiImage = viewport_->imageCount() > 1;
-    nextFileImageAction_->setEnabled(multiImage);
-    previousFileImageAction_->setEnabled(multiImage);
 }
 
-void MainWindow::updateSliceActionsEnabled()
+void MainWindow::updatePageActionsEnabled()
 {
-    bool canNavigate = viewport_->sliceCount() > 1;
-    nextSliceAction_->setEnabled(canNavigate);
-    previousSliceAction_->setEnabled(canNavigate);
-    // Up/Down are slice keys when there are slices, zoom keys otherwise; a
-    // disabled action does not take part in shortcut matching.
-    keyZoomInAction_->setEnabled(!canNavigate);
-    keyZoomOutAction_->setEnabled(!canNavigate);
+    nextPageAction_->setEnabled(viewport_->canStepPart(+1));
+    previousPageAction_->setEnabled(viewport_->canStepPart(-1));
 }
 
 void MainWindow::goFirstImage()

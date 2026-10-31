@@ -124,6 +124,17 @@ public:
     int sliceCount() const { return loadedImages_.empty() ? 1 : std::max(1, loadedImages_.front().depth); }
     int currentSlice() const { return currentSlice_; }
 
+    // One navigation for everything a file can hold several of (View > Next/
+    // Previous Page): the pages of a multi-page TIFF (no wrap-around), else
+    // the slices of a volume (DICOM, FITS, npy; wraps), else the $image
+    // references of a multi-image .giv (wraps). No-ops for a plain image.
+    void nextPage() { stepPart(+1); }
+    void previousPage() { stepPart(-1); }
+    bool canStepPart(int dir) const;
+    void stepPart(int dir);
+    int pageCount() const { return loadedImages_.empty() ? 1 : std::max(1, loadedImages_.front().pageCount); }
+    int currentPage() const { return currentPage_; }
+
     void setBackgroundColor(const QColor& color);
 
     // giv's do_auto_fit_marks: on (default) re-fits the view (fill, see
@@ -258,8 +269,6 @@ public:
 
 signals:
     void sceneLoaded();
-    // Middle-click on the view; MainWindow toggles full screen.
-    void fullScreenToggleRequested();
     // The contrast window or colormap of the displayed image changed.
     void contrastChanged();
     // Local files dropped onto the view (see DropOverlay in the .cpp).
@@ -279,6 +288,11 @@ signals:
     // previousImage() and initial load too). `count` is 1 for an ordinary
     // 2D image.
     void sliceChanged(int slice, int count);
+
+    // Emitted when the displayed page of a multi-page file changes, and
+    // whenever a (new) image is selected, like sliceChanged. `count` is 1
+    // for a single-page image.
+    void pageChanged(int page, int count);
 
     // A horizontal two-finger touchpad swipe: +1 for next image (swipe left),
     // -1 for previous.
@@ -376,6 +390,8 @@ private:
     std::vector<std::string> loadedImageNames_; // resolved paths of $image refs a plugin claims to support (not yet decoded - see ImagePluginHost::isSupported)
     std::optional<std::pair<double, double>> currentImageSize_; // (width, height) px of loadedImageNames_[currentImageIndex_], once decoded
     int currentImageIndex_ = 0;
+    int currentPage_ = 0; // see gotoPage(); reset to 0 by decodeImageAt()
+    void gotoPage(int page);
     int currentSlice_ = 0; // see nextSlice()/previousSlice(); reset to 0 by decodeImageAt()
     giv::ImageCache imageCache_{kImageCacheCapacity}; // bounds how many decoded images are resident at once while paging with next/previousImage()
 
@@ -472,7 +488,7 @@ private:
     // updates currentImageIndex_/loadedImages_/currentImageSize_ to match.
     // Does not rebuild the scene graph or touch the view - see
     // switchToImage() for the full next/previousImage() path.
-    bool decodeImageAt(int index);
+    bool decodeImageAt(int index, int page = 0);
 
     // Initial-load counterpart of decodeImageAt(): decodes
     // loadedImageNames_[currentImageIndex_] (currently always 0), scanning

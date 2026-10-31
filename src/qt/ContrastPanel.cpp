@@ -89,8 +89,12 @@ ContrastPanel::ContrastPanel(VulkanViewport* viewport, QWidget* parent) : QWidge
 
     auto* layout = new QVBoxLayout(this);
     layout->addWidget(contrastBox);
-    layout->addWidget(histoBox, /*stretch=*/1);
+    // The histogram keeps its natural height; spare dock height goes below.
+    histoBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    histogram_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    layout->addWidget(histoBox);
     layout->addWidget(autoButton, 0, Qt::AlignRight);
+    layout->addStretch(1);
     setLayout(layout);
 
     onRadioToggled();

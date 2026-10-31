@@ -82,6 +82,15 @@ extern "C"
     // to a freshly heap-allocated message (free with wiv_plugin_free_error).
     WIV_PLUGIN_API WivPluginImage* wiv_plugin_load_image(const char* filename, char** error_msg);
 
+    // OPTIONAL, for formats that hold several pages in one file (multi-page
+    // TIFF). A plugin exports both or neither. wiv_plugin_page_count returns
+    // the number of pages (>= 1, or 0 if the file can't be read);
+    // wiv_plugin_load_page loads page `page` (0-based) like
+    // wiv_plugin_load_image does, which is equivalent to page 0. Plugins
+    // that don't export them are treated as having a single page.
+    WIV_PLUGIN_API int wiv_plugin_page_count(const char* filename);
+    WIV_PLUGIN_API WivPluginImage* wiv_plugin_load_page(const char* filename, int page, char** error_msg);
+
     // Frees an image returned by wiv_plugin_load_image.
     WIV_PLUGIN_API void wiv_plugin_free_image(WivPluginImage* img);
 

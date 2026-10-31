@@ -40,13 +40,30 @@ extern "C" bool wiv_plugin_supports_file(const char* filename)
     return hasExtension(f, ".tif") || hasExtension(f, ".tiff");
 }
 
-extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** error_msg)
+extern "C" int wiv_plugin_page_count(const char* filename)
+{
+    TIFF* tif = TIFFOpen(filename, "r");
+    if (!tif)
+        return 0;
+    const int count = static_cast<int>(TIFFNumberOfDirectories(tif));
+    TIFFClose(tif);
+    return count;
+}
+
+extern "C" WivPluginImage* wiv_plugin_load_page(const char* filename, int page, char** error_msg)
 {
     TIFF* tif = TIFFOpen(filename, "r");
     if (!tif)
     {
         if (error_msg)
             *error_msg = wiv_plugin::makeError("tiff: failed to open %s", filename);
+        return nullptr;
+    }
+    if (page > 0 && !TIFFSetDirectory(tif, static_cast<tdir_t>(page)))
+    {
+        TIFFClose(tif);
+        if (error_msg)
+            *error_msg = wiv_plugin::makeError("tiff: no such page in %s", filename);
         return nullptr;
     }
 
@@ -125,4 +142,9 @@ extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** er
 
     TIFFClose(tif);
     return img;
+}
+
+extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** error_msg)
+{
+    return wiv_plugin_load_page(filename, 0, error_msg);
 }

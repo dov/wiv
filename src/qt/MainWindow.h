@@ -95,14 +95,11 @@ private:
     QAction* rememberViewAction_ = nullptr;
     QAction* nextImageAction_ = nullptr;
     QAction* previousImageAction_ = nullptr;
-    QAction* nextFileImageAction_ = nullptr;
-    QAction* previousFileImageAction_ = nullptr;
-    QAction* nextSliceAction_ = nullptr;
+    QAction* nextPageAction_ = nullptr;
+    QAction* previousPageAction_ = nullptr;
+    QString lastPageText_; // "Page N/P" for a multi-page image, empty otherwise - see pageChanged
     QAction* firstImageAction_ = nullptr;
     QAction* lastImageAction_ = nullptr;
-    QAction* keyZoomInAction_ = nullptr;
-    QAction* keyZoomOutAction_ = nullptr;
-    QAction* previousSliceAction_ = nullptr;
     QAction* showMarksAction_ = nullptr;
     QAction* measureDistanceAction_ = nullptr;
     QAction* contrastAction_ = nullptr;
@@ -199,10 +196,9 @@ private:
     void goPreviousImage();
     void updateNavigationActionsEnabled();
 
-    // Enables/disables nextSliceAction_/previousSliceAction_ for the
-    // currently-displayed image's slice count (viewport_->sliceCount()) -
-    // called whenever the displayed image changes.
-    void updateSliceActionsEnabled();
+    // Enables/disables the Next/Previous Page actions for the displayed
+    // image (see VulkanViewport::canStepPart()).
+    void updatePageActionsEnabled();
 
     void buildMarkBrowserDock();
 

@@ -22,7 +22,7 @@ constexpr int kGripH = 16;
 
 HistogramWidget::HistogramWidget(QWidget* parent) : QWidget(parent)
 {
-    setMinimumHeight(120);
+    setFixedHeight(120);
     setMouseTracking(true);
 }
 
