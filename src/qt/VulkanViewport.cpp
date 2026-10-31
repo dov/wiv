@@ -915,6 +915,12 @@ bool VulkanViewport::eventFilter(QObject* watched, QEvent* event)
             // turn it into a second press; not while measuring, where the
             // left button belongs to the caliper.
             auto* me = static_cast<QMouseEvent*>(event);
+            if (me->button() == Qt::MiddleButton && me->modifiers() == Qt::NoModifier && hasScene_)
+            {
+                // Middle double-click toggles the same way (a middle drag pans).
+                toggleActualFit(me->position() * window_->devicePixelRatio());
+                return true;
+            }
             if (me->button() == Qt::LeftButton && me->modifiers() == Qt::NoModifier && hasScene_ && !measureEnabled_)
             {
                 toggleActualFit(me->position() * window_->devicePixelRatio());
@@ -922,16 +928,6 @@ bool VulkanViewport::eventFilter(QObject* watched, QEvent* event)
             }
             break;
         }
-        case QEvent::MouseButtonPress:
-        case QEvent::MouseButtonRelease:
-            // Middle (wheel) click toggles full screen; swallowed on both
-            // press and release so vsgQt never sees the button.
-            if (static_cast<QMouseEvent*>(event)->button() == Qt::MiddleButton)
-            {
-                if (event->type() == QEvent::MouseButtonPress) emit fullScreenToggleRequested();
-                return true;
-            }
-            break;
         case QEvent::NativeGesture: {
             // Touchpad pinch (macOS, Windows precision touchpads, Wayland; on
             // X11 only if the Qt/Xorg build delivers gestures).
@@ -1119,6 +1115,48 @@ void VulkanViewport::panByFraction(double fx, double fy)
     updateScrollBars();
 }
 
+// Shows page `page` of the current file. The view is left alone when the new
+// page is the same size as the old one (the usual multi-page TIFF), so the
+// user's zoom and pan carry across pages; a page of another size is re-fitted.
+void VulkanViewport::gotoPage(int page)
+{
+    if (page < 0 || page >= pageCount() || page == currentPage_) return;
+    const auto oldSize = currentImageSize_;
+    if (!decodeImageAt(currentImageIndex_, page))
+    {
+        spdlog::error("Failed to decode page {} of {}", page + 1, currentImageName());
+        return;
+    }
+    spdlog::info("Switched to page {}/{}", page + 1, pageCount());
+    QString error;
+    if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
+    {
+        spdlog::error("{}", error.toStdString());
+        return;
+    }
+    if (oldSize != currentImageSize_)
+        fitContentToWindow();
+    else
+        updateScrollBars();
+    viewer_->request();
+}
+
+bool VulkanViewport::canStepPart(int dir) const
+{
+    if (pageCount() > 1) return dir > 0 ? currentPage_ + 1 < pageCount() : currentPage_ > 0;
+    return sliceCount() > 1 || imageCount() > 1;
+}
+
+void VulkanViewport::stepPart(int dir)
+{
+    if (pageCount() > 1)
+        gotoPage(currentPage_ + dir);
+    else if (sliceCount() > 1)
+        dir > 0 ? nextSlice() : previousSlice();
+    else if (imageCount() > 1)
+        dir > 0 ? nextImage() : previousImage();
+}
+
 void VulkanViewport::nextSlice()
 {
     const int count = sliceCount();
@@ -1143,17 +1181,19 @@ void VulkanViewport::previousSlice()
     emit sliceChanged(currentSlice_, count);
 }
 
-bool VulkanViewport::decodeImageAt(int index)
+bool VulkanViewport::decodeImageAt(int index, int page)
 {
     if (index < 0 || index >= static_cast<int>(loadedImageNames_.size())) return false;
-    const giv::LoadedImage* img = imageCache_.get(loadedImageNames_[static_cast<size_t>(index)]);
+    const giv::LoadedImage* img = imageCache_.get(loadedImageNames_[static_cast<size_t>(index)], page);
     if (!img) return false;
     currentImageIndex_ = index;
+    currentPage_ = page;
     currentSlice_ = 0;
     loadedImages_ = {*img};
     currentImageSize_ = std::make_pair(static_cast<double>(img->width), static_cast<double>(img->height));
     recomputeDisplayImage();
     emit sliceChanged(currentSlice_, sliceCount());
+    emit pageChanged(currentPage_, pageCount());
     return true;
 }
 

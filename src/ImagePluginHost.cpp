@@ -48,6 +48,8 @@ namespace fs = std::filesystem;
 using SupportsFileFn = bool (*)(const char*);
 using SniffFileFn = bool (*)(const char*);
 using LoadImageFn = WivPluginImage* (*)(const char*, char**);
+using PageCountFn = int (*)(const char*);
+using LoadPageFn = WivPluginImage* (*)(const char*, int, char**);
 using FreeImageFn = void (*)(WivPluginImage*);
 using FreeErrorFn = void (*)(char*);
 
@@ -58,6 +60,8 @@ struct Plugin
     SupportsFileFn supportsFile = nullptr;
     SniffFileFn sniffFile = nullptr; // optional
     LoadImageFn loadImage = nullptr;
+    PageCountFn pageCount = nullptr; // optional, with loadPage
+    LoadPageFn loadPage = nullptr;
     FreeImageFn freeImage = nullptr;
     FreeErrorFn freeError = nullptr;
 };
@@ -222,6 +226,9 @@ std::vector<Plugin>& loadedPlugins()
         plugin.supportsFile = reinterpret_cast<SupportsFileFn>(dlsym(handle, "wiv_plugin_supports_file"));
         plugin.sniffFile = reinterpret_cast<SniffFileFn>(dlsym(handle, "wiv_plugin_sniff_file"));
         plugin.loadImage = reinterpret_cast<LoadImageFn>(dlsym(handle, "wiv_plugin_load_image"));
+        plugin.pageCount = reinterpret_cast<PageCountFn>(dlsym(handle, "wiv_plugin_page_count"));
+        plugin.loadPage = reinterpret_cast<LoadPageFn>(dlsym(handle, "wiv_plugin_load_page"));
+        if (!plugin.pageCount || !plugin.loadPage) plugin.pageCount = nullptr, plugin.loadPage = nullptr;
         plugin.freeImage = reinterpret_cast<FreeImageFn>(dlsym(handle, "wiv_plugin_free_image"));
         plugin.freeError = reinterpret_cast<FreeErrorFn>(dlsym(handle, "wiv_plugin_free_error"));
 
@@ -241,7 +248,7 @@ std::vector<Plugin>& loadedPlugins()
 
 } // namespace
 
-std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename)
+std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename, int page)
 {
     // Sniffing opens the file, so only fall back to it once no plugin
     // claims the name; a suffix match is still preferred.
@@ -253,7 +260,10 @@ std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename)
             continue;
 
         char* errorMsg = nullptr;
-        WivPluginImage* img = plugin.loadImage(filename.c_str(), &errorMsg);
+        const int pageCount = plugin.pageCount ? std::max(1, plugin.pageCount(filename.c_str())) : 1;
+        WivPluginImage* img = (plugin.loadPage && page > 0 && page < pageCount)
+                                   ? plugin.loadPage(filename.c_str(), page, &errorMsg)
+                                   : plugin.loadImage(filename.c_str(), &errorMsg);
         if (!img)
         {
             spdlog::error("{} ({})", errorMsg ? errorMsg : "failed to load image", filename);
@@ -268,6 +278,7 @@ std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename)
         result.rgba.assign(img->rgba, img->rgba + static_cast<size_t>(img->width) * img->height * 4);
         result.sampleType = img->sampleType;
         result.depth = std::max(1, img->depth);
+        result.pageCount = pageCount;
         if (img->sampleType != WIV_SAMPLE_NONE && img->samples)
         {
             const size_t bytes = static_cast<size_t>(img->width) * img->height * result.depth *
@@ -308,16 +319,17 @@ bool ImagePluginHost::isSupportedExplicit(const std::string& filename)
     return false;
 }
 
-const LoadedImage* ImageCache::get(const std::string& path)
+const LoadedImage* ImageCache::get(const std::string& path, int page)
 {
-    auto it = entries_.find(path);
+    const std::string key = page > 0 ? path + '\n' + std::to_string(page) : path;
+    auto it = entries_.find(key);
     if (it != entries_.end())
     {
         lru_.splice(lru_.begin(), lru_, it->second.lruIt); // move to front (most-recently-used)
         return &it->second.image;
     }
 
-    auto loaded = ImagePluginHost::load(path);
+    auto loaded = ImagePluginHost::load(path, page);
     if (!loaded)
         return nullptr;
 
@@ -327,9 +339,9 @@ const LoadedImage* ImageCache::get(const std::string& path)
         lru_.pop_back();
     }
 
-    lru_.push_front(path);
+    lru_.push_front(key);
     Entry entry{std::move(*loaded), lru_.begin()};
-    return &entries_.emplace(path, std::move(entry)).first->second.image;
+    return &entries_.emplace(key, std::move(entry)).first->second.image;
 }
 
 } // namespace giv
