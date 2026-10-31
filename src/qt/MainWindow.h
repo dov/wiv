@@ -98,6 +98,10 @@ private:
     QAction* nextFileImageAction_ = nullptr;
     QAction* previousFileImageAction_ = nullptr;
     QAction* nextSliceAction_ = nullptr;
+    QAction* firstImageAction_ = nullptr;
+    QAction* lastImageAction_ = nullptr;
+    QAction* keyZoomInAction_ = nullptr;
+    QAction* keyZoomOutAction_ = nullptr;
     QAction* previousSliceAction_ = nullptr;
     QAction* showMarksAction_ = nullptr;
     QAction* measureDistanceAction_ = nullptr;
@@ -190,6 +194,8 @@ private:
     // directoryFiles_; with no sibling files, fall back to the current
     // scene's own $image references (PgUp/PgDown always page those).
     void goNextImage();
+    void goFirstImage();
+    void goLastImage();
     void goPreviousImage();
     void updateNavigationActionsEnabled();
 

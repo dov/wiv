@@ -104,6 +104,12 @@ public:
     // $image cycling (giv's shift-Up/shift-Down). No-ops if there are fewer
     // than 2 successfully-loaded images.
     void nextImage();
+    // Jump to the first / last of the file's own images.
+    void firstImage();
+    void lastImage();
+    // Pans the view by a fraction of its size (keyboard pan): +x moves the
+    // view right, +y moves it down, as on screen.
+    void panByFraction(double fx, double fy);
     void previousImage();
     int imageCount() const { return static_cast<int>(loadedImageNames_.size()); }
     int currentImageIndex() const { return currentImageIndex_; }

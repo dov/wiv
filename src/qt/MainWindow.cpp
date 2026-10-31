@@ -346,6 +346,29 @@ void MainWindow::buildMenus()
     // Slice navigation (giv's plain Up/Down) for multi-slice images (npy 3D
     // arrays, FITS NAXIS=3, multi-frame DICOM) - distinct from Next/Previous
     // Image's shift-Up/Down $image cycling above.
+    firstImageAction_ = viewMenu->addAction("First Image", this, &MainWindow::goFirstImage);
+    firstImageAction_->setShortcut(QKeySequence("Home"));
+    lastImageAction_ = viewMenu->addAction("Last Image", this, &MainWindow::goLastImage);
+    lastImageAction_->setShortcut(QKeySequence("End"));
+    firstImageAction_->setEnabled(false);
+    lastImageAction_->setEnabled(false);
+    viewMenu->addSeparator();
+
+    // Keyboard pan (Ctrl+arrows) and zoom (Up/Down, which are the slice keys
+    // when the image has slices - see updateSliceActionsEnabled()).
+    struct PanKey { const char* text; const char* key; double fx, fy; };
+    for (const PanKey& k : {PanKey{"Pan Left", "Ctrl+Left", -0.1, 0.0}, PanKey{"Pan Right", "Ctrl+Right", 0.1, 0.0},
+                            PanKey{"Pan Up", "Ctrl+Up", 0.0, -0.1}, PanKey{"Pan Down", "Ctrl+Down", 0.0, 0.1}})
+    {
+        auto* a = viewMenu->addAction(k.text, viewport_, [this, k]() { viewport_->panByFraction(k.fx, k.fy); });
+        a->setShortcut(QKeySequence(k.key));
+    }
+    keyZoomInAction_ = viewMenu->addAction("Key Zoom In", viewport_, &VulkanViewport::zoomIn);
+    keyZoomInAction_->setShortcut(QKeySequence("Up"));
+    keyZoomOutAction_ = viewMenu->addAction("Key Zoom Out", viewport_, &VulkanViewport::zoomOut);
+    keyZoomOutAction_->setShortcut(QKeySequence("Down"));
+    viewMenu->addSeparator();
+
     nextSliceAction_ = viewMenu->addAction("Next Slice", viewport_, &VulkanViewport::nextSlice);
     nextSliceAction_->setShortcut(QKeySequence("Up"));
     nextSliceAction_->setEnabled(false);
@@ -843,6 +866,8 @@ void MainWindow::updateNavigationActionsEnabled()
     bool canNavigate = viewport_->imageCount() > 1 || directoryFiles_.size() > 1;
     nextImageAction_->setEnabled(canNavigate);
     previousImageAction_->setEnabled(canNavigate);
+    firstImageAction_->setEnabled(canNavigate);
+    lastImageAction_->setEnabled(canNavigate);
     bool multiImage = viewport_->imageCount() > 1;
     nextFileImageAction_->setEnabled(multiImage);
     previousFileImageAction_->setEnabled(multiImage);
@@ -853,6 +878,37 @@ void MainWindow::updateSliceActionsEnabled()
     bool canNavigate = viewport_->sliceCount() > 1;
     nextSliceAction_->setEnabled(canNavigate);
     previousSliceAction_->setEnabled(canNavigate);
+    // Up/Down are slice keys when there are slices, zoom keys otherwise; a
+    // disabled action does not take part in shortcut matching.
+    keyZoomInAction_->setEnabled(!canNavigate);
+    keyZoomOutAction_->setEnabled(!canNavigate);
+}
+
+void MainWindow::goFirstImage()
+{
+    spdlog::info("User invoked First Image");
+    if (directoryFiles_.size() < 2)
+    {
+        viewport_->firstImage();
+        return;
+    }
+    if (directoryFileIndex_ == 0) return;
+    directoryFileIndex_ = 0;
+    loadFilesInternal({directoryFiles_[0].toStdString()});
+}
+
+void MainWindow::goLastImage()
+{
+    spdlog::info("User invoked Last Image");
+    if (directoryFiles_.size() < 2)
+    {
+        viewport_->lastImage();
+        return;
+    }
+    const int last = directoryFiles_.size() - 1;
+    if (directoryFileIndex_ == last) return;
+    directoryFileIndex_ = last;
+    loadFilesInternal({directoryFiles_[last].toStdString()});
 }
 
 void MainWindow::goNextImage()

@@ -1090,6 +1090,35 @@ void VulkanViewport::previousImage()
     switchToImage((currentImageIndex_ - 1 + static_cast<int>(loadedImageNames_.size())) % static_cast<int>(loadedImageNames_.size()));
 }
 
+void VulkanViewport::firstImage()
+{
+    if (loadedImageNames_.size() < 2 || currentImageIndex_ == 0) return;
+    switchToImage(0);
+}
+
+void VulkanViewport::lastImage()
+{
+    const int last = static_cast<int>(loadedImageNames_.size()) - 1;
+    if (last < 1 || currentImageIndex_ == last) return;
+    switchToImage(last);
+}
+
+void VulkanViewport::panByFraction(double fx, double fy)
+{
+    if (!panZoom_ || !hasScene_ || !window_ || !window_->windowAdapter) return;
+    const auto extent = window_->windowAdapter->extent2D();
+    if (extent.width == 0 || extent.height == 0) return;
+    cancelViewAnimation();
+    panZoom_->cancelZoom();
+    // pan() takes the drag a mouse would make: the content follows it, so
+    // moving the view right is a drag to the left.
+    panZoom_->panByPixels(static_cast<int32_t>(std::lround(-fx * extent.width)),
+                          static_cast<int32_t>(std::lround(-fy * extent.height)), extent);
+    viewDirty_ = true;
+    viewer_->request();
+    updateScrollBars();
+}
+
 void VulkanViewport::nextSlice()
 {
     const int count = sliceCount();
