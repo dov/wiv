@@ -1,17 +1,17 @@
 #pragma once
 //
-// ContrastDialog.h - Tools > Adjust Contrast, giv's GivContrast dialog
+// ContrastPanel.h - Tools > Adjust Contrast (a dock widget), giv's GivContrast dialog
 // (src/giv-contrast.gob + src/giv-histo.gob there): shows a histogram of
 // the current image's real pixel values with draggable min/max handles,
 // min/max/center/window entry fields, and "Auto Contrast" (stretch to the
 // image's own min/max). Unlike CalibrateDialog's fire-and-forget "read
 // initial values in, emit a signal with the final result out" pattern,
-// this is a non-modal, live tool (mirrors MarkTreeView, not CalibrateDialog)
+// this is a live tool (mirrors MarkTreeView, not CalibrateDialog)
 // that needs to keep reading/writing VulkanViewport as the user drags
 // handles or switches images while it stays open - see MainWindow::
-// showContrastDialog().
+// showContrastPanel().
 //
-#include <QDialog>
+#include <QWidget>
 
 class QComboBox;
 class QLineEdit;
@@ -24,20 +24,20 @@ namespace givqt
 class VulkanViewport;
 class HistogramWidget;
 
-class ContrastDialog final : public QDialog
+class ContrastPanel final : public QWidget
 {
     Q_OBJECT
 
 public:
-    explicit ContrastDialog(VulkanViewport* viewport, QWidget* parent = nullptr);
+    explicit ContrastPanel(VulkanViewport* viewport, QWidget* parent = nullptr);
 
     // Re-reads the current image's histogram and contrast state from
     // viewport_ and refreshes the display. Call whenever the displayed
-    // image changes while this dialog is open (see MainWindow::imageChanged).
+    // image changes while this panel is open (see MainWindow::imageChanged).
     void refreshForImage();
 
 signals:
-    // Emitted when the user picks a colormap here (so ColorTableDialog can
+    // Emitted when the user picks a colormap here (so ColorTablePanel can
     // resync its selection).
     void colormapChanged();
 

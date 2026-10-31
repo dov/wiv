@@ -32,9 +32,9 @@ namespace givqt
 
 class VulkanViewport;
 class MarkTreeView;
-class ContrastDialog;
+class ContrastPanel;
 class ColorMapBar;
-class ColorTableDialog;
+class ColorTablePanel;
 class InfoPanel;
 class RpcServer;
 
@@ -109,11 +109,12 @@ private:
     MarkTreeView* markTreeView_ = nullptr;
     QDockWidget* markBrowserDock_ = nullptr;
 
-    // Tools > Adjust Contrast / Color Table: non-modal, lazily created (see
-    // showMarkBrowser()'s pattern), kept alive across show()/hide() so their
-    // state survives, and refreshed whenever the displayed image changes.
-    ContrastDialog* contrastDialog_ = nullptr;
-    ColorTableDialog* colorTableDialog_ = nullptr;
+    // Tools > Adjust Contrast / Color Table: docks the user can float,
+    // refreshed whenever they appear or the displayed image changes.
+    ContrastPanel* contrastPanel_ = nullptr;
+    ColorTablePanel* colorTablePanel_ = nullptr;
+    QDockWidget* contrastDock_ = nullptr;
+    QDockWidget* colorTableDock_ = nullptr;
 
     // View > Image Info ("i"): giv's info panel, a dock the user can float.
     // While visible it is rebuilt on image/slice/scene changes and by
@@ -197,8 +198,8 @@ private:
 
     void buildMarkBrowserDock();
 
-    void showContrastDialog();
-    void showColorTableDialog();
+    void buildContrastDock();
+    void buildColorTableDock();
     void updateContrastToolsEnabled();
 
     void refreshInfoPanel();

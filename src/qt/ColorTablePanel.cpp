@@ -1,4 +1,4 @@
-#include "ColorTableDialog.h"
+#include "ColorTablePanel.h"
 
 #include "Colormaps.h"
 #include "ImagePluginHost.h"
@@ -73,10 +73,8 @@ public:
 
 } // namespace
 
-ColorTableDialog::ColorTableDialog(VulkanViewport* viewport, QWidget* parent) : QDialog(parent), viewport_(viewport)
+ColorTablePanel::ColorTablePanel(VulkanViewport* viewport, QWidget* parent) : QWidget(parent), viewport_(viewport)
 {
-    setWindowTitle("Color Table");
-    resize(320, 420);
     setMinimumWidth(200);
 
     list_ = new QListWidget(this);
@@ -94,7 +92,7 @@ ColorTableDialog::ColorTableDialog(VulkanViewport* viewport, QWidget* parent) : 
         item->setData(kSwatchRole, colormapSwatch(id, kSwatchSrcWidth, kSwatchHeight));
     }
 
-    connect(list_, &QListWidget::currentRowChanged, this, &ColorTableDialog::onSelectionChanged);
+    connect(list_, &QListWidget::currentRowChanged, this, &ColorTablePanel::onSelectionChanged);
 
     auto* layout = new QVBoxLayout(this);
     layout->addWidget(list_);
@@ -103,7 +101,7 @@ ColorTableDialog::ColorTableDialog(VulkanViewport* viewport, QWidget* parent) : 
     refreshForImage();
 }
 
-void ColorTableDialog::refreshForImage()
+void ColorTablePanel::refreshForImage()
 {
     const giv::LoadedImage* img = viewport_->currentImage();
     if (!img || img->sampleType == WIV_SAMPLE_NONE)
@@ -119,7 +117,7 @@ void ColorTableDialog::refreshForImage()
     list_->setCurrentRow(row);
 }
 
-void ColorTableDialog::onSelectionChanged()
+void ColorTablePanel::onSelectionChanged()
 {
     QListWidgetItem* item = list_->currentItem();
     if (!item) return;
