@@ -356,6 +356,11 @@ private:
     // extent, which is what was causing the non-isotropic stretch).
     void syncRenderExtent(VkExtent2D extent);
 
+    // syncRenderExtent() plus rescaling the projection's visible extents to
+    // `extent` at the current zoom - see its definition for why it is also
+    // re-run once a pending resize settles.
+    void applyExtent(VkExtent2D extent);
+
     // Wired to viewer_->isResizeSettling: true while resizeEvent() has asked
     // window_ to resize but window_->windowAdapter->extent2D() hasn't caught
     // up to it yet (the resize is still pending, asynchronously - see
@@ -410,6 +415,9 @@ private:
     void updateScrollBars();
 
     void resizeEvent(QResizeEvent* event) override;
+    // Resyncs the camera/render graph to the native window's real size after
+    // this widget or its container_ was resized.
+    void handleViewportResize();
 
     // Shared tail of loadFiles()/setDatasetsVisible()/setShowMarks(): builds
     // the scene graph from the current scene_/loadedImages_ and (re)installs

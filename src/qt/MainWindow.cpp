@@ -6,7 +6,7 @@
 #include "ColorTableDialog.h"
 #include "ContrastDialog.h"
 #include "ImagePluginHost.h"
-#include "InfoDialog.h"
+#include "InfoPanel.h"
 #include "MarkTreeView.h"
 #include "OpenFileDialog.h"
 #include "PreferencesDialog.h"
@@ -41,6 +41,7 @@
 #include <QSettings>
 #include <QShowEvent>
 #include <QStatusBar>
+#include <QShortcut>
 #include <QTimer>
 #include <QThread>
 #include <QDateTime>
@@ -93,12 +94,20 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 
     viewport_->setBackgroundColor(PreferencesDialog::loadBackgroundColor());
 
+    buildInfoDock();
+    buildMarkBrowserDock();
     buildMenus();
     buildStatusBar();
 
+    // Dock layout (position, floating, visibility) from the previous run.
+    {
+        QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+        restoreState(settings.value("windowState").toByteArray());
+    }
+
     connect(viewport_, &VulkanViewport::sceneLoaded, this, [this]() {
-        if (markTreeView_) markTreeView_->rebuildFromScene();
-        refreshInfoDialog();
+        if (markBrowserDock_->isVisible()) markTreeView_->rebuildFromScene();
+        refreshInfoPanel();
         const auto& scene = viewport_->sceneData();
         if (!scene.datasets.empty())
         {
@@ -130,7 +139,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     connect(viewport_, &VulkanViewport::sliceChanged, this, [this](int slice, int count) {
         lastSliceText_ = count > 1 ? QString("Slice %1/%2").arg(slice + 1).arg(count) : QString();
         infoLabel_->setText(statusLineText());
-        refreshInfoDialog();
+        refreshInfoPanel();
     });
     connect(viewport_, &VulkanViewport::imageChanged, this, [this](int index, int count, QString filename) {
         updateNavigationActionsEnabled();
@@ -138,7 +147,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         updateContrastToolsEnabled();
         if (contrastDialog_ && contrastDialog_->isVisible()) contrastDialog_->refreshForImage();
         if (colorTableDialog_ && colorTableDialog_->isVisible()) colorTableDialog_->refreshForImage();
-        refreshInfoDialog();
+        refreshInfoPanel();
         // Sole owner of the title/status-label text for both the initial
         // load and every next/previousImage() step (loadFilesInternal only
         // updates loadedBaseName_, before calling viewport_->loadFiles() -
@@ -262,17 +271,13 @@ void MainWindow::buildMenus()
     showMarksAction_->setChecked(true);
     showMarksAction_->setShortcut(QKeySequence("M"));
 
-    auto markBrowserAction = viewMenu->addAction("Mark Browser...", this, &MainWindow::showMarkBrowser);
-    markBrowserAction->setShortcut(QKeySequence("O"));
-
-    markBrowserPanelAction_ = new QAction("Mark Browser as Panel", this);
-    markBrowserPanelAction_->setCheckable(true);
-    connect(markBrowserPanelAction_, &QAction::toggled, this, &MainWindow::setMarkBrowserPlacement);
-    viewMenu->addAction(markBrowserPanelAction_);
+    markBrowserDock_->toggleViewAction()->setShortcut(QKeySequence("O"));
+    viewMenu->addAction(markBrowserDock_->toggleViewAction());
 
     viewMenu->addSeparator();
-    auto infoAction = viewMenu->addAction("Image Info...", this, &MainWindow::toggleInfoDialog);
-    infoAction->setShortcut(QKeySequence("I"));
+    // The dock's own checkable toggle: stays in sync with the panel's visibility.
+    infoDock_->toggleViewAction()->setShortcut(QKeySequence("I"));
+    viewMenu->addAction(infoDock_->toggleViewAction());
 
     viewMenu->addSeparator();
     // giv's do_auto_fit_marks: on (default), next/previousImage() re-fits
@@ -342,9 +347,10 @@ void MainWindow::buildMenus()
     auto editMenu = menuBar()->addMenu("&Edit");
     editMenu->addAction("Preferences...", this, [this]() {
         spdlog::info("Preferences dialog opened");
-        PreferencesDialog dlg(this);
+        PreferencesDialog dlg(bindableActions_, this);
         connect(&dlg, &PreferencesDialog::backgroundColorChanged, viewport_, &VulkanViewport::setBackgroundColor);
         dlg.exec();
+        applyDockShortcuts();
         spdlog::info("Preferences dialog closed");
     });
 
@@ -352,6 +358,102 @@ void MainWindow::buildMenus()
     helpMenu->addAction("About wiv", this, [this]() {
         showAboutDialog();
     });
+
+    registerBindableActions();
+}
+
+// Makes every plain menu action rebindable (Edit > Preferences > Keyboard):
+// records the built-in shortcuts as its defaults, then overrides them with
+// the user's saved ones. The id is the action text reduced to alphanumerics.
+void MainWindow::registerBindableActions()
+{
+    for (QAction* menuAction : menuBar()->actions())
+    {
+        QMenu* menu = menuAction->menu();
+        if (!menu) continue;
+        for (QAction* a : menu->actions())
+        {
+            if (a->isSeparator() || a->menu()) continue;
+            QString id;
+            for (QChar c : a->text())
+                if (c.isLetterOrNumber()) id += c;
+            if (id.isEmpty()) continue;
+            a->setObjectName(id);
+            a->setProperty("menuTitle", menuAction->text().remove('&'));
+            QStringList defaults;
+            for (const QKeySequence& k : a->shortcuts()) defaults << k.toString(QKeySequence::PortableText);
+            a->setProperty("defaultShortcuts", defaults);
+            PreferencesDialog::applySavedShortcuts(a);
+            bindableActions_.append(a);
+        }
+    }
+    applyDockShortcuts();
+}
+
+// The info dialog is its own window, so the action's shortcut doesn't reach
+// it; give it the same keys to toggle itself closed.
+void MainWindow::applyDockShortcuts()
+{
+    for (auto& [dock, shortcut] : dockShortcuts_)
+        shortcut->setKeys(dock->toggleViewAction()->shortcuts());
+}
+
+void MainWindow::registerDock(QDockWidget* dock, const QString& objectName, Qt::DockWidgetArea area)
+{
+    dock->setObjectName(objectName);
+    addDockWidget(area, dock);
+    dock->hide();
+
+    auto* shortcut = new QShortcut(QKeySequence(), dock);
+    shortcut->setEnabled(false);
+    connect(dock, &QDockWidget::topLevelChanged, shortcut, &QShortcut::setEnabled);
+    connect(shortcut, &QShortcut::activated, dock->toggleViewAction(), &QAction::trigger);
+    dockShortcuts_.emplace_back(dock, shortcut);
+}
+
+void MainWindow::buildInfoDock()
+{
+    infoPanel_ = new InfoPanel(this);
+    infoDock_ = new QDockWidget("Image Info", this);
+    infoDock_->setWidget(infoPanel_);
+    registerDock(infoDock_, "InfoDock", Qt::RightDockWidgetArea);
+
+    // Zoom/pan and contrast/colormap changes have no signal to hook, so poll
+    // while visible; InfoPanel::setInfo() ignores unchanged text.
+    infoRefreshTimer_ = new QTimer(this);
+    infoRefreshTimer_->setInterval(500);
+    connect(infoRefreshTimer_, &QTimer::timeout, this, &MainWindow::refreshInfoPanel);
+    connect(infoDock_, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+        if (visible)
+        {
+            infoRefreshTimer_->start();
+            refreshInfoPanel();
+        }
+        else
+        {
+            infoRefreshTimer_->stop();
+        }
+    });
+}
+
+void MainWindow::buildMarkBrowserDock()
+{
+    markTreeView_ = new MarkTreeView(viewport_);
+    markBrowserDock_ = new QDockWidget("Mark Browser", this);
+    markBrowserDock_->setWidget(markTreeView_);
+    registerDock(markBrowserDock_, "MarkBrowserDock", Qt::LeftDockWidgetArea);
+    // The tree is only kept current while shown (see the sceneLoaded handler),
+    // so bring it up to date whenever it appears.
+    connect(markBrowserDock_, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+        if (visible) markTreeView_->rebuildFromScene();
+    });
+}
+
+void MainWindow::closeEvent(QCloseEvent* event)
+{
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+    settings.setValue("windowState", saveState());
+    QMainWindow::closeEvent(event);
 }
 
 // Rasterizes the vector mascot (cropped to its drawn extent) at the screen's
@@ -769,70 +871,6 @@ void MainWindow::addRecentFile(const QString& path)
     updateRecentFilesMenu();
 }
 
-void MainWindow::showMarkBrowser()
-{
-    spdlog::info("User opened Mark Browser");
-    if (!markTreeView_) markTreeView_ = new MarkTreeView(viewport_);
-    markTreeView_->rebuildFromScene();
-
-    if (markBrowserAsPanel_)
-    {
-        if (!markBrowserDock_)
-        {
-            markBrowserDock_ = new QDockWidget("Mark Browser", this);
-            markBrowserDock_->setWidget(markTreeView_);
-            addDockWidget(Qt::LeftDockWidgetArea, markBrowserDock_);
-        }
-        markBrowserDock_->show();
-        markBrowserDock_->raise();
-    }
-    else
-    {
-        if (!markBrowserDialog_)
-        {
-            // Non-modal, resizable, and left open across further interaction
-            // with the main window - matching giv's own Mark Browser dialog
-            // (giv-mark-tree-dialog.gob: transient-for + destroy-with-parent,
-            // but not a blocking gtk_dialog_run).
-            markBrowserDialog_ = new QDialog(this);
-            markBrowserDialog_->setWindowTitle("Mark Browser");
-            markBrowserDialog_->resize(400, 350);
-            auto layout = new QVBoxLayout(markBrowserDialog_);
-            layout->setContentsMargins(0, 0, 0, 0);
-            layout->addWidget(markTreeView_);
-        }
-        markBrowserDialog_->show();
-        markBrowserDialog_->raise();
-        markBrowserDialog_->activateWindow();
-    }
-}
-
-void MainWindow::setMarkBrowserPlacement(bool asPanel)
-{
-    if (markBrowserAsPanel_ == asPanel) return;
-    spdlog::info("Mark Browser placement changed to {}", asPanel ? "panel" : "dialog");
-
-    bool wasVisible = (markBrowserDialog_ && markBrowserDialog_->isVisible()) || (markBrowserDock_ && markBrowserDock_->isVisible());
-
-    // Detach the shared tree view before tearing down whichever container
-    // currently owns it, then destroy that (now-empty) container.
-    if (markTreeView_) markTreeView_->setParent(nullptr);
-    if (markBrowserDialog_)
-    {
-        markBrowserDialog_->deleteLater();
-        markBrowserDialog_ = nullptr;
-    }
-    if (markBrowserDock_)
-    {
-        removeDockWidget(markBrowserDock_);
-        markBrowserDock_->deleteLater();
-        markBrowserDock_ = nullptr;
-    }
-
-    markBrowserAsPanel_ = asPanel;
-    if (wasVisible) showMarkBrowser();
-}
-
 void MainWindow::showContrastDialog()
 {
     spdlog::info("User opened Adjust Contrast dialog");
@@ -849,38 +887,11 @@ void MainWindow::showContrastDialog()
     contrastDialog_->activateWindow();
 }
 
-void MainWindow::toggleInfoDialog()
+void MainWindow::refreshInfoPanel()
 {
-    if (infoDialog_ && infoDialog_->isVisible())
-    {
-        infoDialog_->close();
-        return;
-    }
-    spdlog::info("User opened Image Info dialog");
-    if (!infoDialog_)
-    {
-        infoDialog_ = new InfoDialog(this);
-        infoDialog_->setAttribute(Qt::WA_DeleteOnClose, false);
-        // Zoom/pan and contrast/colormap changes have no signal to hook, so
-        // poll while visible; InfoDialog::setInfo() ignores unchanged text.
-        infoRefreshTimer_ = new QTimer(infoDialog_);
-        infoRefreshTimer_->setInterval(500);
-        connect(infoRefreshTimer_, &QTimer::timeout, this, &MainWindow::refreshInfoDialog);
-    }
-    infoRefreshTimer_->start();
-    connect(infoDialog_, &QDialog::finished, infoRefreshTimer_, &QTimer::stop, Qt::UniqueConnection);
-    refreshInfoDialog();
-    infoDialog_->show();
-    infoDialog_->raise();
-    infoDialog_->activateWindow();
-}
-
-void MainWindow::refreshInfoDialog()
-{
-    if (!infoDialog_ || !infoDialog_->isVisible()) return;
-    QString name = QFileInfo(QString::fromStdString(viewport_->currentImageName())).fileName();
-    if (name.isEmpty()) name = loadedBaseName_;
-    infoDialog_->setInfo(QString("Info: %1").arg(name), buildInfoText());
+    if (!infoDock_->isVisible()) return;
+    // The dock title stays fixed: it is also the View menu action's text.
+    infoPanel_->setInfo(buildInfoText());
 }
 
 namespace
@@ -969,6 +980,20 @@ QString MainWindow::buildInfoText() const
                                        : QString("1"));
         const qint64 mem = qint64(img->rgba.size()) + qint64(img->samples.size());
         row("Decoded memory", humanBytes(mem));
+
+        // ---- EXIF (JPEG/TIFF/PNG/WebP that carry it) ----
+        if (fi.exists() && (path != exifPath_ || fi.lastModified() != exifMtime_))
+        {
+            exifPath_ = path;
+            exifMtime_ = fi.lastModified();
+            exifEntries_ = giv::readExif(QFile::encodeName(path).toStdString());
+        }
+        if (fi.exists() && !exifEntries_.empty())
+        {
+            section("EXIF");
+            for (const auto& e : exifEntries_)
+                row(QString::fromStdString(e.name), QString::fromStdString(e.value));
+        }
     }
 
     // ---- Scene (.giv marks) ----

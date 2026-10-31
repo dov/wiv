@@ -207,6 +207,10 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
     layout->setSpacing(0);
     container_ = QWidget::createWindowContainer(window_, this);
     layout->addWidget(container_, 0, 0);
+    // The container (not this widget) is what actually sizes the native window
+    // - scrollbars appearing/disappearing resize it without resizing us - so
+    // its Resize events drive the camera too; see handleViewportResize().
+    container_->installEventFilter(this);
     // Same grid cell, added after the container so it sits above it.
 #ifndef _WIN32
     auto* dropOverlay = new DropOverlay(this, [this](QStringList f) { emit filesDropped(f); });
@@ -317,6 +321,11 @@ VulkanViewport::~VulkanViewport()
 void VulkanViewport::resizeEvent(QResizeEvent* event)
 {
     QWidget::resizeEvent(event);
+    handleViewportResize();
+}
+
+void VulkanViewport::handleViewportResize()
+{
     if (!camera_ || !projection_ || !window_ || !window_->windowAdapter) return;
 
     // createWindowContainer()'s usual auto-sync of the embedded QWindow's
@@ -324,7 +333,7 @@ void VulkanViewport::resizeEvent(QResizeEvent* event)
     // window_->geometry() stuck at the WindowTraits-default 1280x1024 while
     // this widget/container_ had already been laid out to a smaller size) -
     // force it explicitly rather than relying on Qt to do it.
-    if (window_->geometry().size() != this->size()) window_->resize(this->size());
+    if (window_->geometry().size() != container_->size()) window_->resize(container_->size());
 
     // vsgQt::Window::resizeEvent (fired on the embedded QWindow itself, as
     // Qt's layout resizes the container to match this widget) already calls
@@ -342,19 +351,34 @@ void VulkanViewport::resizeEvent(QResizeEvent* event)
     // Track the size we actually asked for so isResizeSettling() can hold
     // frames off until extent2D() catches up to it (see its doc comment for
     // why racing that rebuild instead is unsafe).
-    int wantW = static_cast<int>(std::lround(this->width() * devicePixelRatioF()));
-    int wantH = static_cast<int>(std::lround(this->height() * devicePixelRatioF()));
+    // The native window is sized by container_, which is smaller than this
+    // widget whenever a scrollbar is showing; waiting for this widget's size
+    // would never match and always run out the settle timeout.
+    int wantW = static_cast<int>(std::lround(container_->width() * devicePixelRatioF()));
+    int wantH = static_cast<int>(std::lround(container_->height() * devicePixelRatioF()));
     if (static_cast<int>(extent.width) != wantW || static_cast<int>(extent.height) != wantH)
     {
         resizeSettling_ = true;
         pendingResizeExtent_ = QSize(wantW, wantH);
     }
 
+    applyExtent(extent);
+}
+
+// Brings the camera/render graph and the projection in line with `extent`,
+// preserving the current pixels-per-world-unit scale. Called from
+// resizeEvent() and again from checkResizeSettling() once extent2D() has
+// caught up: resizeEvent() often runs while extent2D() still reports the
+// *old* size (see ensureExtentSettled()), so without that second pass the
+// camera and projection stay built from the stale extent and the image is
+// stretched (seen after toggling a dock widget, which resizes the viewport
+// once with no later resizeEvent to fix it up).
+void VulkanViewport::applyExtent(VkExtent2D extent)
+{
     syncRenderExtent(extent);
 
-    // Preserve the current pixels-per-world-unit scale (rather than
-    // re-fitting/rescaling the whole view): the visible half-extents just
-    // grow/shrink to match the new size, centered on the same point.
+    // The visible half-extents just grow/shrink to match the new size,
+    // centered on the same point (rather than re-fitting the whole view).
     double oldHalfW = (projection_->right - projection_->left) * 0.5;
     if (lastWidth_ > 0 && lastHeight_ > 0 && oldHalfW > 0.0)
     {
@@ -386,6 +410,8 @@ bool VulkanViewport::checkResizeSettling()
     {
         resizeSettling_ = false;
         settleTicks_ = 0;
+        // resizeEvent() may have synced the camera to the pre-resize extent.
+        applyExtent(window_->windowAdapter->extent2D());
         return false;
     }
 
@@ -400,7 +426,7 @@ bool VulkanViewport::checkResizeSettling()
     {
         resizeSettling_ = false;
         settleTicks_ = 0;
-        syncRenderExtent(window_->windowAdapter->extent2D());
+        applyExtent(window_->windowAdapter->extent2D());
         return false;
     }
     return true;
@@ -853,6 +879,7 @@ void VulkanViewport::setDatasetsVisible(const std::vector<size_t>& indices, bool
 
 bool VulkanViewport::eventFilter(QObject* watched, QEvent* event)
 {
+    if (watched == container_ && event->type() == QEvent::Resize) handleViewportResize();
     if (watched == window_ && event->type() == QEvent::Wheel)
     {
         auto* we = static_cast<QWheelEvent*>(event);
@@ -1256,8 +1283,8 @@ void VulkanViewport::fitToWindow()
 void VulkanViewport::ensureExtentSettled()
 {
     if (!window_ || !window_->windowAdapter) return;
-    double wantW = static_cast<double>(width()) * devicePixelRatioF();
-    double wantH = static_cast<double>(height()) * devicePixelRatioF();
+    double wantW = static_cast<double>(container_->width()) * devicePixelRatioF();
+    double wantH = static_cast<double>(container_->height()) * devicePixelRatioF();
     if (wantW <= 0.0 || wantH <= 0.0) return;
 
     for (int attempt = 0; attempt < 100; ++attempt)

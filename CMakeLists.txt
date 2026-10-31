@@ -115,6 +115,7 @@ add_executable(wiv
   src/BalloonController.cpp
   src/ImagePluginHost.cpp
   src/Colormaps.cpp
+  src/ExifReader.cpp
   src/DisplayImage.cpp
   src/qt/GivViewer.cpp
   src/qt/VulkanViewport.cpp
@@ -123,7 +124,7 @@ add_executable(wiv
   src/qt/ColorMapBar.cpp
   src/qt/HistogramWidget.cpp
   src/qt/ContrastDialog.cpp
-  src/qt/InfoDialog.cpp
+  src/qt/InfoPanel.cpp
   src/qt/ColorTableDialog.cpp
   src/qt/MainWindow.cpp
   src/qt/MarkTreeView.cpp

@@ -5,7 +5,11 @@
 // aims to match giv's own look/behavior, which has neither.
 //
 #include <QMainWindow>
+#include <QDateTime>
+#include <QList>
 #include <QStringList>
+
+#include "ExifReader.h"
 
 #include <memory>
 #include <string>
@@ -16,7 +20,9 @@ class QAction;
 class QMenu;
 class QDialog;
 class QDockWidget;
+class QShortcut;
 class QShowEvent;
+class QCloseEvent;
 class QDragEnterEvent;
 class QDropEvent;
 class QTimer;
@@ -29,7 +35,7 @@ class MarkTreeView;
 class ContrastDialog;
 class ColorMapBar;
 class ColorTableDialog;
-class InfoDialog;
+class InfoPanel;
 class RpcServer;
 
 class MainWindow : public QMainWindow
@@ -53,6 +59,7 @@ public:
 
 protected:
     void showEvent(QShowEvent* event) override;
+    void closeEvent(QCloseEvent* event) override;
 
 private:
     VulkanViewport* viewport_ = nullptr;
@@ -92,20 +99,15 @@ private:
     QAction* nextSliceAction_ = nullptr;
     QAction* previousSliceAction_ = nullptr;
     QAction* showMarksAction_ = nullptr;
-    QAction* markBrowserPanelAction_ = nullptr;
     QAction* measureDistanceAction_ = nullptr;
     QAction* contrastAction_ = nullptr;
     QAction* colorTableAction_ = nullptr;
     QMenu* recentFilesMenu_ = nullptr;
+    QList<QAction*> bindableActions_; // every menu action whose shortcuts the user may rebind
 
-    // Mark Browser: one shared MarkTreeView content widget, hosted in either
-    // a standalone (non-modal) window or a docked side panel - see
-    // showMarkBrowser()/setMarkBrowserPlacement(). Only one of the two
-    // containers exists at a time.
+    // Mark Browser (View > Mark Browser, "o"): a dock the user can float.
     MarkTreeView* markTreeView_ = nullptr;
-    QDialog* markBrowserDialog_ = nullptr;
     QDockWidget* markBrowserDock_ = nullptr;
-    bool markBrowserAsPanel_ = false;
 
     // Tools > Adjust Contrast / Color Table: non-modal, lazily created (see
     // showMarkBrowser()'s pattern), kept alive across show()/hide() so their
@@ -113,16 +115,34 @@ private:
     ContrastDialog* contrastDialog_ = nullptr;
     ColorTableDialog* colorTableDialog_ = nullptr;
 
-    // View > Image Info ("i"): giv's info dialog, lazily created. While
-    // visible it is rebuilt on image/slice/scene changes and by
+    // View > Image Info ("i"): giv's info panel, a dock the user can float.
+    // While visible it is rebuilt on image/slice/scene changes and by
     // infoRefreshTimer_ (for state with no change signal: zoom, contrast).
-    InfoDialog* infoDialog_ = nullptr;
+    InfoPanel* infoPanel_ = nullptr;
+    QDockWidget* infoDock_ = nullptr;
     QTimer* infoRefreshTimer_ = nullptr;
+    // EXIF of the displayed file, re-read only when the path or mtime changes
+    // (the info panel rebuilds twice a second).
+    mutable QString exifPath_;
+    mutable QDateTime exifMtime_;
+    mutable std::vector<giv::ExifEntry> exifEntries_;
 
     std::unique_ptr<RpcServer> rpcServer_;
 
     void buildMenus();
     void buildStatusBar();
+    void registerBindableActions();
+    void buildInfoDock();
+
+    // Common setup for a dock whose View-menu toggle is its toggleViewAction():
+    // names it (saveState() needs that), adds it hidden, and gives it its own
+    // toggle shortcut that is live only while it floats. A floating dock is a
+    // separate window, so the main window's action shortcut doesn't reach it;
+    // and while docked, a second shortcut would be ambiguous with the action's.
+    void registerDock(QDockWidget* dock, const QString& objectName, Qt::DockWidgetArea area);
+    // Copies each registered dock's toggle-action shortcuts to its floating shortcut.
+    void applyDockShortcuts();
+    std::vector<std::pair<QDockWidget*, QShortcut*>> dockShortcuts_;
     void showAboutDialog();
 
     std::vector<std::string> lastPaths_;
@@ -175,15 +195,13 @@ private:
     // called whenever the displayed image changes.
     void updateSliceActionsEnabled();
 
-    void showMarkBrowser();
-    void setMarkBrowserPlacement(bool asPanel);
+    void buildMarkBrowserDock();
 
     void showContrastDialog();
     void showColorTableDialog();
     void updateContrastToolsEnabled();
 
-    void toggleInfoDialog();
-    void refreshInfoDialog();
+    void refreshInfoPanel();
     QString buildInfoText() const;
 };
 
