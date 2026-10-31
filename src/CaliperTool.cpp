@@ -78,9 +78,9 @@ vsg::dvec2 CaliperTool::windowToWorld(int32_t x, int32_t y) const
 
     double worldPerPixelX = (ortho->right - ortho->left) / static_cast<double>(lastExtent_.width);
     double worldPerPixelY = (ortho->top - ortho->bottom) / static_cast<double>(lastExtent_.height);
-    double wx = lookAt->center.x + flipSignX(camera_) * (static_cast<double>(x) - lastExtent_.width * 0.5) * worldPerPixelX;
-    double wy = lookAt->center.y + flipSignY(camera_) * (lastExtent_.height * 0.5 - static_cast<double>(y)) * worldPerPixelY;
-    return {wx, wy};
+    const vsg::dvec2 o = screenToViewOffset(camera_, (static_cast<double>(x) - lastExtent_.width * 0.5) * worldPerPixelX,
+                                            (lastExtent_.height * 0.5 - static_cast<double>(y)) * worldPerPixelY);
+    return {lookAt->center.x + o.x, lookAt->center.y + o.y};
 }
 
 double CaliperTool::worldPerPixel() const

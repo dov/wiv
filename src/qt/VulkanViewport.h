@@ -166,6 +166,11 @@ public:
     // _set_show_image and do_auto_contrast).
     void setFlipHorizontal(bool flip);
     void setFlipVertical(bool flip);
+    // View > Rotate Left/Right: turns the view a quarter turn about its
+    // centre. Re-fits unless the user has zoomed/panned; scrollbars are
+    // hidden while rotated.
+    void rotateLeft() { rotateView(1); }
+    void rotateRight() { rotateView(3); }
     void setVerticalZoomLock(bool lock);
     void setShowImage(bool show);
     void setAutoContrast(bool enable);
@@ -310,6 +315,11 @@ private:
     bool showPixelGrid_ = false;
     bool flipHorizontal_ = false;
     bool flipVertical_ = false;
+    int quarterTurns_ = 0; // counter-clockwise, 0..3
+    void rotateView(int quarters);
+    // The content size as seen on screen: width and height swap at an odd
+    // number of quarter turns.
+    void rotatedSize(double& w, double& h) const;
     bool verticalZoomLock_ = false;
     bool showImage_ = true;
     bool autoContrast_ = true;
