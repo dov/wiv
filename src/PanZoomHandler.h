@@ -61,6 +61,9 @@ public:
     void zoomAbout(double factor, int32_t x, int32_t y, const VkExtent2D& extent, bool animate = true,
                    bool replaceMotion = false);
 
+    // Pans as a mouse drag of (dxPix, dyPix) device pixels would.
+    void panByPixels(int32_t dxPix, int32_t dyPix, const VkExtent2D& extent) { pan(dxPix, dyPix, extent); }
+
     // Stops a zoom motion under way, leaving the view where it is. To be
     // called when something else sets the view.
     void cancelZoom() { zoomActive_ = false; }
