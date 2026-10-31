@@ -8,8 +8,12 @@
 //
 #include <QColor>
 #include <QDialog>
+#include <QKeySequenceEdit>
+#include <QList>
 
+class QAction;
 class QComboBox;
+class QTableWidget;
 class QPushButton;
 
 namespace givqt
@@ -20,7 +24,9 @@ class PreferencesDialog : public QDialog
     Q_OBJECT
 
 public:
-    explicit PreferencesDialog(QWidget* parent = nullptr);
+    // `bindable` are the actions listed in the Keyboard tab; each carries a
+    // "defaultShortcuts" (QStringList, portable text) and "menuTitle" property.
+    explicit PreferencesDialog(const QList<QAction*>& bindable, QWidget* parent = nullptr);
 
     QColor backgroundColor() const { return backgroundColor_; }
     int msaaSamples() const;
@@ -29,6 +35,11 @@ public:
     static QColor loadBackgroundColor();
     static int loadMsaaSamples();
 
+    // Overrides `action`'s shortcuts with the user's saved ones, if any
+    // (QSettings "shortcuts/<objectName>", portable text joined by newlines;
+    // an empty value means deliberately unbound).
+    static void applySavedShortcuts(QAction* action);
+
 signals:
     void backgroundColorChanged(const QColor& color);
 
@@ -36,6 +47,14 @@ private:
     QColor backgroundColor_;
     QPushButton* colorButton_ = nullptr;
     QComboBox* msaaCombo_ = nullptr;
+    QList<QAction*> bindable_;
+    QTableWidget* keyTable_ = nullptr;
+    // keyEdits_[row][col]: the editors of table row `row`.
+    QList<QList<QKeySequenceEdit*>> keyEdits_;
+
+    QWidget* buildKeyboardTab();
+    void fillKeyEditors(int row, const QStringList& keys);
+    bool saveShortcuts();
 
     void pickColor();
     void save();
