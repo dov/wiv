@@ -176,8 +176,10 @@ bool PanZoomHandler::screenToWorld(int32_t screenX, int32_t screenY, const vsg::
 
     double worldPerPixelX = (ortho->right - ortho->left) / static_cast<double>(extent.width);
     double worldPerPixelY = (ortho->top - ortho->bottom) / static_cast<double>(extent.height);
-    outX = lookAt->center.x + flipSignX(camera_) * (static_cast<double>(screenX) - extent.width * 0.5) * worldPerPixelX;
-    outY = -(lookAt->center.y + flipSignY(camera_) * (extent.height * 0.5 - static_cast<double>(screenY)) * worldPerPixelY);
+    const vsg::dvec2 o = screenToViewOffset(camera_, (static_cast<double>(screenX) - extent.width * 0.5) * worldPerPixelX,
+                                            (extent.height * 0.5 - static_cast<double>(screenY)) * worldPerPixelY);
+    outX = lookAt->center.x + o.x;
+    outY = -(lookAt->center.y + o.y);
     return true;
 }
 
@@ -199,10 +201,10 @@ void PanZoomHandler::pan(int32_t dxPix, int32_t dyPix, const VkExtent2D& extent)
     double worldPerPixelX = (ortho->right - ortho->left) / static_cast<double>(extent.width);
     double worldPerPixelY = (ortho->top - ortho->bottom) / static_cast<double>(extent.height);
 
-    double shiftX = -flipSignX(camera_) * static_cast<double>(dxPix) * worldPerPixelX;
-    double shiftY = flipSignY(camera_) * static_cast<double>(dyPix) * worldPerPixelY;
+    const vsg::dvec2 o =
+        screenToViewOffset(camera_, static_cast<double>(dxPix) * worldPerPixelX, -static_cast<double>(dyPix) * worldPerPixelY);
 
-    vsg::dvec3 shift(shiftX, shiftY, 0.0);
+    vsg::dvec3 shift(-o.x, -o.y, 0.0);
     lookAt->eye += shift;
     lookAt->center += shift;
 }
@@ -219,12 +221,12 @@ void PanZoomHandler::zoom(double factor, int32_t screenX, int32_t screenY, const
     double sxNorm = 2.0 * static_cast<double>(screenX) / static_cast<double>(extent.width) - 1.0;
     double syNorm = 1.0 - 2.0 * static_cast<double>(screenY) / static_cast<double>(extent.height);
 
-    double shiftX = flipSignX(camera_) * halfW * sxNorm * (1.0 - factor);
     // giv's vertical zoom lock: zoom only along X, leaving the Y scale and
     // pan untouched.
-    double shiftY = verticalLock ? 0.0 : flipSignY(camera_) * halfH * syNorm * (1.0 - factor);
+    const vsg::dvec2 o = screenToViewOffset(camera_, halfW * sxNorm * (1.0 - factor),
+                                            verticalLock ? 0.0 : halfH * syNorm * (1.0 - factor));
 
-    vsg::dvec3 shift(shiftX, shiftY, 0.0);
+    vsg::dvec3 shift(o.x, o.y, 0.0);
     lookAt->eye += shift;
     lookAt->center += shift;
 

@@ -672,6 +672,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
         flipProjection_ = giv::FlipOrthographic::create(-100.0, 100.0, -100.0, 100.0, 0.01, 100.0);
         flipProjection_->flipX = flipHorizontal_;
         flipProjection_->flipY = flipVertical_;
+        flipProjection_->quarterTurns = quarterTurns_;
         projection_ = flipProjection_;
         camera_ = vsg::Camera::create(projection_, lookAt, vsg::ViewportState::create(window_->windowAdapter->extent2D()));
     }
@@ -1338,6 +1339,7 @@ void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double m
 
     double dataW = std::max(maxX - minX, 2e-3);
     double dataH = std::max(maxY - minY, 2e-3);
+    rotatedSize(dataW, dataH);
     auto extent = window_->windowAdapter->extent2D();
     double canvasW = static_cast<double>(extent.width);
     double canvasH = static_cast<double>(extent.height);
@@ -1387,7 +1389,9 @@ bool VulkanViewport::computeFitView(FitView& out) const
     const double bMinY = -maxY, bMaxY = -minY;
     const auto extent = window_->windowAdapter->extent2D();
     if (extent.width == 0 || extent.height == 0) return false;
-    const double scale = containScale(extent.width, extent.height, std::max(maxX - minX, 2e-3), std::max(bMaxY - bMinY, 2e-3));
+    double dataW = std::max(maxX - minX, 2e-3), dataH = std::max(bMaxY - bMinY, 2e-3);
+    rotatedSize(dataW, dataH);
+    const double scale = containScale(extent.width, extent.height, dataW, dataH);
     out = {(minX + maxX) * 0.5, (bMinY + bMaxY) * 0.5, extent.width / (2.0 * scale), extent.height / (2.0 * scale)};
     return true;
 }
@@ -1554,7 +1558,7 @@ void VulkanViewport::updateScrollBars()
     if (caliperTool_) caliperTool_->refresh();
 
     if (!hScrollBar_ || !vScrollBar_) return;
-    if (!hasScene_ || !camera_ || !projection_ || !window_ || !window_->windowAdapter)
+    if (!hasScene_ || !camera_ || !projection_ || !window_ || !window_->windowAdapter || quarterTurns_ != 0)
     {
         hScrollBar_->setEnabled(false);
         vScrollBar_->setEnabled(false);
@@ -1657,7 +1661,9 @@ double VulkanViewport::fitScale() const
     double minX, minY, maxX, maxY;
     currentFitBoundsYDown(minX, minY, maxX, maxY);
     const auto extent = window_->windowAdapter->extent2D();
-    return containScale(extent.width, extent.height, std::max(maxX - minX, 2e-3), std::max(maxY - minY, 2e-3));
+    double dataW = std::max(maxX - minX, 2e-3), dataH = std::max(maxY - minY, 2e-3);
+    rotatedSize(dataW, dataH);
+    return containScale(extent.width, extent.height, dataW, dataH);
 }
 
 void VulkanViewport::stepZoomIn() { stepZoom(true); }
@@ -1916,6 +1922,28 @@ void VulkanViewport::setFlipVertical(bool flip)
     if (flipProjection_) flipProjection_->flipY = flip;
     viewer_->request();
     updateScrollBars();
+}
+
+void VulkanViewport::rotatedSize(double& w, double& h) const
+{
+    if (quarterTurns_ & 1) std::swap(w, h);
+}
+
+void VulkanViewport::rotateView(int quarters)
+{
+    quarterTurns_ = (quarterTurns_ + quarters) & 3;
+    spdlog::info("Rotate view: {} degrees", quarterTurns_ * 90);
+    if (flipProjection_) flipProjection_->quarterTurns = quarterTurns_;
+    if (!hasScene_) return;
+    // The fit changes with the orientation; a view the user has dialed in
+    // just turns about its centre.
+    if (!viewDirty_)
+        fitContentToWindow();
+    else
+    {
+        viewer_->request();
+        updateScrollBars();
+    }
 }
 
 void VulkanViewport::setVerticalZoomLock(bool lock)

@@ -277,6 +277,10 @@ void MainWindow::buildMenus()
     horizontalFlipAction_->setCheckable(true);
     verticalFlipAction_ = viewMenu->addAction("Vertical Flip", viewport_, &VulkanViewport::setFlipVertical);
     verticalFlipAction_->setCheckable(true);
+    auto rotateLeftAction = viewMenu->addAction("Rotate Left", viewport_, &VulkanViewport::rotateLeft);
+    rotateLeftAction->setShortcut(QKeySequence("L"));
+    auto rotateRightAction = viewMenu->addAction("Rotate Right", viewport_, &VulkanViewport::rotateRight);
+    rotateRightAction->setShortcut(QKeySequence("R"));
     verticalZoomLockAction_ = viewMenu->addAction("Vertical Zoom Lock", viewport_, &VulkanViewport::setVerticalZoomLock);
     verticalZoomLockAction_->setCheckable(true);
 
