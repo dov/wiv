@@ -1,3 +1,6 @@
+# Build a Unicode installer (ANSI targets are deprecated since NSIS 3.07).
+Unicode true
+
 #----- Include Modern UI -----#
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
@@ -15,7 +18,7 @@
 !endif
 
 Name "wiv"
-OutFile "Installwiv-v${VERSION}-${SHORTSHA1}.exe"
+OutFile "InstallWiv-v${VERSION}-${SHORTSHA1}.exe"
 BrandingText "wiv Installer"
 Icon "giv-logo.ico"
 UninstallIcon "giv-logo-install.ico"
