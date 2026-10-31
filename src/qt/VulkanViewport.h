@@ -247,6 +247,8 @@ public:
 
 signals:
     void sceneLoaded();
+    // Middle-click on the view; MainWindow toggles full screen.
+    void fullScreenToggleRequested();
     // The contrast window or colormap of the displayed image changed.
     void contrastChanged();
     // Local files dropped onto the view (see DropOverlay in the .cpp).

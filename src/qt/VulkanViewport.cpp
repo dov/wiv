@@ -921,6 +921,16 @@ bool VulkanViewport::eventFilter(QObject* watched, QEvent* event)
             }
             break;
         }
+        case QEvent::MouseButtonPress:
+        case QEvent::MouseButtonRelease:
+            // Middle (wheel) click toggles full screen; swallowed on both
+            // press and release so vsgQt never sees the button.
+            if (static_cast<QMouseEvent*>(event)->button() == Qt::MiddleButton)
+            {
+                if (event->type() == QEvent::MouseButtonPress) emit fullScreenToggleRequested();
+                return true;
+            }
+            break;
         case QEvent::NativeGesture: {
             // Touchpad pinch (macOS, Windows precision touchpads, Wayland; on
             // X11 only if the Qt/Xorg build delivers gestures).

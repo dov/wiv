@@ -236,6 +236,12 @@ void MainWindow::buildMenus()
     menuBarAction_->setChecked(true);
     menuBarAction_->setShortcut(QKeySequence("Ctrl+M"));
     addAction(menuBarAction_);
+    // Full screen: F11 or a middle click on the view. Added to the window so
+    // F11 still works while the menu bar is hidden.
+    auto fullScreenAction = viewMenu->addAction("Full Screen", this, &MainWindow::toggleFullScreen);
+    fullScreenAction->setShortcut(QKeySequence("F11"));
+    addAction(fullScreenAction);
+    connect(viewport_, &VulkanViewport::fullScreenToggleRequested, this, &MainWindow::toggleFullScreen);
     viewMenu->addSeparator();
     auto zoomInAction = viewMenu->addAction("Zoom In", viewport_, &VulkanViewport::zoomIn);
     zoomInAction->setShortcut(QKeySequence::ZoomIn);
@@ -1062,6 +1068,14 @@ void MainWindow::updateContrastToolsEnabled()
     bool hasRawSamples = img && img->sampleType != WIV_SAMPLE_NONE;
     contrastAction_->setEnabled(hasRawSamples);
     colorTableAction_->setEnabled(hasRawSamples);
+}
+
+void MainWindow::toggleFullScreen()
+{
+    if (isFullScreen())
+        showNormal();
+    else
+        showFullScreen();
 }
 
 } // namespace givqt
