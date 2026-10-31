@@ -24,10 +24,13 @@
 #include <QResizeEvent>
 #include <QSize>
 #include <QTimer>
+#include <QElapsedTimer>
+#include <QPointF>
 #include <QWidget>
 
 #include <algorithm>
 #include <array>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -36,6 +39,7 @@
 
 class QLabel;
 class QScrollBar;
+class QWheelEvent;
 class QVBoxLayout;
 
 namespace givqt
@@ -64,7 +68,30 @@ public:
     void zoomIn();
     void zoomOut();
     void fitToWindow();
+    // Like fitToWindow(), but glides there from the present view (pan and
+    // zoom together) instead of jumping - for the user-triggered fits (menu,
+    // key, double-click, step zoom onto the fit stop). fitToWindow() stays
+    // instant for the first fit after the window is shown.
+    void fitToWindowAnimated();
     void zoomActualPixels();
+
+    // Steps to the next zoom stop beyond the current scale: the fit scale,
+    // 1:1 and 4:1 (de-duplicated, sorted), zooming about the view's centre.
+    // Does nothing past the outermost stop. Stepping onto the fit stop
+    // re-fits (and so re-centres) the content.
+    void stepZoomIn();
+    void stepZoomOut();
+
+    // Double-click: 1:1 anchored at `devicePos` (device pixels in the
+    // window), or - if already at 1:1 - back to fit.
+    void toggleActualFit(QPointF devicePos);
+
+    // View > Remember View Per File: when on, the pan/zoom you left a file
+    // at (if you changed it from the fit) is restored when you come back to
+    // it - whether by next/previous image or by loading it again. Off, the
+    // views are forgotten.
+    void setRememberViewPerFile(bool enable);
+    bool rememberViewPerFile() const { return rememberView_; }
 
     // Spins the Qt event loop (bounded - never blocks indefinitely) until
     // window_->windowAdapter->extent2D() reflects this widget's actual
@@ -240,6 +267,10 @@ signals:
     // 2D image.
     void sliceChanged(int slice, int count);
 
+    // A horizontal two-finger touchpad swipe: +1 for next image (swipe left),
+    // -1 for previous.
+    void swipeNavigate(int direction);
+
 private:
     vsg::ref_ptr<vsg::WindowTraits> traits_;
     vsg::ref_ptr<GivViewer> viewer_;
@@ -334,6 +365,53 @@ private:
     int lastWidth_ = 0;
     int lastHeight_ = 0;
     bool autoFit_ = true; // see setAutoFit()
+
+    // ---- Zoom stops / per-file view memory ----
+    // Device pixels per world unit along X (1.0 == 1:1), and the same for the
+    // fit-to-window ("contain") view of the current content.
+    double viewScale() const;
+    double fitScale() const;
+    void stepZoom(bool in);
+
+    // The view a fit produces (see computeFitView()), and the animation that
+    // glides the camera there.
+    struct FitView
+    {
+        double centerX, centerY, halfW, halfH;
+    };
+    bool computeFitView(FitView& out) const;
+    struct ViewAnimation
+    {
+        bool active = false;
+        FitView from{}, to{};
+        double duration = 0.0;
+        QElapsedTimer clock;
+    } viewAnim_;
+    QTimer* viewAnimTimer_ = nullptr;
+    void startViewAnimation(const FitView& to);
+    void tickViewAnimation();
+    void cancelViewAnimation();
+
+    // True once the user (not a fit or a window resize) has changed the view
+    // since the last fit; only such views are worth remembering.
+    bool viewDirty_ = false;
+    bool rememberView_ = false;
+    struct SavedView
+    {
+        double centerX, centerY;
+        double scaleX, scaleY; // device pixels per world unit, so a resized window keeps the zoom
+    };
+    std::map<std::string, SavedView> savedViews_;
+    std::string viewKeyFallback_; // first loaded path, for scenes with no image of their own
+    std::string viewKey() const;
+    void saveCurrentView();
+    bool tryRestoreView();
+
+    // Horizontal touchpad swipe -> swipeNavigate(); see handleSwipe().
+    bool handleSwipe(QWheelEvent* we);
+    double swipeAccum_ = 0.0;
+    bool swipeFired_ = false;
+    QElapsedTimer swipeClock_;
     // True while switchToImage() rebuilds the scene before re-fitting: the
     // interim scrollbar state (old zoom, new bounds) is never shown, avoiding a
     // show-then-hide flicker.

@@ -1,5 +1,7 @@
 #include "VulkanViewport.h"
 
+#include <QMouseEvent>
+#include <QNativeGestureEvent>
 #include <QWheelEvent>
 #include "AppPaths.h"
 #include "PathUtils.h"
@@ -247,6 +249,7 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
         double shift = newCenterX - lookAt->center.x;
         lookAt->eye.x += shift;
         lookAt->center.x += shift;
+        viewDirty_ = true;
         viewer_->request();
     });
     connect(vScrollBar_, &QScrollBar::valueChanged, this, [this](int value) {
@@ -264,6 +267,7 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
         double shift = newCenterY - lookAt->center.y;
         lookAt->eye.y += shift;
         lookAt->center.y += shift;
+        viewDirty_ = true;
         viewer_->request();
     });
 
@@ -375,6 +379,7 @@ void VulkanViewport::handleViewportResize()
 // once with no later resizeEvent to fix it up).
 void VulkanViewport::applyExtent(VkExtent2D extent)
 {
+    cancelViewAnimation(); // its targets were computed for the old extent
     syncRenderExtent(extent);
 
     // The visible half-extents just grow/shrink to match the new size,
@@ -439,6 +444,8 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
         if (error) *error = "Vulkan viewport is not yet initialized";
         return false;
     }
+
+    saveCurrentView(); // the view of the file being replaced (see setRememberViewPerFile())
 
     giv::SceneData newScene;
     auto parseStart = std::chrono::steady_clock::now();
@@ -532,7 +539,9 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     decodeCurrentImage();
 
     auto buildStart = std::chrono::steady_clock::now();
+    viewKeyFallback_ = paths.empty() ? std::string() : paths.front();
     if (!rebuildSceneGraph(error, /*isInitialLoad=*/true)) return false;
+    tryRestoreView();
     double buildMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - buildStart).count();
 
     spdlog::info(
@@ -685,7 +694,11 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
 
     panZoom_ = giv::PanZoomHandler::create(camera_);
     panZoom_->onCursorMove = [this](double x, double y) { emit cursorWorldPosition(x, y); };
-    panZoom_->onViewChanged = [this]() { updateScrollBars(); };
+    panZoom_->onViewChanged = [this]() {
+        cancelViewAnimation(); // user input takes over
+        viewDirty_ = true;
+        updateScrollBars();
+    };
     panZoom_->onClick = [this](double x, double y, int button, int modifiers) { emit clicked(x, y, button, modifiers); };
     panZoom_->verticalLock = verticalZoomLock_;
     // A wheel step zooms over a short motion: tick it from a timer (the
@@ -880,18 +893,89 @@ void VulkanViewport::setDatasetsVisible(const std::vector<size_t>& indices, bool
 bool VulkanViewport::eventFilter(QObject* watched, QEvent* event)
 {
     if (watched == container_ && event->type() == QEvent::Resize) handleViewportResize();
-    if (watched == window_ && event->type() == QEvent::Wheel)
+    if (watched == window_)
     {
-        auto* we = static_cast<QWheelEvent*>(event);
-        if (we->modifiers() & Qt::AltModifier)
+        switch (event->type())
         {
-            QPoint d = we->angleDelta();
-            int amount = d.y() != 0 ? d.y() : d.x();
-            if (amount != 0) scaleQuivers(amount > 0 ? 1.2 : 0.8);
-            return true;
+        case QEvent::Wheel: {
+            auto* we = static_cast<QWheelEvent*>(event);
+            if (we->modifiers() & Qt::AltModifier)
+            {
+                QPoint d = we->angleDelta();
+                int amount = d.y() != 0 ? d.y() : d.x();
+                if (amount != 0) scaleQuivers(amount > 0 ? 1.2 : 0.8);
+                return true;
+            }
+            if (handleSwipe(we)) return true;
+            break;
+        }
+        case QEvent::MouseButtonDblClick: {
+            // Left double-click toggles 1:1 / fit. Swallowed so vsgQt doesn't
+            // turn it into a second press; not while measuring, where the
+            // left button belongs to the caliper.
+            auto* me = static_cast<QMouseEvent*>(event);
+            if (me->button() == Qt::LeftButton && me->modifiers() == Qt::NoModifier && hasScene_ && !measureEnabled_)
+            {
+                toggleActualFit(me->position() * window_->devicePixelRatio());
+                return true;
+            }
+            break;
+        }
+        case QEvent::NativeGesture: {
+            // Touchpad pinch (macOS, Windows precision touchpads, Wayland; on
+            // X11 only if the Qt/Xorg build delivers gestures).
+            auto* ge = static_cast<QNativeGestureEvent*>(event);
+            if (ge->gestureType() == Qt::BeginNativeGesture || ge->gestureType() == Qt::EndNativeGesture)
+                spdlog::info("Native gesture {}", ge->gestureType() == Qt::BeginNativeGesture ? "begin" : "end");
+            if (ge->gestureType() == Qt::ZoomNativeGesture && panZoom_ && window_->windowAdapter)
+            {
+                // value() is the relative change of scale; the projection's
+                // half-extents scale inversely.
+                const double factor = std::clamp(1.0 / (1.0 + ge->value()), 0.5, 2.0);
+                const QPointF p = ge->position() * window_->devicePixelRatio();
+                panZoom_->zoomAbout(factor, static_cast<int32_t>(p.x()), static_cast<int32_t>(p.y()),
+                                    window_->windowAdapter->extent2D(), /*animate=*/false);
+                viewer_->request();
+                return true;
+            }
+            break;
+        }
+        default:
+            break;
         }
     }
     return QWidget::eventFilter(watched, event);
+}
+
+// A horizontal two-finger touchpad swipe navigates images; vertical scrolls
+// stay with the wheel zoom. Only scrolls that look like a touchpad's (they
+// carry a scroll phase or pixel deltas - wheel steps carry neither) count.
+// One swipe, momentum included, navigates once: events less than 250 ms
+// apart belong to the same swipe, and all of them are swallowed so a stray
+// vertical component doesn't zoom.
+bool VulkanViewport::handleSwipe(QWheelEvent* we)
+{
+    const bool touchpad = we->phase() != Qt::NoScrollPhase || !we->pixelDelta().isNull();
+    if (!touchpad) return false;
+    const QPoint d = !we->pixelDelta().isNull() ? we->pixelDelta() : we->angleDelta();
+
+    const bool inSwipe = swipeClock_.isValid() && swipeClock_.elapsed() < 250 && we->phase() != Qt::ScrollBegin;
+    if (!inSwipe && std::abs(d.x()) <= 2 * std::abs(d.y())) return false;
+
+    if (!inSwipe)
+    {
+        swipeAccum_ = 0.0;
+        swipeFired_ = false;
+    }
+    swipeClock_.restart();
+    swipeAccum_ += d.x();
+    constexpr double kThreshold = 150.0;
+    if (!swipeFired_ && std::abs(swipeAccum_) >= kThreshold)
+    {
+        swipeFired_ = true;
+        emit swipeNavigate(swipeAccum_ < 0 ? 1 : -1);
+    }
+    return true;
 }
 
 void VulkanViewport::scaleQuivers(double factor)
@@ -1166,6 +1250,7 @@ void VulkanViewport::decodeCurrentImage()
 // content instead.
 void VulkanViewport::switchToImage(int index)
 {
+    saveCurrentView(); // the view of the image being left
     if (!decodeImageAt(index))
     {
         spdlog::error("Failed to decode {}", loadedImageNames_[static_cast<size_t>(index)]);
@@ -1182,7 +1267,11 @@ void VulkanViewport::switchToImage(int index)
         updateScrollBars();
         return;
     }
-    if (autoFit_)
+    if (tryRestoreView())
+    {
+        // back to where the user left this image
+    }
+    else if (autoFit_)
     {
         fitContentToWindow();
     }
@@ -1216,8 +1305,21 @@ void VulkanViewport::syncRenderExtent(VkExtent2D extent)
     renderGraph_->viewportState->set(0, 0, extent.width, extent.height);
 }
 
+namespace
+{
+// "Contain": the scale (device pixels per world unit) at which data of size
+// dataW x dataH just fits a canvasW x canvasH canvas.
+double containScale(double canvasW, double canvasH, double dataW, double dataH)
+{
+    double scale = std::min(canvasW / dataW, canvasH / dataH);
+    if (scale <= 0.0) scale = std::min(canvasW, canvasH) / std::max(dataW, dataH);
+    return scale;
+}
+} // namespace
+
 void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double maxY)
 {
+    cancelViewAnimation();
     if (panZoom_) panZoom_->cancelZoom();
     if (!projection_ || !window_ || !window_->windowAdapter) return;
 
@@ -1234,11 +1336,7 @@ void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double m
 
     // "Contain": scale to the smaller of scaleX/scaleY so the whole content
     // is visible, possibly with letterbox margins on one axis.
-    double scaleX = canvasW / dataW;
-    double scaleY = canvasH / dataH;
-    double scale = std::min(scaleX, scaleY);
-    if (scale <= 0.0)
-        scale = std::min(canvasW, canvasH) / std::max(dataW, dataH);
+    double scale = containScale(canvasW, canvasH, dataW, dataH);
 
     double halfW = canvasW / (2.0 * scale);
     double halfH = canvasH / (2.0 * scale);
@@ -1257,6 +1355,7 @@ void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double m
     lastWidth_ = static_cast<int>(std::lround(canvasW));
     lastHeight_ = static_cast<int>(std::lround(canvasH));
 
+    viewDirty_ = false; // a fit is the default view, nothing to remember
     viewer_->request();
     updateScrollBars();
 }
@@ -1265,6 +1364,104 @@ void VulkanViewport::fitToWindow()
 {
     spdlog::info("Fit to Window");
     fitContentToWindow();
+}
+
+// The view fitContentToWindow() would produce right now, without applying it
+// (same maths as fitToBounds()).
+bool VulkanViewport::computeFitView(FitView& out) const
+{
+    if (!hasScene_ || !window_ || !window_->windowAdapter) return false;
+    double minX, minY, maxX, maxY;
+    currentFitBoundsYDown(minX, minY, maxX, maxY);
+    // fitToBounds()'s arguments: (minX, -maxY, maxX, -minY).
+    const double bMinY = -maxY, bMaxY = -minY;
+    const auto extent = window_->windowAdapter->extent2D();
+    if (extent.width == 0 || extent.height == 0) return false;
+    const double scale = containScale(extent.width, extent.height, std::max(maxX - minX, 2e-3), std::max(bMaxY - bMinY, 2e-3));
+    out = {(minX + maxX) * 0.5, (bMinY + bMaxY) * 0.5, extent.width / (2.0 * scale), extent.height / (2.0 * scale)};
+    return true;
+}
+
+void VulkanViewport::fitToWindowAnimated()
+{
+    spdlog::info("Fit to Window (animated)");
+    FitView target;
+    if (!computeFitView(target))
+    {
+        fitContentToWindow();
+        return;
+    }
+    startViewAnimation(target);
+}
+
+// Glides the camera to `to`: zoom is interpolated geometrically (a constant
+// ratio per unit time looks uniform), and the centre so that the world point
+// that stays fixed on screen is the one a wheel zoom to the same scale would
+// keep fixed - the move then reads as one zoom, not a zoom plus a slide.
+// Ends by snapping to the exact fit, which also clears viewDirty_.
+void VulkanViewport::startViewAnimation(const FitView& to)
+{
+    auto lookAt = camera_ ? camera_->viewMatrix.cast<vsg::LookAt>() : vsg::ref_ptr<vsg::LookAt>();
+    const double duration = panZoom_ ? panZoom_->zoomDuration() * 1.5 : 0.0;
+    if (!lookAt || !projection_ || duration <= 0.0)
+    {
+        fitContentToWindow();
+        return;
+    }
+    cancelViewAnimation();
+    if (panZoom_) panZoom_->cancelZoom();
+    viewAnim_.from = {lookAt->center.x, lookAt->center.y, (projection_->right - projection_->left) * 0.5,
+                      (projection_->top - projection_->bottom) * 0.5};
+    viewAnim_.to = to;
+    viewAnim_.duration = duration;
+    viewAnim_.clock.start();
+    viewAnim_.active = true;
+    if (!viewAnimTimer_)
+    {
+        viewAnimTimer_ = new QTimer(this);
+        viewAnimTimer_->setInterval(8);
+        connect(viewAnimTimer_, &QTimer::timeout, this, &VulkanViewport::tickViewAnimation);
+    }
+    viewAnimTimer_->start();
+}
+
+void VulkanViewport::tickViewAnimation()
+{
+    auto lookAt = camera_ ? camera_->viewMatrix.cast<vsg::LookAt>() : vsg::ref_ptr<vsg::LookAt>();
+    if (!viewAnim_.active || !lookAt || !projection_)
+    {
+        cancelViewAnimation();
+        return;
+    }
+    const double u = std::min(viewAnim_.clock.elapsed() / 1000.0 / viewAnim_.duration, 1.0);
+    if (u >= 1.0)
+    {
+        cancelViewAnimation();
+        fitContentToWindow();
+        return;
+    }
+    const double e = u * u * (3.0 - 2.0 * u); // smoothstep: eases in and out
+    const FitView &a = viewAnim_.from, &b = viewAnim_.to;
+    const double halfW = a.halfW * std::pow(b.halfW / a.halfW, e);
+    const double halfH = a.halfH * std::pow(b.halfH / a.halfH, e);
+    const double dHalf = a.halfW - b.halfW;
+    const double w = std::abs(dHalf) > 1e-9 * a.halfW ? (a.halfW - halfW) / dHalf : e;
+    const double cx = a.centerX + (b.centerX - a.centerX) * w;
+    const double cy = a.centerY + (b.centerY - a.centerY) * w;
+    lookAt->eye = vsg::dvec3(cx, cy, 1.0);
+    lookAt->center = vsg::dvec3(cx, cy, 0.0);
+    projection_->left = -halfW;
+    projection_->right = halfW;
+    projection_->bottom = -halfH;
+    projection_->top = halfH;
+    viewer_->request();
+    updateScrollBars();
+}
+
+void VulkanViewport::cancelViewAnimation()
+{
+    viewAnim_.active = false;
+    if (viewAnimTimer_) viewAnimTimer_->stop();
 }
 
 // window_->resize() (called from resizeEvent() to keep the embedded native
@@ -1383,7 +1580,9 @@ void VulkanViewport::updateScrollBars()
 
 void VulkanViewport::zoomIn()
 {
+    cancelViewAnimation();
     if (panZoom_) panZoom_->cancelZoom();
+    viewDirty_ = true;
     spdlog::info("Zoom In");
     if (!projection_) return;
     double factor = 0.8;
@@ -1399,7 +1598,9 @@ void VulkanViewport::zoomIn()
 
 void VulkanViewport::zoomOut()
 {
+    cancelViewAnimation();
     if (panZoom_) panZoom_->cancelZoom();
+    viewDirty_ = true;
     spdlog::info("Zoom Out");
     if (!projection_) return;
     double factor = 1.25;
@@ -1415,7 +1616,9 @@ void VulkanViewport::zoomOut()
 
 void VulkanViewport::zoomActualPixels()
 {
+    cancelViewAnimation();
     if (panZoom_) panZoom_->cancelZoom();
+    viewDirty_ = true;
     spdlog::info("Zoom 1:1");
     if (!projection_ || !window_ || !window_->windowAdapter) return;
     auto extent = window_->windowAdapter->extent2D();
@@ -1429,6 +1632,146 @@ void VulkanViewport::zoomActualPixels()
     projection_->top = halfH;
     viewer_->request();
     updateScrollBars();
+}
+
+double VulkanViewport::viewScale() const
+{
+    if (!projection_ || !window_ || !window_->windowAdapter) return 0.0;
+    const double width = projection_->right - projection_->left;
+    return width > 0.0 ? window_->windowAdapter->extent2D().width / width : 0.0;
+}
+
+double VulkanViewport::fitScale() const
+{
+    if (!window_ || !window_->windowAdapter) return 0.0;
+    double minX, minY, maxX, maxY;
+    currentFitBoundsYDown(minX, minY, maxX, maxY);
+    const auto extent = window_->windowAdapter->extent2D();
+    return containScale(extent.width, extent.height, std::max(maxX - minX, 2e-3), std::max(maxY - minY, 2e-3));
+}
+
+void VulkanViewport::stepZoomIn() { stepZoom(true); }
+void VulkanViewport::stepZoomOut() { stepZoom(false); }
+
+void VulkanViewport::stepZoom(bool in)
+{
+    if (!hasScene_ || !panZoom_ || !window_ || !window_->windowAdapter) return;
+    const auto extent = window_->windowAdapter->extent2D();
+    const double current = viewScale();
+    const double fit = fitScale();
+    if (extent.width == 0 || extent.height == 0 || current <= 0.0 || fit <= 0.0) return;
+
+    constexpr double kEps = 1e-3; // relative: "at" a stop
+    std::vector<double> stops{fit, 1.0, 4.0};
+    std::sort(stops.begin(), stops.end());
+    stops.erase(std::unique(stops.begin(), stops.end(),
+                            [](double a, double b) { return std::abs(a - b) <= kEps * std::max(a, b); }),
+                stops.end());
+
+    double target = 0.0;
+    if (in)
+    {
+        for (double s : stops)
+            if (s > current * (1.0 + kEps)) { target = s; break; }
+    }
+    else
+    {
+        for (auto it = stops.rbegin(); it != stops.rend(); ++it)
+            if (*it < current * (1.0 - kEps)) { target = *it; break; }
+    }
+    if (target <= 0.0) return; // already at the outermost stop
+    spdlog::info("Step zoom {} to {:.3f}", in ? "in" : "out", target);
+
+    if (std::abs(target - fit) <= kEps * fit)
+    {
+        fitToWindowAnimated(); // also re-centres, which a plain zoom wouldn't
+        return;
+    }
+    cancelViewAnimation();
+    viewDirty_ = true;
+    panZoom_->zoomAbout(current / target, static_cast<int32_t>(extent.width / 2), static_cast<int32_t>(extent.height / 2),
+                        extent, /*animate=*/true, /*replaceMotion=*/true);
+}
+
+void VulkanViewport::toggleActualFit(QPointF devicePos)
+{
+    if (!hasScene_ || !panZoom_ || !window_ || !window_->windowAdapter) return;
+    const double current = viewScale();
+    if (current <= 0.0) return;
+    if (std::abs(current - 1.0) < 1e-3)
+    {
+        fitToWindowAnimated();
+        return;
+    }
+    cancelViewAnimation();
+    viewDirty_ = true;
+    panZoom_->zoomAbout(current, static_cast<int32_t>(devicePos.x()), static_cast<int32_t>(devicePos.y()),
+                        window_->windowAdapter->extent2D(), /*animate=*/true, /*replaceMotion=*/true);
+}
+
+void VulkanViewport::setRememberViewPerFile(bool enable)
+{
+    rememberView_ = enable;
+    spdlog::info("Remember View Per File set to {}", enable);
+    if (!enable) savedViews_.clear();
+}
+
+std::string VulkanViewport::viewKey() const
+{
+    std::string name = currentImageName();
+    return name.empty() ? viewKeyFallback_ : name;
+}
+
+// Remembers the displayed file's view if the user changed it (a fit view is
+// the default and not worth keeping - and would be wrong after a resize).
+void VulkanViewport::saveCurrentView()
+{
+    if (!rememberView_ || !hasScene_ || !camera_ || !projection_ || !window_ || !window_->windowAdapter) return;
+    const std::string key = viewKey();
+    if (key.empty()) return;
+    auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
+    const auto extent = window_->windowAdapter->extent2D();
+    const double width = projection_->right - projection_->left;
+    const double height = projection_->top - projection_->bottom;
+    if (!viewDirty_ || !lookAt || extent.width == 0 || extent.height == 0 || width <= 0.0 || height <= 0.0)
+    {
+        savedViews_.erase(key);
+        return;
+    }
+    savedViews_[key] = {lookAt->center.x, lookAt->center.y, extent.width / width, extent.height / height};
+}
+
+// Puts back the view remembered for the file now displayed, if any. The
+// scale is stored in device pixels per world unit, so the zoom survives a
+// window resize since. Mirrors the tail of fitToBounds().
+bool VulkanViewport::tryRestoreView()
+{
+    if (!rememberView_ || !camera_ || !projection_ || !window_ || !window_->windowAdapter) return false;
+    auto it = savedViews_.find(viewKey());
+    if (it == savedViews_.end()) return false;
+    auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
+    const auto extent = window_->windowAdapter->extent2D();
+    if (!lookAt || extent.width == 0 || extent.height == 0) return false;
+    const SavedView& v = it->second;
+
+    cancelViewAnimation();
+    if (panZoom_) panZoom_->cancelZoom();
+    syncRenderExtent(extent);
+    const double halfW = extent.width / (2.0 * v.scaleX);
+    const double halfH = extent.height / (2.0 * v.scaleY);
+    lookAt->eye = vsg::dvec3(v.centerX, v.centerY, 1.0);
+    lookAt->center = vsg::dvec3(v.centerX, v.centerY, 0.0);
+    projection_->left = -halfW;
+    projection_->right = halfW;
+    projection_->bottom = -halfH;
+    projection_->top = halfH;
+    lastWidth_ = static_cast<int>(extent.width);
+    lastHeight_ = static_cast<int>(extent.height);
+    viewDirty_ = true; // a restored view is a user view
+    viewer_->request();
+    updateScrollBars();
+    spdlog::info("Restored remembered view of {}", it->first);
+    return true;
 }
 
 bool VulkanViewport::applyGivString(const std::string& text, bool append, QString* error)

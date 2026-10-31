@@ -101,6 +101,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     buildMenus();
     buildStatusBar();
 
+    // A horizontal two-finger touchpad swipe pages through the sibling files.
+    connect(viewport_, &VulkanViewport::swipeNavigate, this, [this](int direction) {
+        if (direction > 0 && nextImageAction_->isEnabled())
+            goNextImage();
+        else if (direction < 0 && previousImageAction_->isEnabled())
+            goPreviousImage();
+    });
+
     // Dock layout (position, floating, visibility) from the previous run.
     {
         QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
@@ -233,10 +241,16 @@ void MainWindow::buildMenus()
     zoomInAction->setShortcut(QKeySequence::ZoomIn);
     auto zoomOutAction = viewMenu->addAction("Zoom Out", viewport_, &VulkanViewport::zoomOut);
     zoomOutAction->setShortcut(QKeySequence::ZoomOut);
-    auto fitAction = viewMenu->addAction("Fit to Window", viewport_, &VulkanViewport::fitToWindow);
+    auto fitAction = viewMenu->addAction("Fit to Window", viewport_, &VulkanViewport::fitToWindowAnimated);
     fitAction->setShortcuts({QKeySequence("Ctrl+0"), QKeySequence("F")});
     auto actualPixelsAction = viewMenu->addAction("Actual Pixels (1:1)", viewport_, &VulkanViewport::zoomActualPixels);
     actualPixelsAction->setShortcut(QKeySequence("1"));
+    // Steps between the fit, 1:1 and 4:1 zoom stops. PgUp/PgDown are taken
+    // by Next/Previous Image in File, hence the Ctrl; rebindable like all.
+    auto stepZoomInAction = viewMenu->addAction("Step Zoom In", viewport_, &VulkanViewport::stepZoomIn);
+    stepZoomInAction->setShortcut(QKeySequence("Ctrl+PgUp"));
+    auto stepZoomOutAction = viewMenu->addAction("Step Zoom Out", viewport_, &VulkanViewport::stepZoomOut);
+    stepZoomOutAction->setShortcut(QKeySequence("Ctrl+PgDown"));
 
     balloonAction_ = viewMenu->addAction("Balloon Tooltips", viewport_, &VulkanViewport::toggleBalloon);
     balloonAction_->setCheckable(true);
@@ -289,6 +303,11 @@ void MainWindow::buildMenus()
     autoFitAction_ = viewMenu->addAction("Auto Fit", viewport_, &VulkanViewport::toggleAutoFit);
     autoFitAction_->setCheckable(true);
     autoFitAction_->setChecked(true);
+
+    // Returning to a file (by next/previous image or by loading it again)
+    // restores the pan/zoom it was left at, if the user had changed it.
+    rememberViewAction_ = viewMenu->addAction("Remember View Per File", viewport_, &VulkanViewport::setRememberViewPerFile);
+    rememberViewAction_->setCheckable(true);
 
     autoContrastAction_ = viewMenu->addAction("Auto Contrast", viewport_, &VulkanViewport::setAutoContrast);
     autoContrastAction_->setCheckable(true);

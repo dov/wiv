@@ -92,6 +92,7 @@ private:
     QAction* forceOpaqueAction_ = nullptr;
     QAction* pixelGridAction_ = nullptr;
     QAction* autoFitAction_ = nullptr;
+    QAction* rememberViewAction_ = nullptr;
     QAction* nextImageAction_ = nullptr;
     QAction* previousImageAction_ = nullptr;
     QAction* nextFileImageAction_ = nullptr;

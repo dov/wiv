@@ -116,21 +116,26 @@ void PanZoomHandler::apply(vsg::ScrollWheelEvent& event)
     // lastX_/lastY_, which apply(MoveEvent&) keeps current on every hover
     // move (not just while dragging); (0,0) only if a scroll arrives before
     // any move has ever been reported, which zooms around the top-left.
-    auto extent = window->extent2D();
-    if (zoomDuration_ <= 0.0)
+    zoomAbout(factor, lastX_, lastY_, window->extent2D());
+}
+
+void PanZoomHandler::zoomAbout(double factor, int32_t x, int32_t y, const VkExtent2D& extent, bool animate,
+                               bool replaceMotion)
+{
+    if (!animate || zoomDuration_ <= 0.0)
     {
         zoomActive_ = false;
-        zoom(factor, lastX_, lastY_, extent);
+        zoom(factor, x, y, extent);
         if (onViewChanged) onViewChanged();
         return;
     }
 
     // A new motion from the present view to the destination of the previous
     // one (if it is still under way) zoomed once more.
-    zoomTotal_ = (zoomActive_ ? zoomTotal_ / zoomApplied_ : 1.0) * factor;
+    zoomTotal_ = (zoomActive_ && !replaceMotion ? zoomTotal_ / zoomApplied_ : 1.0) * factor;
     zoomApplied_ = 1.0;
-    zoomX_ = lastX_;
-    zoomY_ = lastY_;
+    zoomX_ = x;
+    zoomY_ = y;
     zoomExtent_ = extent;
     zoomStart_ = Clock::now();
     zoomActive_ = true;
