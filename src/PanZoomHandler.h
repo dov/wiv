@@ -51,6 +51,16 @@ public:
     // whether the motion goes on, in which case another frame is needed.
     bool advance();
 
+    // Zooms the view by `factor` (<1 zooms in, as everywhere in this file)
+    // about the screen point (x, y), in device pixels. `animate` runs it over
+    // the zoom duration like a wheel step; otherwise it is applied at once
+    // (pinch gestures, which are already continuous). `replaceMotion` makes
+    // an animated zoom start from the present view rather than compound with
+    // the destination of one under way - for callers that computed `factor`
+    // against the present view's scale.
+    void zoomAbout(double factor, int32_t x, int32_t y, const VkExtent2D& extent, bool animate = true,
+                   bool replaceMotion = false);
+
     // Stops a zoom motion under way, leaving the view where it is. To be
     // called when something else sets the view.
     void cancelZoom() { zoomActive_ = false; }
