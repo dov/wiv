@@ -183,6 +183,7 @@ private:
     // directoryFileIndex_ to match. No-op (clears both) unless exactly one
     // file was just loaded.
     void updateDirectoryFileList(const std::vector<std::string>& paths);
+    void toggleFullScreen();
 
     // Next/Previous Image handlers wired to the QActions instead of directly
     // to VulkanViewport::nextImage()/previousImage(): page through
