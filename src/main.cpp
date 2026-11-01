@@ -28,11 +28,13 @@ class KeyLogger : public QObject
 public:
     bool eventFilter(QObject*, QEvent* event) override
     {
-        if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease)
+        if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease ||
+            event->type() == QEvent::ShortcutOverride)
         {
             auto* ke = static_cast<QKeyEvent*>(event);
-            spdlog::info("Key {} key=0x{:x} text='{}' mods=0x{:x} vk=0x{:x} scan=0x{:x} nativeMods=0x{:x} app mods=0x{:x}",
-                         event->type() == QEvent::KeyPress ? "press" : "release", ke->key(),
+            spdlog::info("Key {} repeat={} ts={} key=0x{:x} text='{}' mods=0x{:x} vk=0x{:x} scan=0x{:x} nativeMods=0x{:x} app mods=0x{:x}",
+                         event->type() == QEvent::KeyPress ? "press" : event->type() == QEvent::KeyRelease ? "release" : "shortcut-override",
+                         ke->isAutoRepeat(), ke->timestamp(), ke->key(),
                          ke->text().toStdString(), static_cast<int>(ke->modifiers()),
                          ke->nativeVirtualKey(), ke->nativeScanCode(), ke->nativeModifiers(),
                          static_cast<int>(QGuiApplication::keyboardModifiers()));

@@ -50,6 +50,8 @@ using SniffFileFn = bool (*)(const char*);
 using LoadImageFn = WivPluginImage* (*)(const char*, char**);
 using PageCountFn = int (*)(const char*);
 using LoadPageFn = WivPluginImage* (*)(const char*, int, char**);
+using LoadPreviewFn = WivPluginImage* (*)(const char*, int, int*, int*, char**);
+using LoadCancellableFn = WivPluginImage* (*)(const char*, int, const volatile int*, char**);
 using FreeImageFn = void (*)(WivPluginImage*);
 using FreeErrorFn = void (*)(char*);
 
@@ -62,6 +64,8 @@ struct Plugin
     LoadImageFn loadImage = nullptr;
     PageCountFn pageCount = nullptr; // optional, with loadPage
     LoadPageFn loadPage = nullptr;
+    LoadCancellableFn loadCancellable = nullptr; // optional
+    LoadPreviewFn loadPreview = nullptr;         // optional
     FreeImageFn freeImage = nullptr;
     FreeErrorFn freeError = nullptr;
 };
@@ -229,6 +233,8 @@ std::vector<Plugin>& loadedPlugins()
         plugin.pageCount = reinterpret_cast<PageCountFn>(dlsym(handle, "wiv_plugin_page_count"));
         plugin.loadPage = reinterpret_cast<LoadPageFn>(dlsym(handle, "wiv_plugin_load_page"));
         if (!plugin.pageCount || !plugin.loadPage) plugin.pageCount = nullptr, plugin.loadPage = nullptr;
+        plugin.loadCancellable = reinterpret_cast<LoadCancellableFn>(dlsym(handle, "wiv_plugin_load_page_cancellable"));
+        plugin.loadPreview = reinterpret_cast<LoadPreviewFn>(dlsym(handle, "wiv_plugin_load_preview"));
         plugin.freeImage = reinterpret_cast<FreeImageFn>(dlsym(handle, "wiv_plugin_free_image"));
         plugin.freeError = reinterpret_cast<FreeErrorFn>(dlsym(handle, "wiv_plugin_free_error"));
 
@@ -248,8 +254,9 @@ std::vector<Plugin>& loadedPlugins()
 
 } // namespace
 
-std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename, int page)
+std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename, int page, const volatile int* cancel)
 {
+    const auto cancelled = [cancel]() { return cancel && *cancel != 0; };
     // Sniffing opens the file, so only fall back to it once no plugin
     // claims the name; a suffix match is still preferred.
     const bool claimedBySuffix = isSupported(filename);
@@ -261,11 +268,25 @@ std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename, in
 
         char* errorMsg = nullptr;
         const int pageCount = plugin.pageCount ? std::max(1, plugin.pageCount(filename.c_str())) : 1;
-        WivPluginImage* img = (plugin.loadPage && page > 0 && page < pageCount)
-                                   ? plugin.loadPage(filename.c_str(), page, &errorMsg)
-                                   : plugin.loadImage(filename.c_str(), &errorMsg);
+        if (cancelled())
+            return std::nullopt;
+        const int wantedPage = (plugin.loadPage && page > 0 && page < pageCount) ? page : 0;
+        WivPluginImage* img = plugin.loadCancellable ? plugin.loadCancellable(filename.c_str(), wantedPage, cancel, &errorMsg)
+                               : wantedPage > 0      ? plugin.loadPage(filename.c_str(), wantedPage, &errorMsg)
+                                                     : plugin.loadImage(filename.c_str(), &errorMsg);
+        if (img && cancelled())
+        {
+            plugin.freeImage(img);
+            img = nullptr;
+        }
         if (!img)
         {
+            if (cancelled())
+            {
+                if (errorMsg)
+                    plugin.freeError(errorMsg);
+                return std::nullopt;
+            }
             spdlog::error("{} ({})", errorMsg ? errorMsg : "failed to load image", filename);
             if (errorMsg)
                 plugin.freeError(errorMsg);
@@ -294,6 +315,39 @@ std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename, in
     }
 
     spdlog::error("No plugin supports image file {}", filename);
+    return std::nullopt;
+}
+
+std::optional<LoadedImage> ImagePluginHost::loadPreview(const std::string& filename, int minLongSide)
+{
+    // Only suffix-claimed files: the preview is an optimization, never worth a content sniff.
+    for (const Plugin& plugin : loadedPlugins())
+    {
+        if (!plugin.supportsFile(filename.c_str()))
+            continue;
+        if (!plugin.loadPreview)
+            return std::nullopt;
+
+        char* errorMsg = nullptr;
+        int fullWidth = 0, fullHeight = 0;
+        WivPluginImage* img = plugin.loadPreview(filename.c_str(), minLongSide, &fullWidth, &fullHeight, &errorMsg);
+        if (errorMsg)
+            plugin.freeError(errorMsg);
+        if (!img)
+            return std::nullopt;
+
+        LoadedImage result;
+        result.width = img->width;
+        result.height = img->height;
+        result.rgba.assign(img->rgba, img->rgba + static_cast<size_t>(img->width) * img->height * 4);
+        const int orientation = img->orientation;
+        plugin.freeImage(img);
+        applyOrientation(result, orientation);
+        const bool swapDims = orientation >= 5 && orientation <= 8;
+        result.fullWidth = swapDims ? fullHeight : fullWidth;
+        result.fullHeight = swapDims ? fullWidth : fullHeight;
+        return result;
+    }
     return std::nullopt;
 }
 
@@ -344,6 +398,15 @@ const LoadedImage* ImageCache::get(const std::string& path, int page)
     return &entries_.emplace(key, std::move(entry)).first->second.image;
 }
 
+const LoadedImage* ImageCache::peek(const std::string& path, int page)
+{
+    auto it = entries_.find(keyFor(path, page));
+    if (it == entries_.end())
+        return nullptr;
+    lru_.splice(lru_.begin(), lru_, it->second.lruIt);
+    return &it->second.image;
+}
+
 bool ImageCache::contains(const std::string& path, int page) const
 {
     return entries_.count(keyFor(path, page)) > 0;
@@ -361,6 +424,17 @@ void ImageCache::put(const std::string& path, int page, LoadedImage image)
     lru_.push_back(key);
     Entry entry{std::move(image), std::prev(lru_.end())};
     entries_.emplace(key, std::move(entry));
+}
+
+void ImageCache::retain(const std::unordered_set<std::string>& keep)
+{
+    for (auto it = entries_.begin(); it != entries_.end();)
+    {
+        const std::string path = it->first.substr(0, it->first.find('\n'));
+        if (keep.count(path)) { ++it; continue; }
+        lru_.erase(it->second.lruIt);
+        it = entries_.erase(it);
+    }
 }
 
 } // namespace giv

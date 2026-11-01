@@ -1,4 +1,6 @@
 #include "MainWindow.h"
+
+#include <unordered_set>
 #include "BuildInfo.h"
 
 #include "CalibratePanel.h"
@@ -36,8 +38,8 @@
 #include <QHBoxLayout>
 #include <QProcess>
 #include <QToolButton>
-#include <QFutureWatcher>
-#include <QtConcurrentRun>
+#include <QThread>
+#include "PrefetchPool.h"
 #include <QUrl>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -87,6 +89,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 {
     setWindowTitle("wiv");
     resize(1024, 768);
+    qApp->installEventFilter(this); // see navigationIsStale()
 
     viewport_ = new VulkanViewport(this);
     // The canvas plus giv's optional colormap bar underneath it.
@@ -130,10 +133,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     buildMarkBrowserDock();
     buildContrastDock();
     buildColorTableDock();
+    buildCalibrateDock();
     buildMenus();
     buildNavigationBar();
     buildStatusBar();
-    buildCalibrateDock();
 
     // A horizontal two-finger touchpad swipe pages through the sibling files.
     connect(viewport_, &VulkanViewport::swipeNavigate, this, [this](int direction) {
@@ -198,10 +201,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         updateContrastToolsEnabled();
         if (contrastDock_->isVisible()) contrastPanel_->refreshForImage();
         if (colorTableDock_->isVisible()) colorTablePanel_->refreshForImage();
+        if (calibrateDock_->isVisible()) calibratePanel_->refresh();
         refreshInfoPanel();
         // Sole owner of the title/status-label text for both the initial
         // load and every next/previousImage() step (loadFilesInternal only
-        if (calibrateDock_->isVisible()) calibratePanel_->refresh();
         // updates loadedBaseName_, before calling viewport_->loadFiles() -
         // see its comment - so this always sees the current file list).
         if (count == 0)
@@ -783,6 +786,10 @@ void MainWindow::loadFilesInternal(const std::vector<std::string>& paths)
     // current by then, not the previous load's value.
     QStringList baseNames;
     for (const auto& p : paths) baseNames << QFileInfo(QString::fromStdString(p)).fileName();
+    // Stepping in quick succession (e.g. a held arrow key): the viewport then
+    // shows cheap previews and the full image only once things settle.
+    viewport_->setNavigationBurst(sinceLastNavigation_.isValid() && sinceLastNavigation_.elapsed() < 400);
+    sinceLastNavigation_.restart();
     loadedBaseName_ = baseNames.join(", ");
     loadedPaths_.clear();
     for (const auto& p : paths) loadedPaths_ << QFileInfo(QString::fromStdString(p)).absoluteFilePath();
@@ -898,34 +905,153 @@ void MainWindow::goToDirectoryIndex(int index)
     loadFilesInternal({directoryFiles_[index].toStdString()});
 }
 
-// Decodes the files around the current one on worker threads and hands the
-// results to the viewport's decode cache, so the next step finds them ready.
-// Reaches three files ahead in the direction of travel and one behind.
-// .giv/.svg files are parsed rather than decoded, so they are skipped.
-void MainWindow::prefetchNeighbours()
+// The directory files at the given offsets from the current one (wrapping),
+// in order, skipping the current file itself and .giv/.svg files (those are
+// parsed rather than decoded, so there is nothing to prefetch).
+QStringList MainWindow::neighbourPaths(std::initializer_list<int> offsets) const
 {
+    QStringList result;
     const int n = directoryFiles_.size();
-    if (n < 2 || directoryFileIndex_ < 0) return;
-    const int ahead = lastNavigationStep_;
-    const int offsets[] = {ahead, -ahead, 2 * ahead, 3 * ahead};
+    if (n < 2 || directoryFileIndex_ < 0) return result;
     for (int off : offsets)
     {
-        const QString path = directoryFiles_[((directoryFileIndex_ + off) % n + n) % n];
-        if (path == directoryFiles_[directoryFileIndex_]) continue;
+        const QString path = directoryFiles_[((directoryFileIndex_ + off * lastNavigationStep_) % n + n) % n];
+        if (path == directoryFiles_[directoryFileIndex_] || result.contains(path)) continue;
         const QString suffix = QFileInfo(path).suffix();
         if (suffix.compare("giv", Qt::CaseInsensitive) == 0 || suffix.compare("svg", Qt::CaseInsensitive) == 0) continue;
-        const std::string key = path.toStdString();
-        if (prefetchInFlight_.contains(path) || viewport_->isImageCached(key)) continue;
-        prefetchInFlight_.insert(path);
-        auto* watcher = new QFutureWatcher<std::optional<giv::LoadedImage>>(this);
-        connect(watcher, &QFutureWatcher<std::optional<giv::LoadedImage>>::finished, this, [this, watcher, path, key]() {
-            auto result = watcher->result();
-            watcher->deleteLater();
-            prefetchInFlight_.remove(path);
-            if (result) viewport_->cachePrefetchedImage(key, std::move(*result));
-        });
-        watcher->setFuture(QtConcurrent::run([key]() { return giv::ImagePluginHost::load(key); }));
+        result << path;
     }
+    return result;
+}
+
+// Full decodes: one behind and three ahead in the direction of travel.
+QStringList MainWindow::prefetchWindow() const { return neighbourPaths({1, -1, 2, 3}); }
+
+// Previews are small (about 1 MP), so reach further: they are what a held
+// arrow key flies through.
+QStringList MainWindow::previewWindow() const { return neighbourPaths({1, -1, 2, 3, -2, 4, 5, 6}); }
+
+// Called after every navigation. Previews of the surrounding files are
+// queued at once - they are cheap, and are what the next quick step shows -
+// while full decodes that are no longer wanted are cancelled. Full decodes
+// (and the swap to the sharp image) wait for a short quiet period, so holding
+// the arrow key never pays for images flying past; the HQ loader is paused
+// during a key burst.
+void MainWindow::prefetchNeighbours()
+{
+    if (!prefetchPool_)
+    {
+        prefetchPool_ = new PrefetchPool(std::clamp(QThread::idealThreadCount() - 1, 1, 3), this);
+        connect(prefetchPool_, &PrefetchPool::imageReady, this, &MainWindow::onPrefetchReady);
+        prefetchTimer_ = new QTimer(this);
+        prefetchTimer_->setSingleShot(true);
+        connect(prefetchTimer_, &QTimer::timeout, this, &MainWindow::runPrefetch);
+    }
+    prefetchPool_->update(prefetchWanted(/*withFull=*/false), /*enqueueNew=*/true);
+    prefetchTimer_->start(120);
+}
+
+// What the workers should be decoding, most urgent first.
+std::vector<PrefetchPool::Want> MainWindow::prefetchWanted(bool withFull) const
+{
+    using Kind = PrefetchPool::Kind;
+    std::vector<PrefetchPool::Want> wanted;
+    if (withFull && viewport_->isShowingPreview()) wanted.push_back({viewport_->currentImageName(), Kind::Full});
+    for (const QString& p : previewWindow())
+    {
+        const std::string key = p.toStdString();
+        if (!viewport_->hasPreviewOrNone(key)) wanted.push_back({key, Kind::Preview});
+    }
+    if (withFull)
+        for (const QString& p : prefetchWindow())
+        {
+            const std::string key = p.toStdString();
+            if (!viewport_->isImageCached(key)) wanted.push_back({key, Kind::Full});
+        }
+    return wanted;
+}
+
+// Stepping has paused: trim the caches to what surrounds the current file,
+// sharpen the displayed image, and queue the full decodes still missing.
+void MainWindow::runPrefetch()
+{
+    viewport_->setNavigationBurst(false);
+    std::unordered_set<std::string> keepFull, keepPreview;
+    if (directoryFileIndex_ >= 0)
+    {
+        keepFull.insert(directoryFiles_[directoryFileIndex_].toStdString());
+        keepPreview.insert(directoryFiles_[directoryFileIndex_].toStdString());
+    }
+    for (const QString& p : prefetchWindow()) keepFull.insert(p.toStdString());
+    for (const QString& p : previewWindow()) keepPreview.insert(p.toStdString());
+    viewport_->retainCachedImages(keepFull, keepPreview);
+    viewport_->upgradePreviewFromCache(); // no-op unless a preview is up and its full image is already cached
+    prefetchPool_->update(prefetchWanted(/*withFull=*/true), /*enqueueNew=*/true);
+}
+
+void MainWindow::onPrefetchReady(const QString& path, bool preview, const std::shared_ptr<giv::LoadedImage>& image)
+{
+    const std::string key = path.toStdString();
+    if (preview)
+    {
+        if (image && previewWindow().contains(path)) viewport_->cachePrefetchedPreview(key, std::move(*image));
+        else if (!image) viewport_->markNoPreview(key);
+        return;
+    }
+    // The file on screen is still its blurry preview: this is the real thing.
+    if (viewport_->isShowingPreview() && viewport_->currentImageName() == key)
+    {
+        viewport_->upgradePreview(key, std::move(*image));
+        return;
+    }
+    // Too big to hold speculatively (the cache keeps several decoded images
+    // resident), or the user moved on in the meantime.
+    constexpr size_t kMaxPrefetchBytes = 256u << 20;
+    if (image->rgba.size() + image->samples.size() > kMaxPrefetchBytes || !prefetchWindow().contains(path)) return;
+    viewport_->cachePrefetchedImage(key, std::move(*image));
+}
+
+// Records how old each held-key auto-repeat is as it reaches the application.
+// Qt hands us the window system's timestamp of the event; the largest
+// (timestamp - steady clock) seen is the clock offset at zero queueing delay,
+// so anything above it is time the event spent waiting in the queue.
+bool MainWindow::eventFilter(QObject* watched, QEvent* event)
+{
+    if (event->type() == QEvent::ShortcutOverride)
+    {
+        const auto* ke = static_cast<QKeyEvent*>(event);
+        const qint64 nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        // Unwrap the 32-bit millisecond timestamp.
+        const quint32 ts = ke->timestamp();
+        if (!keyClockOffsetKnown_) unwrappedKeyTimestamp_ = ts;
+        else unwrappedKeyTimestamp_ += static_cast<qint32>(ts - lastKeyTimestamp_);
+        lastKeyTimestamp_ = ts;
+        const qint64 offset = unwrappedKeyTimestamp_ - nowMs;
+        if (!keyClockOffsetKnown_ || offset > keyClockOffsetMs_)
+        {
+            keyClockOffsetMs_ = offset;
+            keyClockOffsetKnown_ = true;
+        }
+        lastKeyAgeMs_ = keyClockOffsetMs_ - offset; // queueing delay: 0 for a fresh event
+        lastKeyArrivalMs_ = nowMs;
+        lastKeyWasRepeat_ = ke->isAutoRepeat();
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
+
+// True when the navigation action now running was triggered by a held-key
+// auto-repeat that has been waiting in the queue too long to still reflect
+// what the user is doing - the repeats that would otherwise keep stepping
+// after the key is released. Such a repeat is simply dropped.
+bool MainWindow::navigationIsStale()
+{
+    constexpr qint64 kMaxRepeatAgeMs = 100;
+    const qint64 nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    // Only if this call really comes from that key event (not a menu or button click).
+    if (!lastKeyWasRepeat_ || nowMs - lastKeyArrivalMs_ > 5) return false;
+    if (lastKeyAgeMs_ <= kMaxRepeatAgeMs) return false;
+    spdlog::info("Dropping stale key repeat ({} ms old)", lastKeyAgeMs_);
+    return true;
 }
 
 // Newest modification time and total size over the loaded files.
@@ -1053,6 +1179,7 @@ void MainWindow::goLastImage()
 
 void MainWindow::goNextImage()
 {
+    if (navigationIsStale()) return;
     spdlog::info("User invoked Next Image");
     if (directoryFiles_.size() < 2)
     {
@@ -1068,6 +1195,7 @@ void MainWindow::goNextImage()
 
 void MainWindow::goPreviousImage()
 {
+    if (navigationIsStale()) return;
     spdlog::info("User invoked Previous Image");
     if (directoryFiles_.size() < 2)
     {
@@ -1352,6 +1480,22 @@ QString MainWindow::buildInfoText() const
     return t;
 }
 
+void MainWindow::buildCalibrateDock()
+{
+    calibratePanel_ = new CalibratePanel(viewport_, this);
+    // The title is also the Tools menu action's text, so it keeps the old
+    // dialog's wording (rebound shortcuts are saved under it).
+    calibrateDock_ = new QDockWidget("Calibrate Pixel Size", this);
+    calibrateDock_->setWidget(calibratePanel_);
+    registerDock(calibrateDock_, "CalibrateDock", Qt::RightDockWidgetArea);
+    connect(calibrateDock_, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+        if (visible) calibratePanel_->refresh();
+    });
+    connect(viewport_, &VulkanViewport::measurementChanged, this, [this]() {
+        if (calibrateDock_->isVisible()) calibratePanel_->refreshSources();
+    });
+}
+
 void MainWindow::buildColorTableDock()
 {
     colorTablePanel_ = new ColorTablePanel(viewport_, this);
@@ -1382,19 +1526,3 @@ void MainWindow::toggleFullScreen()
 }
 
 } // namespace givqt
-void MainWindow::buildCalibrateDock()
-{
-    calibratePanel_ = new CalibratePanel(viewport_, this);
-    // The title is also the Tools menu action's text, so it keeps the old
-    // dialog's wording (rebound shortcuts are saved under it).
-    calibrateDock_ = new QDockWidget("Calibrate Pixel Size", this);
-    calibrateDock_->setWidget(calibratePanel_);
-    registerDock(calibrateDock_, "CalibrateDock", Qt::RightDockWidgetArea);
-    connect(calibrateDock_, &QDockWidget::visibilityChanged, this, [this](bool visible) {
-        if (visible) calibratePanel_->refresh();
-    });
-    connect(viewport_, &VulkanViewport::measurementChanged, this, [this]() {
-        if (calibrateDock_->isVisible()) calibratePanel_->refreshSources();
-    });
-}
-

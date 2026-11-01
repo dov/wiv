@@ -127,7 +127,14 @@ extern "C" bool wiv_plugin_supports_file(const char* filename)
     return hasExtension(f, ".jpg") || hasExtension(f, ".jpeg");
 }
 
-extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** error_msg)
+namespace
+{
+
+// minLongSide > 0 requests a preview: decode at the largest 1/2, 1/4 or 1/8
+// scale whose longer side is still >= minLongSide (NULL if none), and report
+// the unscaled size through fullWidth/fullHeight.
+WivPluginImage* loadJpeg(const char* filename, const volatile int* cancel, char** error_msg, int minLongSide = 0,
+                          int* fullWidth = nullptr, int* fullHeight = nullptr)
 {
     FILE* file = std::fopen(filename, "rb");
     if (!file)
@@ -161,6 +168,23 @@ extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** er
     // RGBA (alpha filled with 0xff), same layout WivPluginImage expects -
     // skips the manual RGB->RGBA expansion stb_image's caller would need.
     cinfo.out_color_space = JCS_EXT_RGBA;
+    if (minLongSide > 0)
+    {
+        const int longSide = static_cast<int>(std::max(cinfo.image_width, cinfo.image_height));
+        int denom = 1;
+        while (denom < 8 && longSide / (denom * 2) >= minLongSide) denom *= 2;
+        if (denom == 1)
+        {
+            jpeg_destroy_decompress(&cinfo);
+            std::fclose(file);
+            return nullptr; // small image: a full decode is cheap enough
+        }
+        if (fullWidth) *fullWidth = static_cast<int>(cinfo.image_width);
+        if (fullHeight) *fullHeight = static_cast<int>(cinfo.image_height);
+        cinfo.scale_num = 1;
+        cinfo.scale_denom = static_cast<unsigned int>(denom);
+        cinfo.dct_method = JDCT_IFAST;
+    }
     jpeg_start_decompress(&cinfo);
 
     WivPluginImage* img = wiv_plugin::allocImage(static_cast<int>(cinfo.output_width), static_cast<int>(cinfo.output_height));
@@ -168,6 +192,16 @@ extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** er
     const int rowStride = static_cast<int>(cinfo.output_width) * 4;
     while (cinfo.output_scanline < cinfo.output_height)
     {
+        // Poll every 16 rows: cheap next to the decode itself, and a
+        // cancelled multi-second decode stops within milliseconds.
+        if (cancel && (cinfo.output_scanline & 15) == 0 && *cancel)
+        {
+            jpeg_abort_decompress(&cinfo);
+            jpeg_destroy_decompress(&cinfo);
+            std::fclose(file);
+            wiv_plugin_free_image(img);
+            return nullptr;
+        }
         unsigned char* rowPtr = img->rgba + static_cast<size_t>(cinfo.output_scanline) * rowStride;
         jpeg_read_scanlines(&cinfo, &rowPtr, 1);
     }
@@ -176,4 +210,23 @@ extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** er
     jpeg_destroy_decompress(&cinfo);
     std::fclose(file);
     return img;
+}
+
+} // namespace
+
+extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** error_msg)
+{
+    return loadJpeg(filename, nullptr, error_msg);
+}
+
+extern "C" WivPluginImage* wiv_plugin_load_page_cancellable(const char* filename, int /*page*/,
+                                                              const volatile int* cancel, char** error_msg)
+{
+    return loadJpeg(filename, cancel, error_msg);
+}
+
+extern "C" WivPluginImage* wiv_plugin_load_preview(const char* filename, int min_long_side, int* full_width,
+                                                     int* full_height, char** error_msg)
+{
+    return loadJpeg(filename, nullptr, error_msg, std::max(1, min_long_side), full_width, full_height);
 }

@@ -91,6 +91,33 @@ extern "C"
     WIV_PLUGIN_API int wiv_plugin_page_count(const char* filename);
     WIV_PLUGIN_API WivPluginImage* wiv_plugin_load_page(const char* filename, int page, char** error_msg);
 
+    // OPTIONAL, for plugins whose decode can take long enough that the host
+    // wants to abandon it (background prefetch of a neighbour the user has
+    // already navigated away from). Like wiv_plugin_load_page (`page` is 0
+    // for single-page formats), but the plugin polls `*cancel` at convenient
+    // points - e.g. every few scanlines - and, as soon as it reads non-zero,
+    // frees whatever it allocated and returns NULL. The host sets the flag
+    // from another thread and never clears it while the call is running, so
+    // a plain (volatile) read suffices. On cancellation the error message
+    // may be left NULL; the host ignores it. A plugin that doesn't export
+    // this is simply run to completion (its result is discarded if the flag
+    // was set meanwhile), so exporting it is purely an optimization.
+    WIV_PLUGIN_API WivPluginImage* wiv_plugin_load_page_cancellable(const char* filename, int page,
+                                                                       const volatile int* cancel, char** error_msg);
+
+    // OPTIONAL. A fast, reduced-resolution decode used to put *something* on
+    // screen while the full decode runs in the background (JPEG: libjpeg's
+    // 1/2, 1/4 or 1/8 DCT scaling, several times faster than a full decode).
+    // The plugin picks the largest reduction whose longer side is still
+    // >= min_long_side, returns that image (same ownership/`orientation`
+    // rules as wiv_plugin_load_image) and stores the full-resolution
+    // dimensions - before orientation is applied - in *full_width/*full_height.
+    // Returns NULL, leaving error_msg NULL, if no worthwhile reduction exists
+    // (the image is small, or the format can't decode cheaply at reduced
+    // size); the host then just does the full load.
+    WIV_PLUGIN_API WivPluginImage* wiv_plugin_load_preview(const char* filename, int min_long_side, int* full_width,
+                                                              int* full_height, char** error_msg);
+
     // Frees an image returned by wiv_plugin_load_image.
     WIV_PLUGIN_API void wiv_plugin_free_image(WivPluginImage* img);
 
