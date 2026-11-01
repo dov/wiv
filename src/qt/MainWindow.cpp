@@ -65,6 +65,7 @@
 #include <QTimer>
 #include <QThread>
 #include <QDateTime>
+#include <QSplitter>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -102,13 +103,24 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     auto* centralLayout = new QVBoxLayout(central);
     centralLayout->setContentsMargins(0, 0, 0, 0);
     centralLayout->setSpacing(0);
-    centralLayout->addWidget(viewport_, 1);
-    colorMapBar_ = new ColorMapBar(viewport_, central);
+    // The canvas (with the colormap bar) over the thumbnail pane, divided by a
+    // splitter so the pane can be dragged taller to show several rows.
+    auto* splitter = new QSplitter(Qt::Vertical, central);
+    splitter->setChildrenCollapsible(false);
+    splitter->setHandleWidth(5);
+    centralLayout->addWidget(splitter);
+    auto* canvasPane = new QWidget(splitter);
+    auto* canvasLayout = new QVBoxLayout(canvasPane);
+    canvasLayout->setContentsMargins(0, 0, 0, 0);
+    canvasLayout->setSpacing(0);
+    viewport_->setParent(canvasPane);
+    canvasLayout->addWidget(viewport_, 1);
+    colorMapBar_ = new ColorMapBar(viewport_, canvasPane);
     colorMapBar_->hide();
-    centralLayout->addWidget(colorMapBar_);
+    canvasLayout->addWidget(colorMapBar_);
     // Navigation buttons over the thumbnail strip, shown and hidden together
     // (View > Thumbnail Strip). The buttons are filled in by buildNavigationBar().
-    bottomBar_ = new QWidget(central);
+    bottomBar_ = new QWidget(splitter);
     bottomBar_->setAutoFillBackground(true); // window colour behind the buttons and strip
     auto* bottomLayout = new QVBoxLayout(bottomBar_);
     bottomLayout->setContentsMargins(0, 4, 0, 0);
@@ -119,7 +131,23 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     thumbnailStrip_ = new ThumbnailStrip(bottomBar_);
     bottomLayout->addWidget(thumbnailStrip_);
     bottomBar_->hide();
-    centralLayout->addWidget(bottomBar_);
+    splitter->addWidget(canvasPane);
+    splitter->addWidget(bottomBar_);
+    splitter->setStretchFactor(0, 1);
+    splitter->setStretchFactor(1, 0);
+    {
+        QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+        thumbnailStrip_->setThumbSize(settings.value("thumbnailSize", ThumbnailStrip::kDefaultThumbSize).toInt());
+        splitter->restoreState(settings.value("thumbnailSplitter").toByteArray());
+        connect(splitter, &QSplitter::splitterMoved, this, [splitter]() {
+            QSettings s(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+            s.setValue("thumbnailSplitter", splitter->saveState());
+        });
+        connect(thumbnailStrip_, &ThumbnailStrip::thumbSizeChanged, this, [](int size) {
+            QSettings s(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+            s.setValue("thumbnailSize", size);
+        });
+    }
     connect(thumbnailStrip_, &ThumbnailStrip::fileClicked, this, &MainWindow::goToDirectoryIndex);
     connect(thumbnailStrip_, &ThumbnailStrip::stepRequested, this, [this](int dir) {
         if (dir > 0) goNextImage(); else goPreviousImage();
