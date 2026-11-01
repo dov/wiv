@@ -44,6 +44,10 @@ namespace fa { class QtAwesome; }
 namespace givqt
 {
 
+// Thumbnail (<= 256 px, disk-cached) for any file wiv can open; null if it
+// can't be decoded. Safe to call from a worker thread.
+QImage decodeFileThumbnail(const QString& path);
+
 enum class ThumbnailState { Queued, Ready, Failed };
 
 class ThumbnailDelegate;

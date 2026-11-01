@@ -83,7 +83,17 @@ public:
     // may evict it).
     const LoadedImage* get(const std::string& path, int page = 0);
 
+    // Inserts an image decoded elsewhere (e.g. by a background prefetch) as
+    // the least-recently-used entry, so it never evicts what is on screen.
+    // No-op if `path` is already cached.
+    void put(const std::string& path, int page, LoadedImage image);
+    bool contains(const std::string& path, int page = 0) const;
+
 private:
+    static std::string keyFor(const std::string& path, int page)
+    {
+        return page > 0 ? path + '\n' + std::to_string(page) : path;
+    }
     size_t capacity_;
     std::list<std::string> lru_; // front = most recently used
     struct Entry

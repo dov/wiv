@@ -10,7 +10,9 @@
 #include "MarkTreeView.h"
 #include "OpenFileDialog.h"
 #include "PreferencesDialog.h"
+#include "QtAwesome.h"
 #include "RpcServer.h"
+#include "ThumbnailStrip.h"
 #include "VulkanViewport.h"
 #ifdef _WIN32
 #include "WinDropTarget.h"
@@ -31,7 +33,11 @@
 #include <QImage>
 #include <QInputDialog>
 #include <QMimeData>
+#include <QHBoxLayout>
 #include <QProcess>
+#include <QToolButton>
+#include <QFutureWatcher>
+#include <QtConcurrentRun>
 #include <QUrl>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -92,6 +98,24 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     colorMapBar_ = new ColorMapBar(viewport_, central);
     colorMapBar_->hide();
     centralLayout->addWidget(colorMapBar_);
+    // Navigation buttons over the thumbnail strip, shown and hidden together
+    // (View > Thumbnail Strip). The buttons are filled in by buildNavigationBar().
+    bottomBar_ = new QWidget(central);
+    bottomBar_->setAutoFillBackground(true); // window colour behind the buttons and strip
+    auto* bottomLayout = new QVBoxLayout(bottomBar_);
+    bottomLayout->setContentsMargins(0, 4, 0, 0);
+    bottomLayout->setSpacing(2);
+    navButtonRow_ = new QHBoxLayout;
+    navButtonRow_->setSpacing(4);
+    bottomLayout->addLayout(navButtonRow_);
+    thumbnailStrip_ = new ThumbnailStrip(bottomBar_);
+    bottomLayout->addWidget(thumbnailStrip_);
+    bottomBar_->hide();
+    centralLayout->addWidget(bottomBar_);
+    connect(thumbnailStrip_, &ThumbnailStrip::fileClicked, this, &MainWindow::goToDirectoryIndex);
+    connect(thumbnailStrip_, &ThumbnailStrip::stepRequested, this, [this](int dir) {
+        if (dir > 0) goNextImage(); else goPreviousImage();
+    });
     setCentralWidget(central);
     connect(viewport_, &VulkanViewport::filesDropped, this, [this](QStringList files) {
         std::vector<std::string> paths;
@@ -100,12 +124,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     });
 
     viewport_->setBackgroundColor(PreferencesDialog::loadBackgroundColor());
+    thumbnailStrip_->setBackgroundColor(PreferencesDialog::loadBackgroundColor());
 
     buildInfoDock();
     buildMarkBrowserDock();
     buildContrastDock();
     buildColorTableDock();
     buildMenus();
+    buildNavigationBar();
     buildStatusBar();
 
     // A horizontal two-finger touchpad swipe pages through the sibling files.
@@ -286,6 +312,21 @@ void MainWindow::buildMenus()
     auto stepZoomOutAction = viewMenu->addAction("Step Zoom Out", viewport_, &VulkanViewport::stepZoomOut);
     stepZoomOutAction->setShortcut(QKeySequence("Ctrl+PgDown"));
 
+    thumbnailStripAction_ = viewMenu->addAction("Thumbnail Strip", this, [this](bool show) {
+        bottomBar_->setVisible(show);
+        QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+        settings.setValue("thumbnailStrip", show);
+        if (show) updateThumbnailStrip();
+    });
+    thumbnailStripAction_->setCheckable(true);
+    thumbnailStripAction_->setShortcut(QKeySequence("T"));
+    {
+        QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+        const bool show = settings.value("thumbnailStrip", false).toBool();
+        thumbnailStripAction_->setChecked(show);
+        bottomBar_->setVisible(show);
+    }
+
     balloonAction_ = viewMenu->addAction("Balloon Tooltips", viewport_, &VulkanViewport::toggleBalloon);
     balloonAction_->setCheckable(true);
     balloonAction_->setShortcut(QKeySequence("B"));
@@ -427,6 +468,7 @@ void MainWindow::buildMenus()
         spdlog::info("Preferences dialog opened");
         PreferencesDialog dlg(bindableActions_, this);
         connect(&dlg, &PreferencesDialog::backgroundColorChanged, viewport_, &VulkanViewport::setBackgroundColor);
+        connect(&dlg, &PreferencesDialog::backgroundColorChanged, thumbnailStrip_, &ThumbnailStrip::setBackgroundColor);
         dlg.exec();
         applyDockShortcuts();
         spdlog::info("Preferences dialog closed");
@@ -798,6 +840,99 @@ void MainWindow::loadFilesInternal(const std::vector<std::string>& paths)
     balloonAction_->setChecked(false);
     measureDistanceAction_->setChecked(false);
     spdlog::info("Loaded {} file(s) successfully", paths.size());
+    updateThumbnailStrip();
+    prefetchNeighbours();
+}
+
+// The row of buttons over the thumbnail strip: previous / fit / next, then
+// full screen and actual pixels. Previous/next mirror their actions' enabled state.
+void MainWindow::buildNavigationBar()
+{
+    auto* awesome = new fa::QtAwesome(this);
+    awesome->initFontAwesome();
+    QVariantMap opts;
+    const QColor color = palette().color(QPalette::ButtonText);
+    opts.insert("color", color);
+    opts.insert("color-active", color);
+    opts.insert("color-disabled", color.darker(250));
+
+    auto makeButton = [&](const QIcon& icon, const QString& text, const QString& tip) {
+        auto* b = new QToolButton(bottomBar_);
+        b->setAutoRaise(true);
+        b->setToolTip(tip);
+        b->setFocusPolicy(Qt::NoFocus);
+        b->setMinimumWidth(34);
+        if (icon.isNull()) b->setText(text); else b->setIcon(icon);
+        navButtonRow_->addWidget(b);
+        return b;
+    };
+    auto icon = [&](int glyph) { return awesome->icon(fa::fa_solid, glyph, opts); };
+
+    navButtonRow_->addStretch(1);
+    auto* prev = makeButton(icon(fa::fa_chevron_left), {}, "Previous image");
+    auto* fit = makeButton(icon(fa::fa_expand), {}, "Fit to window");
+    auto* next = makeButton(icon(fa::fa_chevron_right), {}, "Next image");
+    navButtonRow_->addSpacing(14);
+    auto* full = makeButton(icon(fa::fa_up_right_and_down_left_from_center), {}, "Full screen");
+    auto* actual = makeButton(QIcon(), "1:1", "Actual pixels");
+    navButtonRow_->addStretch(1);
+
+    connect(prev, &QToolButton::clicked, previousImageAction_, &QAction::trigger);
+    connect(next, &QToolButton::clicked, nextImageAction_, &QAction::trigger);
+    connect(fit, &QToolButton::clicked, viewport_, &VulkanViewport::fitToWindowAnimated);
+    connect(full, &QToolButton::clicked, this, &MainWindow::toggleFullScreen);
+    connect(actual, &QToolButton::clicked, viewport_, &VulkanViewport::zoomActualPixels);
+    auto syncEnabled = [=]() {
+        prev->setEnabled(previousImageAction_->isEnabled());
+        next->setEnabled(nextImageAction_->isEnabled());
+    };
+    connect(previousImageAction_, &QAction::changed, prev, syncEnabled);
+    connect(nextImageAction_, &QAction::changed, next, syncEnabled);
+    syncEnabled();
+}
+
+void MainWindow::updateThumbnailStrip()
+{
+    if (!bottomBar_->isVisible()) return;
+    thumbnailStrip_->setFiles(directoryFiles_, directoryFileIndex_);
+}
+
+void MainWindow::goToDirectoryIndex(int index)
+{
+    if (index < 0 || index >= directoryFiles_.size() || index == directoryFileIndex_) return;
+    lastNavigationStep_ = index > directoryFileIndex_ ? 1 : -1;
+    directoryFileIndex_ = index;
+    loadFilesInternal({directoryFiles_[index].toStdString()});
+}
+
+// Decodes the files around the current one on worker threads and hands the
+// results to the viewport's decode cache, so the next step finds them ready.
+// Reaches three files ahead in the direction of travel and one behind.
+// .giv/.svg files are parsed rather than decoded, so they are skipped.
+void MainWindow::prefetchNeighbours()
+{
+    const int n = directoryFiles_.size();
+    if (n < 2 || directoryFileIndex_ < 0) return;
+    const int ahead = lastNavigationStep_;
+    const int offsets[] = {ahead, -ahead, 2 * ahead, 3 * ahead};
+    for (int off : offsets)
+    {
+        const QString path = directoryFiles_[((directoryFileIndex_ + off) % n + n) % n];
+        if (path == directoryFiles_[directoryFileIndex_]) continue;
+        const QString suffix = QFileInfo(path).suffix();
+        if (suffix.compare("giv", Qt::CaseInsensitive) == 0 || suffix.compare("svg", Qt::CaseInsensitive) == 0) continue;
+        const std::string key = path.toStdString();
+        if (prefetchInFlight_.contains(path) || viewport_->isImageCached(key)) continue;
+        prefetchInFlight_.insert(path);
+        auto* watcher = new QFutureWatcher<std::optional<giv::LoadedImage>>(this);
+        connect(watcher, &QFutureWatcher<std::optional<giv::LoadedImage>>::finished, this, [this, watcher, path, key]() {
+            auto result = watcher->result();
+            watcher->deleteLater();
+            prefetchInFlight_.remove(path);
+            if (result) viewport_->cachePrefetchedImage(key, std::move(*result));
+        });
+        watcher->setFuture(QtConcurrent::run([key]() { return giv::ImagePluginHost::load(key); }));
+    }
 }
 
 // Newest modification time and total size over the loaded files.
@@ -932,6 +1067,7 @@ void MainWindow::goNextImage()
         if (viewport_->imageCount() > 1) viewport_->nextImage();
         return;
     }
+    lastNavigationStep_ = 1;
     directoryFileIndex_ = (directoryFileIndex_ + 1) % directoryFiles_.size();
     spdlog::info("Directory navigation: switching to {}", directoryFiles_[directoryFileIndex_].toStdString());
     loadFilesInternal({directoryFiles_[directoryFileIndex_].toStdString()});
@@ -946,6 +1082,7 @@ void MainWindow::goPreviousImage()
         if (viewport_->imageCount() > 1) viewport_->previousImage();
         return;
     }
+    lastNavigationStep_ = -1;
     directoryFileIndex_ = (directoryFileIndex_ - 1 + directoryFiles_.size()) % directoryFiles_.size();
     spdlog::info("Directory navigation: switching to {}", directoryFiles_[directoryFileIndex_].toStdString());
     loadFilesInternal({directoryFiles_[directoryFileIndex_].toStdString()});

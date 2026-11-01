@@ -7,6 +7,7 @@
 #include <QMainWindow>
 #include <QDateTime>
 #include <QList>
+#include <QSet>
 #include <QStringList>
 
 #include "ExifReader.h"
@@ -15,6 +16,7 @@
 #include <string>
 #include <vector>
 
+class QHBoxLayout;
 class QLabel;
 class QAction;
 class QMenu;
@@ -37,6 +39,7 @@ class ColorMapBar;
 class ColorTablePanel;
 class InfoPanel;
 class RpcServer;
+class ThumbnailStrip;
 
 class MainWindow : public QMainWindow
 {
@@ -195,6 +198,20 @@ private:
     void goLastImage();
     void goPreviousImage();
     void updateNavigationActionsEnabled();
+
+    // Thumbnail strip under the canvas (View > Thumbnail Strip) and the
+    // background prefetch of the neighbouring files' decodes that makes
+    // stepping - and holding the arrow key - skip the decode wait.
+    ThumbnailStrip* thumbnailStrip_ = nullptr;
+    QWidget* bottomBar_ = nullptr;      // navigation buttons + thumbnail strip
+    QHBoxLayout* navButtonRow_ = nullptr;
+    void buildNavigationBar();
+    QAction* thumbnailStripAction_ = nullptr;
+    QSet<QString> prefetchInFlight_;
+    int lastNavigationStep_ = 1; // +1/-1: which side to prefetch further on
+    void goToDirectoryIndex(int index);
+    void updateThumbnailStrip();
+    void prefetchNeighbours();
 
     // Enables/disables the Next/Previous Page actions for the displayed
     // image (see VulkanViewport::canStepPart()).

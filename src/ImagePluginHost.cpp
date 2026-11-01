@@ -321,7 +321,7 @@ bool ImagePluginHost::isSupportedExplicit(const std::string& filename)
 
 const LoadedImage* ImageCache::get(const std::string& path, int page)
 {
-    const std::string key = page > 0 ? path + '\n' + std::to_string(page) : path;
+    const std::string key = keyFor(path, page);
     auto it = entries_.find(key);
     if (it != entries_.end())
     {
@@ -342,6 +342,25 @@ const LoadedImage* ImageCache::get(const std::string& path, int page)
     lru_.push_front(key);
     Entry entry{std::move(*loaded), lru_.begin()};
     return &entries_.emplace(key, std::move(entry)).first->second.image;
+}
+
+bool ImageCache::contains(const std::string& path, int page) const
+{
+    return entries_.count(keyFor(path, page)) > 0;
+}
+
+void ImageCache::put(const std::string& path, int page, LoadedImage image)
+{
+    const std::string key = keyFor(path, page);
+    if (entries_.count(key)) return;
+    if (entries_.size() >= capacity_ && !lru_.empty())
+    {
+        entries_.erase(lru_.back());
+        lru_.pop_back();
+    }
+    lru_.push_back(key);
+    Entry entry{std::move(image), std::prev(lru_.end())};
+    entries_.emplace(key, std::move(entry));
 }
 
 } // namespace giv
