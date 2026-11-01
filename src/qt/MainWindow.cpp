@@ -26,6 +26,13 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QClipboard>
+#include <QDesktopServices>
+#include <QImage>
+#include <QInputDialog>
+#include <QMimeData>
+#include <QProcess>
+#include <QUrl>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QPixmap>
@@ -233,6 +240,18 @@ void MainWindow::buildMenus()
     reloadAction->setShortcuts({QKeySequence(Qt::Key_Return), QKeySequence(Qt::Key_Enter)});
 
     fileMenu->addSeparator();
+    auto copyAction = fileMenu->addAction("&Copy", this, &MainWindow::copyCurrentFile);
+    copyAction->setShortcut(QKeySequence("Ctrl+C"));
+    auto renameAction = fileMenu->addAction("Re&name...", this, &MainWindow::renameCurrentFile);
+    renameAction->setShortcut(QKeySequence("F2"));
+    auto deleteAction = fileMenu->addAction("&Delete", this, &MainWindow::deleteCurrentFile);
+    deleteAction->setShortcut(QKeySequence("Del"));
+    auto locationAction = fileMenu->addAction("Open File &Location", this, &MainWindow::openFileLocation);
+    locationAction->setShortcut(QKeySequence("W"));
+    auto propertiesAction = fileMenu->addAction("&Properties...", this, &MainWindow::showFileProperties);
+    propertiesAction->setShortcut(QKeySequence("Alt+Return"));
+
+    fileMenu->addSeparator();
     auto quitAction = fileMenu->addAction("&Quit", qApp, &QApplication::quit);
     quitAction->setShortcuts({QKeySequence::Quit, QKeySequence("Q")});
 
@@ -247,6 +266,9 @@ void MainWindow::buildMenus()
     // Full screen on F11. Added to the window so it still works while the menu bar is hidden.
     auto fullScreenAction = viewMenu->addAction("Full Screen", this, &MainWindow::toggleFullScreen);
     fullScreenAction->setShortcut(QKeySequence("F11"));
+    // A held key must toggle once: repeats arrive faster than the window
+    // resize settles, so each would start from a half-resized view.
+    fullScreenAction->setAutoRepeat(false);
     addAction(fullScreenAction);
     viewMenu->addSeparator();
     auto zoomInAction = viewMenu->addAction("Zoom In", viewport_, &VulkanViewport::zoomIn);
@@ -929,6 +951,106 @@ void MainWindow::goPreviousImage()
     loadFilesInternal({directoryFiles_[directoryFileIndex_].toStdString()});
 }
 
+QString MainWindow::currentFilePath() const
+{
+    if (directoryFileIndex_ >= 0 && directoryFileIndex_ < directoryFiles_.size())
+        return directoryFiles_[directoryFileIndex_];
+    if (loadedPaths_.size() == 1) return loadedPaths_.first();
+    return {};
+}
+
+void MainWindow::copyCurrentFile()
+{
+    const QString path = currentFilePath();
+    if (path.isEmpty()) return;
+    // Offer both the file itself (for pasting into a file manager) and, when
+    // Qt can decode it, the pixels (for pasting into an editor).
+    auto* mime = new QMimeData;
+    mime->setUrls({QUrl::fromLocalFile(path)});
+    QImage image(path);
+    if (!image.isNull()) mime->setImageData(image);
+    QApplication::clipboard()->setMimeData(mime);
+    infoLabel_->setText("Copied: " + QFileInfo(path).fileName());
+}
+
+void MainWindow::deleteCurrentFile()
+{
+    const QString path = currentFilePath();
+    if (path.isEmpty()) return;
+    const QString name = QFileInfo(path).fileName();
+    if (QMessageBox::question(this, "Delete", QString("Move \"%1\" to the trash?").arg(name)) != QMessageBox::Yes)
+        return;
+    if (!QFile::moveToTrash(path))
+    {
+        QMessageBox::warning(this, "Delete", QString("Could not delete \"%1\".").arg(name));
+        return;
+    }
+    spdlog::info("Moved to trash: {}", path.toStdString());
+    browseList_.removeAll(path);
+    if (directoryFileIndex_ < 0 || directoryFiles_.size() < 2)
+    {
+        directoryFiles_.clear();
+        directoryFileIndex_ = -1;
+        loadedPaths_.clear();
+        infoLabel_->setText("Deleted: " + name);
+        return;
+    }
+    directoryFiles_.removeAt(directoryFileIndex_);
+    if (directoryFileIndex_ >= directoryFiles_.size()) directoryFileIndex_ = directoryFiles_.size() - 1;
+    loadFilesInternal({directoryFiles_[directoryFileIndex_].toStdString()});
+}
+
+void MainWindow::renameCurrentFile()
+{
+    const QString path = currentFilePath();
+    if (path.isEmpty()) return;
+    const QFileInfo info(path);
+    bool ok = false;
+    const QString newName = QInputDialog::getText(this, "Rename", "New name:", QLineEdit::Normal, info.fileName(), &ok);
+    if (!ok || newName.isEmpty() || newName == info.fileName()) return;
+    const QString newPath = info.absoluteDir().filePath(newName);
+    if (QFileInfo::exists(newPath))
+    {
+        QMessageBox::warning(this, "Rename", QString("\"%1\" already exists.").arg(newName));
+        return;
+    }
+    if (!QFile::rename(path, newPath))
+    {
+        QMessageBox::warning(this, "Rename", QString("Could not rename \"%1\".").arg(info.fileName()));
+        return;
+    }
+    spdlog::info("Renamed {} -> {}", path.toStdString(), newPath.toStdString());
+    if (directoryFileIndex_ >= 0) directoryFiles_[directoryFileIndex_] = newPath;
+    const int b = browseList_.indexOf(path);
+    if (b >= 0) browseList_[b] = newPath;
+    loadFilesInternal({newPath.toStdString()});
+}
+
+void MainWindow::openFileLocation()
+{
+    const QString path = currentFilePath();
+    if (path.isEmpty()) return;
+#ifdef _WIN32
+    QProcess::startDetached("explorer.exe", {"/select," + QDir::toNativeSeparators(path)});
+#else
+    QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
+#endif
+}
+
+void MainWindow::showFileProperties()
+{
+    const QString path = currentFilePath();
+    if (path.isEmpty()) return;
+    const QFileInfo info(path);
+    QString text = QString("<b>%1</b><br>%2<br><br>Size: %3 bytes<br>Modified: %4")
+                       .arg(info.fileName().toHtmlEscaped(), info.absolutePath().toHtmlEscaped())
+                       .arg(info.size())
+                       .arg(info.lastModified().toString(Qt::ISODate));
+    if (auto size = viewport_->currentImageSize())
+        text += QString("<br>Dimensions: %1 x %2").arg(int(size->first)).arg(int(size->second));
+    QMessageBox::information(this, "Properties", text);
+}
+
 void MainWindow::updateRecentFilesMenu()
 {
     recentFilesMenu_->clear();
@@ -1122,6 +1244,7 @@ void MainWindow::updateContrastToolsEnabled()
 
 void MainWindow::toggleFullScreen()
 {
+    viewport_->preserveViewOnNextResize(!isFullScreen());
     if (isFullScreen())
         showNormal();
     else

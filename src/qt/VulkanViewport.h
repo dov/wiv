@@ -80,6 +80,12 @@ public:
     // Does nothing past the outermost stop. Stepping onto the fit stop
     // re-fits (and so re-centres) the content.
     void stepZoomIn();
+
+    // Call just before a deliberate window-size change (e.g. full screen):
+    // the visible world region is then kept - the image rescales with the
+    // window - instead of the default of keeping the scale and revealing
+    // more or less of the scene. Lapses shortly after the resize settles.
+    void preserveViewOnNextResize(bool entering);
     void stepZoomOut();
 
     // Double-click: 1:1 anchored at `devicePos` (device pixels in the
@@ -397,6 +403,16 @@ private:
 
     bool balloonEnabled_ = false;
     int lastWidth_ = 0;
+    bool preserveView_ = false; // see preserveViewOnNextResize()
+    double preserveHalfW_ = 0.0, preserveHalfH_ = 0.0;
+    // Makes the preserve reversible: a "contain" fit of the region loses
+    // scale whenever the aspect ratio differs, so repeated toggles would
+    // shrink the image. The scale from before the first toggle is kept, and
+    // restored by the next one if the view has not been changed meanwhile.
+    double restoreScale_ = 0.0;       // scale from before entering the larger window, or 0
+    double appliedScale_ = 0.0;       // scale the last preserved resize produced
+    double preserveTarget_ = 0.0;     // fixed scale for this resize, or 0 to fit the saved region
+    int preserveGen_ = 0;             // invalidates the lapse timer of an earlier toggle
     int lastHeight_ = 0;
     bool autoFit_ = true; // see setAutoFit()
 
