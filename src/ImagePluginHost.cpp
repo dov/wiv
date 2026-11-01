@@ -174,13 +174,9 @@ void computeSampleMinMax(LoadedImage& image)
     image.sampleMax = static_cast<float>(hi);
 }
 
-std::vector<Plugin>& loadedPlugins()
+std::vector<Plugin> scanPlugins()
 {
-    static std::vector<Plugin> plugins;
-    static bool scanned = false;
-    if (scanned)
-        return plugins;
-    scanned = true;
+    std::vector<Plugin> plugins;
 
     const char* dirOverride = std::getenv("WIV_PLUGIN_DIR");
     std::string dir = dirOverride ? std::string(dirOverride) : resourceDir("plugins", "lib/wiv/plugins", WIV_PLUGIN_DIR);
@@ -249,6 +245,16 @@ std::vector<Plugin>& loadedPlugins()
         plugins.push_back(plugin);
     }
 
+    return plugins;
+}
+
+// The scan runs once, inside a function-local static's initializer, so the
+// main thread and the prefetch workers can race to the first call: C++
+// guarantees the losers block until the plugin list is complete, instead of
+// seeing it half-built (or empty) and reporting "unsupported file format".
+std::vector<Plugin>& loadedPlugins()
+{
+    static std::vector<Plugin> plugins = scanPlugins();
     return plugins;
 }
 
