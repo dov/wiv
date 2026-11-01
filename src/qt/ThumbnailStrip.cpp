@@ -3,6 +3,8 @@
 #include "OpenFileDialog.h"
 
 #include <QApplication>
+#include <QContextMenuEvent>
+#include <QMenu>
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QPainter>
@@ -24,6 +26,7 @@ constexpr int kCellMargin = 6;      // between the cell edge and the thumbnail s
 constexpr int kCornerRadius = 6;
 constexpr int kThumbRole = Qt::UserRole + 1; // the prepared square QPixmap
 constexpr int kImageRole = Qt::UserRole + 2; // the decoded thumbnail QImage it was made from
+constexpr int kSerialRole = Qt::UserRole + 3; // bumped per (re)generation so a superseded decode's result is dropped
 constexpr double kMaxCropAspect = 1.5;       // beyond this the whole image is shown, not cropped
 constexpr int kDimAlpha = 26;                // 10% black over the inactive thumbnails
 
@@ -169,18 +172,59 @@ void ThumbnailStrip::loadVisibleThumbnails()
         if (!visualItemRect(item(i)).adjusted(-view.width() / 2, 0, view.width() / 2, 0).intersects(view)) continue;
         requested_.insert(i);
         const QString path = files_[i];
+        const bool fresh = regenerate_.remove(i);
+        const int serial = item(i)->data(kSerialRole).toInt();
         auto* watcher = new QFutureWatcher<QImage>(this);
         const int gen = generation_;
-        connect(watcher, &QFutureWatcher<QImage>::finished, this, [this, watcher, i, gen]() {
+        connect(watcher, &QFutureWatcher<QImage>::finished, this, [this, watcher, i, gen, serial]() {
             const QImage image = watcher->result();
             watcher->deleteLater();
             if (gen != generation_ || i >= count() || image.isNull()) return;
+            if (item(i)->data(kSerialRole).toInt() != serial) return; // regenerated meanwhile
             item(i)->setData(kImageRole, image);
             item(i)->setData(kThumbRole, makeSquareThumbnail(image, kThumbSize, devicePixelRatioF(), background_));
             viewport()->update();
         });
-        watcher->setFuture(QtConcurrent::run(decodeFileThumbnail, path));
+        watcher->setFuture(QtConcurrent::run(decodeFileThumbnail, path, fresh));
     }
+}
+
+void ThumbnailStrip::regenerate(const QList<int>& rows)
+{
+    for (int i : rows)
+    {
+        if (i < 0 || i >= count()) continue;
+        QListWidgetItem* it = item(i);
+        it->setData(kSerialRole, it->data(kSerialRole).toInt() + 1);
+        it->setData(kThumbRole, QVariant());
+        it->setData(kImageRole, QVariant());
+        requested_.remove(i);
+        regenerate_.insert(i);
+    }
+    viewport()->update();
+    loadVisibleThumbnails(); // the rest follow as they scroll into view
+}
+
+void ThumbnailStrip::contextMenuEvent(QContextMenuEvent* event)
+{
+    QListWidgetItem* under = itemAt(event->pos());
+    QMenu menu(this);
+    QAction* one = menu.addAction(tr("Regenerate Thumbnail"));
+    one->setEnabled(under != nullptr);
+    QAction* all = menu.addAction(tr("Regenerate All Thumbnails"));
+    all->setEnabled(count() > 0);
+    QAction* chosen = menu.exec(event->globalPos());
+    if (chosen == one && under)
+    {
+        regenerate({row(under)});
+    }
+    else if (chosen == all)
+    {
+        QList<int> rows;
+        for (int i = 0; i < count(); ++i) rows.append(i);
+        regenerate(rows);
+    }
+    event->accept();
 }
 
 void ThumbnailStrip::wheelEvent(QWheelEvent* event)

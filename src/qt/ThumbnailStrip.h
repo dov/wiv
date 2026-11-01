@@ -35,14 +35,18 @@ protected:
     void wheelEvent(QWheelEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void showEvent(QShowEvent* event) override;
+    void contextMenuEvent(QContextMenuEvent* event) override;
 
 private:
     void loadVisibleThumbnails();
+    // Drops the cached thumbnails of `rows` (on disk and in memory) and decodes them again.
+    void regenerate(const QList<int>& rows);
     void updateCentering();
 
     QColor background_ = Qt::white;
     QStringList files_;
     QSet<int> requested_; // rows already queued, or done
+    QSet<int> regenerate_; // rows whose next decode must bypass the disk cache
     int generation_ = 0;  // invalidates results of a previous file list
 };
 

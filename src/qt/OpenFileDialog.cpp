@@ -243,7 +243,11 @@ QImage decodeThumbnail(const QString& path)
 
 } // namespace
 
-QImage decodeFileThumbnail(const QString& path) { return decodeThumbnail(path); }
+QImage decodeFileThumbnail(const QString& path, bool regenerate)
+{
+    if (regenerate) QFile::remove(thumbnailCachePath(path));
+    return decodeThumbnail(path);
+}
 
 // Paints an inline thumbnail (or a folder/file/queued/failed fallback icon)
 // for column 0 of the file dialog's own list/tree view, in either a
