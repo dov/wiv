@@ -1801,6 +1801,9 @@ void VulkanViewport::recomputeDisplayImage()
         const ContrastState state = currentContrastState();
         giv::renderDisplayRgba(src, state.min, state.max, state.colormapId, state.colormapEnabled, display.rgba,
                                 currentSlice_);
+        // A live texture, so a contrast/colormap change rewrites it in place
+        // instead of rebuilding the scene (see applyDisplayImage()).
+        display.animated = !src.isPreview();
     }
     displayImages_ = {std::move(display)};
 }
@@ -1827,6 +1830,24 @@ VulkanViewport::ContrastState VulkanViewport::currentContrastState()
     return it->second;
 }
 
+// Shows displayImages_ after a contrast/colormap change: rewrites the live
+// texture in place when there is one, else rebuilds the scene.
+bool VulkanViewport::applyDisplayImage(QString* error)
+{
+    if (!anim_ && animTexture_ && !displayImages_.empty())
+    {
+        const giv::PixelBuffer& pixels = displayImages_.front().rgba;
+        if (animTexture_->dataSize() == pixels.size())
+        {
+            std::memcpy(animTexture_->dataPointer(), pixels.data(), pixels.size());
+            animTextureDirty_ = 4; // see showAnimationFrame()
+            viewer_->request();
+            return true;
+        }
+    }
+    return rebuildSceneGraph(error, /*isInitialLoad=*/false);
+}
+
 void VulkanViewport::setContrast(float min, float max)
 {
     if (loadedImages_.empty() || loadedImages_.front().sampleType == WIV_SAMPLE_NONE) return;
@@ -1839,11 +1860,17 @@ void VulkanViewport::setContrast(float min, float max)
     lastContrastMax_ = max;
     hasLastContrast_ = true;
 
+    const auto perfStart = std::chrono::steady_clock::now();
     recomputeDisplayImage();
+    const auto perfRendered = std::chrono::steady_clock::now();
     QString error;
-    if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
+    if (!applyDisplayImage(&error))
         spdlog::error("Failed to apply contrast: {}", error.toStdString());
+    const auto perfApplied = std::chrono::steady_clock::now();
     emit contrastChanged();
+    const auto perfMs = [](auto a, auto b) { return std::chrono::duration<double, std::milli>(b - a).count(); };
+    spdlog::info("[perf] contrast change: render {:.1f} ms, apply {:.1f} ms, signal {:.1f} ms", perfMs(perfStart, perfRendered),
+                 perfMs(perfRendered, perfApplied), perfMs(perfApplied, std::chrono::steady_clock::now()));
 }
 
 void VulkanViewport::setColormap(giv::colormaps::Id id, bool enabled)
@@ -1857,11 +1884,17 @@ void VulkanViewport::setColormap(giv::colormaps::Id id, bool enabled)
     lastColormapId_ = id;
     lastColormapEnabled_ = enabled;
 
+    const auto perfStart = std::chrono::steady_clock::now();
     recomputeDisplayImage();
+    const auto perfRendered = std::chrono::steady_clock::now();
     QString error;
-    if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
+    if (!applyDisplayImage(&error))
         spdlog::error("Failed to apply color table: {}", error.toStdString());
+    const auto perfApplied = std::chrono::steady_clock::now();
     emit contrastChanged();
+    const auto perfMs = [](auto a, auto b) { return std::chrono::duration<double, std::milli>(b - a).count(); };
+    spdlog::info("[perf] color table change: render {:.1f} ms, apply {:.1f} ms, signal {:.1f} ms", perfMs(perfStart, perfRendered),
+                 perfMs(perfRendered, perfApplied), perfMs(perfApplied, std::chrono::steady_clock::now()));
 }
 
 std::array<uint32_t, 256> VulkanViewport::computeHistogram() const
