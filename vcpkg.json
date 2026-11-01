@@ -19,6 +19,7 @@
     "tiff",
     "libwebp",
     "libheif",
+    "libjxl",
     "libraw",
     "spdlog",
     "cfitsio",
