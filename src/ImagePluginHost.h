@@ -7,6 +7,7 @@
 // deterministic (sorted-filename) load/dispatch order - giv's own docs
 // (doc/plugins.txt) admit its order is arbitrary.
 //
+#include "Colormaps.h"
 #include "plugins/wiv_plugin.h"
 
 #include <cstdint>
@@ -83,6 +84,18 @@ struct LoadedImage
     int fullWidth = 0;
     int fullHeight = 0;
     bool isPreview() const { return fullWidth > 0; }
+
+    // How a raw-sample image is shown (see SceneBuilder): the window, colormap
+    // and slice the GPU shader applies to `samples`. Only the viewport sets it
+    // (on its display copy); meaningless when sampleType == WIV_SAMPLE_NONE.
+    struct DisplayParams
+    {
+        float min = 0.0f;
+        float max = 0.0f;
+        colormaps::Id colormap = colormaps::Id::None;
+        bool colormapEnabled = false;
+        int slice = 0;
+    } display;
 
     // Set by the viewport while this image is being played as an animation:
     // the scene builder then gives it a texture the CPU may rewrite per frame

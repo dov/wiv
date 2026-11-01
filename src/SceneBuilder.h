@@ -146,6 +146,19 @@ public:
     vsg::ref_ptr<vsg::Group> build(const SceneData& scene, const std::string& shaderDir,
                                     const std::vector<LoadedImage>& images = {});
 
+    // Raw-sample images (sampleType != NONE) are shown by a shader that applies
+    // the window, colormap and slice, so those change without a rebuild or a
+    // texture upload. Valid after build(), for the first image only:
+    //  - sampleParams(): the window + colormap uniform buffer; rewrite it with
+    //    fillSampleParams() and dirty() it. Null if the image isn't raw samples.
+    //  - setSampleSlice(): copies li.display.slice into the live texture of a
+    //    volume (false if there is no such texture); the caller dirty()s
+    //    sampleTexture().
+    vsg::ref_ptr<vsg::vec4Array> sampleParams() const { return sampleParams_; }
+    vsg::ref_ptr<vsg::Data> sampleTexture() const { return sampleTexture_; }
+    static void fillSampleParams(vsg::vec4Array& out, const LoadedImage& li);
+    bool setSampleSlice(const LoadedImage& li);
+
     // Valid after build(); non-null only if `images` was non-empty. Has one
     // child per loaded image (vsg::Switch::setSingleChildOn to cycle which
     // one is displayed - see giv's shift-Up/shift-Down image cycling).
@@ -201,6 +214,11 @@ private:
     vsg::ref_ptr<vsg::BindDescriptorSet> bindViewParams_;
     vsg::ref_ptr<vsg::PipelineLayout> imagePipelineLayout_;
     vsg::ref_ptr<vsg::BindGraphicsPipeline> imageBind_;
+    vsg::ref_ptr<vsg::PipelineLayout> samplesPipelineLayout_;
+    vsg::ref_ptr<vsg::BindGraphicsPipeline> samplesBind_;
+    vsg::ref_ptr<vsg::vec4Array> sampleParams_;
+    vsg::ref_ptr<vsg::Data> sampleTexture_; // only for a volume (see setSampleSlice())
+    static vsg::ref_ptr<vsg::Data> makeSampleTexture(const LoadedImage& li);
     vsg::ref_ptr<vsg::BindGraphicsPipeline> gridBind_;
     vsg::ref_ptr<vsg::Sampler> nearestSampler_;
     vsg::ref_ptr<vsg::Sampler> linearSampler_;

@@ -923,6 +923,8 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     // indexes into loadedImageNames_, the full $image candidate list).
     imageSwitch_ = builder.imageSwitch();
     animTexture_ = builder.animatedTexture();
+    sampleParams_ = builder.sampleParams();
+    sampleTexture_ = builder.sampleTexture();
     if (imageSwitch_) imageSwitch_->setSingleChildOn(0);
     applyShowImage();
 
@@ -1230,8 +1232,20 @@ QString VulkanViewport::pixelValueText(double worldX, double worldY) const
     if (px < 0 || py < 0 || px >= img.width || py >= img.height) return {};
 
     const size_t sampleIdx = static_cast<size_t>(py) * img.width + px;
-    const uint8_t* p = &img.rgba[sampleIdx * 4]; // img (displayImages_) already holds only the current slice's pixels
-    uint8_t r = p[0], g = p[1], b = p[2], a = p[3];
+    uint8_t r, g, b, a;
+    if (raw.sampleType != WIV_SAMPLE_NONE)
+    {
+        // The GPU does the stretch, so work out the colour the shader shows for this one sample.
+        const size_t rawIdx = static_cast<size_t>(raw.width) * raw.height * currentSlice_ + sampleIdx;
+        const uint32_t rgba = giv::displayRgbaAt(raw, img.display.min, img.display.max, img.display.colormap,
+                                                  img.display.colormapEnabled, rawIdx);
+        r = rgba & 0xff, g = (rgba >> 8) & 0xff, b = (rgba >> 16) & 0xff, a = 255;
+    }
+    else
+    {
+        const uint8_t* p = &img.rgba[sampleIdx * 4]; // img (displayImages_) already holds only the current slice's pixels
+        r = p[0], g = p[1], b = p[2], a = p[3];
+    }
 
     if (raw.sampleType != WIV_SAMPLE_NONE)
     {
@@ -1362,7 +1376,7 @@ void VulkanViewport::nextSlice()
     currentSlice_ = (currentSlice_ + 1) % count;
     recomputeDisplayImage();
     QString error;
-    if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
+    if (!applySlice(&error))
         spdlog::error("Failed to switch slice: {}", error.toStdString());
     emit sliceChanged(currentSlice_, count);
 }
@@ -1374,7 +1388,7 @@ void VulkanViewport::previousSlice()
     currentSlice_ = (currentSlice_ - 1 + count) % count;
     recomputeDisplayImage();
     QString error;
-    if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
+    if (!applySlice(&error))
         spdlog::error("Failed to switch slice: {}", error.toStdString());
     emit sliceChanged(currentSlice_, count);
 }
@@ -1620,8 +1634,10 @@ void VulkanViewport::showAnimationFrame(int frame)
 // Called by GivViewer at the start of each rendered frame.
 bool VulkanViewport::onAnimationFrameHook()
 {
-    if (animTextureDirty_ <= 0 || !animTexture_) return false;
-    animTexture_->dirty();
+    if (animTextureDirty_ <= 0 || !(animTexture_ || sampleParams_ || sampleTexture_)) return false;
+    if (animTexture_) animTexture_->dirty();
+    if (sampleParams_) sampleParams_->dirty();
+    if (sampleTexture_) sampleTexture_->dirty();
     return --animTextureDirty_ > 0;
 }
 
@@ -1798,12 +1814,9 @@ void VulkanViewport::recomputeDisplayImage()
     giv::LoadedImage display = src;
     if (src.sampleType != WIV_SAMPLE_NONE)
     {
+        // Raw samples are windowed and colormapped by the GPU (image_samples.frag): just describe how.
         const ContrastState state = currentContrastState();
-        giv::renderDisplayRgba(src, state.min, state.max, state.colormapId, state.colormapEnabled, display.rgba,
-                                currentSlice_);
-        // A live texture, so a contrast/colormap change rewrites it in place
-        // instead of rebuilding the scene (see applyDisplayImage()).
-        display.animated = !src.isPreview();
+        display.display = {state.min, state.max, state.colormapId, state.colormapEnabled, currentSlice_};
     }
     displayImages_ = {std::move(display)};
 }
@@ -1830,20 +1843,30 @@ VulkanViewport::ContrastState VulkanViewport::currentContrastState()
     return it->second;
 }
 
-// Shows displayImages_ after a contrast/colormap change: rewrites the live
-// texture in place when there is one, else rebuilds the scene.
+// Shows displayImages_ after a contrast/colormap change: a raw-sample image
+// only needs its window/colormap uniform buffer rewritten (the GPU does the
+// rest); anything else rebuilds the scene.
 bool VulkanViewport::applyDisplayImage(QString* error)
 {
-    if (!anim_ && animTexture_ && !displayImages_.empty())
+    if (sampleParams_ && !displayImages_.empty())
     {
-        const giv::PixelBuffer& pixels = displayImages_.front().rgba;
-        if (animTexture_->dataSize() == pixels.size())
-        {
-            std::memcpy(animTexture_->dataPointer(), pixels.data(), pixels.size());
-            animTextureDirty_ = 4; // see showAnimationFrame()
-            viewer_->request();
-            return true;
-        }
+        giv::SceneBuilder::fillSampleParams(*sampleParams_, displayImages_.front());
+        animTextureDirty_ = 4; // see showAnimationFrame()
+        viewer_->request();
+        return true;
+    }
+    return rebuildSceneGraph(error, /*isInitialLoad=*/false);
+}
+
+// Shows the slice just selected in displayImages_: copies it into the
+// volume's live texture; else rebuilds the scene.
+bool VulkanViewport::applySlice(QString* error)
+{
+    if (sampleTexture_ && sceneBuilder_ && !displayImages_.empty() && sceneBuilder_->setSampleSlice(displayImages_.front()))
+    {
+        animTextureDirty_ = 4;
+        viewer_->request();
+        return true;
     }
     return rebuildSceneGraph(error, /*isInitialLoad=*/false);
 }
@@ -1897,7 +1920,7 @@ void VulkanViewport::setColormap(giv::colormaps::Id id, bool enabled)
                  perfMs(perfRendered, perfApplied), perfMs(perfApplied, std::chrono::steady_clock::now()));
 }
 
-std::array<uint32_t, 256> VulkanViewport::computeHistogram() const
+std::array<uint32_t, 256> VulkanViewport::computeHistogram(bool wholeVolume) const
 {
     std::array<uint32_t, 256> histogram{};
     if (loadedImages_.empty()) return histogram;
@@ -1907,8 +1930,9 @@ std::array<uint32_t, 256> VulkanViewport::computeHistogram() const
 
     const float range = img.sampleMax - img.sampleMin;
     const size_t pixelCount = static_cast<size_t>(img.width) * img.height;
-    const size_t sliceOffset = pixelCount * static_cast<size_t>(currentSlice_);
-    for (size_t i = sliceOffset; i < sliceOffset + pixelCount; ++i)
+    const size_t first = wholeVolume ? 0 : pixelCount * static_cast<size_t>(currentSlice_);
+    const size_t last = wholeVolume ? pixelCount * static_cast<size_t>(std::max(1, img.depth)) : first + pixelCount;
+    for (size_t i = first; i < last; ++i)
     {
         double v;
         switch (img.sampleType)

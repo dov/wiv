@@ -224,6 +224,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         updatePageActionsEnabled();
         infoLabel_->setText(statusLineText());
         refreshInfoPanel();
+        // The histogram is of the displayed slice (a volume's slices can differ a lot in range).
+        if (count > 1 && contrastDock_->isVisible()) contrastPanel_->refreshForSlice();
     });
     connect(viewport_, &VulkanViewport::animationChanged, this, [this](int frame, int count, bool playing, double speed) {
         lastAnimText_.clear();
@@ -1069,7 +1071,7 @@ void MainWindow::buildNavigationBar()
     connect(fit, &QToolButton::clicked, viewport_, &VulkanViewport::fitToWindowAnimated);
     connect(full, &QToolButton::clicked, this, &MainWindow::toggleFullScreen);
     connect(actual, &QToolButton::clicked, viewport_, &VulkanViewport::zoomActualPixels);
-    auto syncEnabled = [=]() {
+    auto syncEnabled = [=, this]() {
         prev->setEnabled(previousImageAction_->isEnabled());
         next->setEnabled(nextImageAction_->isEnabled());
     };

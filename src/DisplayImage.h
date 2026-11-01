@@ -32,4 +32,11 @@ void renderDisplayRgba(const LoadedImage& src, float contrastMin, float contrast
                         colormaps::Id colormapId, bool colormapEnabled, PixelBuffer& outRgba,
                         int slice = 0);
 
+// The colour the display shows for sample `sampleIndex` of src.samples (an
+// index into the whole slice-major buffer): the same stretch as
+// renderDisplayRgba() and the GPU shader, for one sample. Packed so the low
+// byte is R, then G, B, A (255).
+uint32_t displayRgbaAt(const LoadedImage& src, float contrastMin, float contrastMax, colormaps::Id colormapId,
+                       bool colormapEnabled, size_t sampleIndex);
+
 } // namespace giv
