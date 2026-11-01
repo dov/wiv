@@ -31,7 +31,7 @@ bool hasExtension(const std::string& filename, const char* ext)
 
 bool readFile(const char* filename, std::vector<unsigned char>& data)
 {
-    FILE* fh = std::fopen(filename, "rb");
+    FILE* fh = wiv_plugin::fopenUtf8(filename, "rb");
     if (!fh)
         return false;
     std::fseek(fh, 0, SEEK_END);
@@ -67,7 +67,7 @@ std::unique_ptr<Anim> openAnim(const char* filename)
     // Stills are the common case: the header alone says whether this is an animation.
     {
         unsigned char head[64];
-        FILE* fh = std::fopen(filename, "rb");
+        FILE* fh = wiv_plugin::fopenUtf8(filename, "rb");
         if (!fh)
             return nullptr;
         const size_t n = std::fread(head, 1, sizeof(head), fh);

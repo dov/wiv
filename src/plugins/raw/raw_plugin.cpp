@@ -143,7 +143,11 @@ WivPluginImage* decodeRaw(const char* filename, bool halfSize, int minLongSide, 
         return fail(buf);
     };
 
+    #ifdef _WIN32
+    int rc = raw.open_file(wiv_plugin::utf8ToWide(filename).c_str());
+#else
     int rc = raw.open_file(filename);
+#endif
     if (rc != LIBRAW_SUCCESS)
         return failLR(rc);
 

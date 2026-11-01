@@ -1793,7 +1793,7 @@ QString MainWindow::buildInfoText() const
         {
             exifPath_ = path;
             exifMtime_ = fi.lastModified();
-            exifEntries_ = giv::readExif(QFile::encodeName(path).toStdString());
+            exifEntries_ = giv::readExif(path.toUtf8().toStdString());
         }
         if (fi.exists() && !exifEntries_.empty())
         {

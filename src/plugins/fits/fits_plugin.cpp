@@ -67,7 +67,7 @@ extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** er
     fitsfile* fptr = nullptr;
     int status = 0;
 
-    if (fits_open_file(&fptr, filename, READONLY, &status))
+    if (fits_open_file(&fptr, wiv_plugin::asciiSafePath(filename).c_str(), READONLY, &status))
     {
         if (error_msg)
             *error_msg = fitsError(status, filename);

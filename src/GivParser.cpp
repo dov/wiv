@@ -1,5 +1,6 @@
 #include "GivParser.h"
 #include "SvgLoader.h"
+#include "PathUtils.h"
 
 #include <algorithm>
 #include <charconv>
@@ -185,7 +186,7 @@ struct MappedFile
 #else
     bool load(const std::string& filename)
     {
-        FILE* f = std::fopen(filename.c_str(), "rb");
+        FILE* f = giv::fopenUtf8(filename, "rb");
         if (!f) return false;
         char buf[1 << 16];
         size_t n;

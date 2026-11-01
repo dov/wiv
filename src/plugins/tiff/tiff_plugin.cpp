@@ -40,9 +40,21 @@ extern "C" bool wiv_plugin_supports_file(const char* filename)
     return hasExtension(f, ".tif") || hasExtension(f, ".tiff");
 }
 
+namespace wiv_plugin
+{
+inline TIFF* tiffOpen(const char* filename)
+{
+#ifdef _WIN32
+    return TIFFOpenW(utf8ToWide(filename).c_str(), "r");
+#else
+    return TIFFOpen(filename, "r");
+#endif
+}
+}
+
 extern "C" int wiv_plugin_page_count(const char* filename)
 {
-    TIFF* tif = TIFFOpen(filename, "r");
+    TIFF* tif = wiv_plugin::tiffOpen(filename);
     if (!tif)
         return 0;
     const int count = static_cast<int>(TIFFNumberOfDirectories(tif));
@@ -55,7 +67,7 @@ namespace
 
 WivPluginImage* loadTiff(const char* filename, int page, const volatile int* cancel, char** error_msg)
 {
-    TIFF* tif = TIFFOpen(filename, "r");
+    TIFF* tif = wiv_plugin::tiffOpen(filename);
     if (!tif)
     {
         if (error_msg)
