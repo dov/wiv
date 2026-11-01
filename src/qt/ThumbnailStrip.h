@@ -44,6 +44,8 @@ protected:
     void resizeEvent(QResizeEvent* event) override;
     void showEvent(QShowEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
 
 private:
     void loadVisibleThumbnails();
@@ -55,6 +57,7 @@ private:
     QStringList files_;
     QSet<int> requested_; // rows already queued, or done
     QSet<int> regenerate_; // rows whose next decode must bypass the disk cache
+    bool ignoreClick_ = false; // the release ending a double-click must not select again
     int generation_ = 0;  // invalidates results of a previous file list
 };
 
