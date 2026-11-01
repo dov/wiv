@@ -32,17 +32,16 @@ double sampleValue(const LoadedImage& img, size_t idx)
 } // namespace
 
 void renderDisplayRgba(const LoadedImage& src, float contrastMin, float contrastMax,
-                        colormaps::Id colormapId, bool colormapEnabled, std::vector<uint8_t>& outRgba,
+                        colormaps::Id colormapId, bool colormapEnabled, PixelBuffer& outRgba,
                         int slice)
 {
-    const size_t pixelCount = static_cast<size_t>(src.width) * src.height;
-    outRgba.resize(pixelCount * 4);
-
     if (src.sampleType == WIV_SAMPLE_NONE)
     {
-        outRgba = src.rgba;
+        outRgba = src.rgba; // shares the buffer: a colour image is displayed as is
         return;
     }
+    const size_t pixelCount = static_cast<size_t>(src.width) * src.height;
+    std::vector<uint8_t> rendered(pixelCount * 4);
 
     const uint8_t* lut = colormapEnabled ? colormaps::lut(colormapId) : nullptr;
     const float range = contrastMax - contrastMin;
@@ -55,7 +54,7 @@ void renderDisplayRgba(const LoadedImage& src, float contrastMin, float contrast
         int u8 = static_cast<int>(std::lround(t * 255.0));
         u8 = std::clamp(u8, 0, 255);
 
-        uint8_t* dst = &outRgba[i * 4];
+        uint8_t* dst = &rendered[i * 4];
         if (lut)
         {
             dst[0] = lut[u8 * 3 + 0];
@@ -68,6 +67,7 @@ void renderDisplayRgba(const LoadedImage& src, float contrastMin, float contrast
         }
         dst[3] = 255;
     }
+    outRgba = std::move(rendered);
 }
 
 } // namespace giv

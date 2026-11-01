@@ -19,6 +19,10 @@
 #include <vsgXchange/freetype.h>
 
 #include <QCoreApplication>
+#include <QGuiApplication>
+#ifdef WIV_HAVE_XCB
+#include <xcb/xcb.h>
+#endif
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QMimeData>
@@ -348,8 +352,34 @@ void VulkanViewport::preserveViewOnNextResize(bool entering)
     });
 }
 
+// When the render window is moved or resized, the X server keeps the old
+// contents until the swapchain has been rebuilt and a new frame presented
+// (tens of milliseconds - see resizeSettling_). With the default NorthWest
+// bit gravity those contents travel with the window's top-left corner, so a
+// dock appearing to the left of the viewport makes the stale image jump right
+// by the dock's width and back again once the real frame arrives: a visible
+// flicker. StaticGravity pins the old contents to the screen instead, so they
+// simply stay put (partly covered) until replaced - what already happens when
+// a dock appears on the right, where the window's origin does not move.
+void VulkanViewport::keepContentsInPlaceOnResize()
+{
+#ifdef WIV_HAVE_XCB
+    if (!window_ || QGuiApplication::platformName() != "xcb") return;
+    auto* x11 = qGuiApp->nativeInterface<QNativeInterface::QX11Application>();
+    if (!x11 || !x11->connection()) return;
+    const WId id = window_->winId();
+    if (id == bitGravityWindow_) return; // already set for this native window
+    const uint32_t gravity = XCB_GRAVITY_STATIC;
+    xcb_change_window_attributes(x11->connection(), static_cast<xcb_window_t>(id), XCB_CW_BIT_GRAVITY, &gravity);
+    xcb_flush(x11->connection());
+    bitGravityWindow_ = id;
+    spdlog::info("Render window {:#x}: bit gravity set to static", static_cast<unsigned long>(id));
+#endif
+}
+
 void VulkanViewport::handleViewportResize()
 {
+    keepContentsInPlaceOnResize();
     if (!camera_ || !projection_ || !window_ || !window_->windowAdapter) return;
 
     // createWindowContainer()'s usual auto-sync of the embedded QWindow's
@@ -402,12 +432,36 @@ void VulkanViewport::applyExtent(VkExtent2D extent)
     cancelViewAnimation(); // its targets were computed for the old extent
     syncRenderExtent(extent);
 
-    // The visible half-extents just grow/shrink to match the new size,
+    const double dpr = devicePixelRatioF();
+    const QSize widgetPx(static_cast<int>(std::lround(width() * dpr)), static_cast<int>(std::lround(height() * dpr)));
+
+    // A view that is just "fit to window" stays one.
+    if (!viewDirty_ && !preserveView_ && hasScene_)
+    {
+        fitContentToWindow();
+        resizeRef_.valid = false;
+        lastWidgetPx_ = widgetPx;
+        return;
+    }
+
+    // Otherwise the visible half-extents grow/shrink to match the new size,
     // centered on the same point (rather than re-fitting the whole view).
     double oldHalfW = (projection_->right - projection_->left) * 0.5;
     if (lastWidth_ > 0 && lastHeight_ > 0 && oldHalfW > 0.0)
     {
         double scale = lastWidth_ / (2.0 * oldHalfW); // pixels per world unit
+        if (!preserveView_ && !lastWidgetPx_.isEmpty() && !widgetPx.isEmpty())
+        {
+            // Scale with the window so the same part of the image stays visible:
+            // by the smaller of the width/height ratios, so everything that was
+            // visible still is (with extra margin on the other axis).
+            if (!resizeRef_.valid || std::abs(scale - resizeAppliedScale_) > 1e-6 * resizeAppliedScale_)
+                resizeRef_ = {true, lastWidgetPx_, scale}; // a resize begins, or the view was changed since the last one
+            const double ratio = std::min(widgetPx.width() / static_cast<double>(resizeRef_.widgetPx.width()),
+                                          widgetPx.height() / static_cast<double>(resizeRef_.widgetPx.height()));
+            scale = resizeRef_.scale * ratio;
+            resizeAppliedScale_ = scale;
+        }
         if (preserveView_)
         {
             scale = preserveTarget_ > 0.0
@@ -424,6 +478,7 @@ void VulkanViewport::applyExtent(VkExtent2D extent)
     }
     lastWidth_ = static_cast<int>(extent.width);
     lastHeight_ = static_cast<int>(extent.height);
+    lastWidgetPx_ = widgetPx;
     viewer_->request();
     updateScrollBars();
 }
@@ -599,6 +654,17 @@ bool VulkanViewport::waitForGpuIdle()
 
 bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
 {
+    // [perf] phase timing, logged once at the end (also on the early error returns it is simply omitted).
+    using PerfClock = std::chrono::steady_clock;
+    const auto perfStart = PerfClock::now();
+    auto perfLast = perfStart;
+    double perfWait = 0, perfBuild = 0, perfCompile = 0, perfRender = 0;
+    const auto perfLap = [&perfLast]() {
+        const auto now = PerfClock::now();
+        const double ms = std::chrono::duration<double, std::milli>(now - perfLast).count();
+        perfLast = now;
+        return ms;
+    };
     // The global "View Marks" switch hides every dataset without disturbing
     // the per-dataset isVisible flags the Mark Browser tree maintains - so
     // apply it only for the duration of this build, then restore.
@@ -618,7 +684,9 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     vsg::ref_ptr<vsg::Group> sceneGraph;
     try
     {
+        perfLap();
         sceneGraph = builder.build(scene_, shaderDir_, displayImages_);
+        perfBuild = perfLap();
     }
     catch (const std::exception& e)
     {
@@ -670,11 +738,13 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     // this loop at 1 (skipping 0) was exactly the bug the Vulkan validation
     // layer caught - vkDestroyPipeline/vkDestroyFence/vkFreeCommandBuffers
     // all firing on objects "currently in use by VkQueue/VkCommandBuffer".
+    perfLap(); // everything up to here is SceneBuilder::build() and the visibility bookkeeping
     if (everBuiltSceneGraph_ && !waitForGpuIdle())
     {
         if (error) *error = "GPU is not responding; try again";
         return false;
     }
+    perfWait = perfLap();
     everBuiltSceneGraph_ = true;
 
     // Drop the previous build's event handlers (pan/zoom + balloon + caliper)
@@ -852,9 +922,11 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     commandGraph->addChild(renderGraph_);
 
     viewer_->assignRecordAndSubmitTaskAndPresentation({labelPicker_->commandGraph(), commandGraph});
+    const double perfSetup = perfLap(); // handlers, camera, picker, caliper, render graph objects
     try
     {
         viewer_->compile();
+        perfCompile = perfLap();
     }
     catch (const vsg::Exception& e)
     {
@@ -879,9 +951,11 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
         // libnvidia-glcore.so's poll()); doing it once while still hidden
         // avoids that entirely.
         viewer_->request();
+        perfLap();
         try
         {
             viewer_->render();
+            perfRender = perfLap();
         }
         catch (const vsg::Exception& e)
         {
@@ -894,7 +968,14 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
         viewer_->request();
     }
 
+    perfLap();
     updateScrollBars();
+    const double perfScrollBars = perfLap();
+    const auto* perfImg = displayImages_.empty() ? nullptr : &displayImages_.front();
+    spdlog::info("[perf] rebuild total {:.1f} ms: gpu-wait {:.1f}, build {:.1f}, setup {:.1f}, compile {:.1f}, first-render {:.1f}, "
+                 "scrollbars {:.1f} (initial={}, texture {}x{})",
+                 std::chrono::duration<double, std::milli>(PerfClock::now() - perfStart).count(), perfWait, perfBuild, perfSetup,
+                 perfCompile, perfRender, perfScrollBars, isInitialLoad, perfImg ? perfImg->width : 0, perfImg ? perfImg->height : 0);
     return true;
 }
 
@@ -1243,13 +1324,18 @@ bool VulkanViewport::decodeImageAt(int index, int page, bool allowPreview)
 {
     if (index < 0 || index >= static_cast<int>(loadedImageNames_.size())) return false;
     const std::string& name = loadedImageNames_[static_cast<size_t>(index)];
-    // Show a low-resolution preview instead of the full image when the full
-    // one is not cached (decoding it would block), or while stepping fast
-    // (uploading it would). A prefetched preview is free; otherwise decode one
-    // right here if the plugin can do so cheaply. The owner fetches the full
-    // decode in the background and upgrades.
+    const auto perfStart = std::chrono::steady_clock::now();
+    const auto perfMs = [&perfStart]() {
+        return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - perfStart).count();
+    };
+    // Always put a low-resolution preview up first when one is prefetched,
+    // even if the full image is cached too: uploading a full-resolution
+    // texture takes far longer than a step should. The owner swaps the full
+    // image in once stepping pauses (upgradePreviewFromCache()). With no
+    // prefetched preview and no cached full image, decode a preview right here
+    // if the plugin can do so cheaply; the owner then fetches the full decode.
     const bool fullCached = imageCache_.contains(name);
-    if (allowPreview && page == 0 && (!fullCached || navigationBurst_))
+    if (allowPreview && page == 0)
     {
         const giv::LoadedImage* cached = previewCache_.peek(name);
         std::optional<giv::LoadedImage> preview;
@@ -1265,20 +1351,29 @@ bool VulkanViewport::decodeImageAt(int index, int page, bool allowPreview)
             recomputeDisplayImage();
             emit sliceChanged(currentSlice_, sliceCount());
             emit pageChanged(currentPage_, pageCount());
+            spdlog::info("[perf] decodeImageAt: {} preview {}x{} (full {}x{}) in {:.1f} ms", cached ? "prefetched" : "synchronous",
+                         loadedImages_.front().width, loadedImages_.front().height, loadedImages_.front().fullWidth,
+                         loadedImages_.front().fullHeight, perfMs());
             return true;
         }
         if (!cached && !fullCached) noPreview_.insert(name);
     }
     const giv::LoadedImage* img = imageCache_.get(name, page);
     if (!img) return false;
+    const double perfGet = perfMs();
     currentImageIndex_ = index;
     currentPage_ = page;
     currentSlice_ = 0;
     loadedImages_ = {*img};
     currentImageSize_ = std::make_pair(static_cast<double>(img->width), static_cast<double>(img->height));
+    const double perfCopy = perfMs();
     recomputeDisplayImage();
+    const double perfRecompute = perfMs();
     emit sliceChanged(currentSlice_, sliceCount());
     emit pageChanged(currentPage_, pageCount());
+    spdlog::info("[perf] decodeImageAt: full {}x{} {} - get {:.1f} ms, copy {:.1f} ms, display copy {:.1f} ms, total {:.1f} ms",
+                 img->width, img->height, fullCached ? "from cache" : "decoded synchronously", perfGet, perfCopy - perfGet,
+                 perfRecompute - perfCopy, perfMs());
     return true;
 }
 

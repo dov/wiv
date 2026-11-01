@@ -128,8 +128,8 @@ void applyOrientation(LoadedImage& image, int orientation)
     const int w = image.width;
     const int h = image.height;
     if (!image.samples.empty())
-        image.samples = reorderBuffer(image.samples, w, h, wiv_plugin::sampleTypeSize(image.sampleType), orientation);
-    image.rgba = reorderBuffer(image.rgba, w, h, 4, orientation);
+        image.samples = reorderBuffer(image.samples.vec(), w, h, wiv_plugin::sampleTypeSize(image.sampleType), orientation);
+    image.rgba = reorderBuffer(image.rgba.vec(), w, h, 4, orientation);
 
     const bool swapDims = orientation >= 5;
     if (swapDims)

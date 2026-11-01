@@ -447,6 +447,7 @@ void MainWindow::buildMenus()
     measureDistanceAction_->setCheckable(true);
     measureDistanceAction_->setShortcut(QKeySequence("Z"));
 
+    calibrateDock_->toggleViewAction()->setShortcut(QKeySequence("S")); // pixel Size
     toolsMenu->addAction(calibrateDock_->toggleViewAction());
 
     toolsMenu->addSeparator();
@@ -454,6 +455,8 @@ void MainWindow::buildMenus()
     // samples is shown (see updateContrastToolsEnabled()).
     contrastAction_ = contrastDock_->toggleViewAction();
     colorTableAction_ = colorTableDock_->toggleViewAction();
+    contrastAction_->setShortcut(QKeySequence("C"));
+    colorTableAction_->setShortcut(QKeySequence("P")); // Palette
     toolsMenu->addAction(contrastAction_);
     toolsMenu->addAction(colorTableAction_);
     contrastAction_->setEnabled(false);
@@ -774,6 +777,7 @@ void MainWindow::showEvent(QShowEvent* event)
 
 void MainWindow::loadFilesInternal(const std::vector<std::string>& paths)
 {
+    const auto perfStart = std::chrono::steady_clock::now();
     {
         QStringList list;
         for (const auto& p : paths) list << QString::fromStdString(p);
@@ -786,14 +790,15 @@ void MainWindow::loadFilesInternal(const std::vector<std::string>& paths)
     // current by then, not the previous load's value.
     QStringList baseNames;
     for (const auto& p : paths) baseNames << QFileInfo(QString::fromStdString(p)).fileName();
-    // Stepping in quick succession (e.g. a held arrow key): the viewport then
-    // shows cheap previews and the full image only once things settle.
-    viewport_->setNavigationBurst(sinceLastNavigation_.isValid() && sinceLastNavigation_.elapsed() < 400);
-    sinceLastNavigation_.restart();
     loadedBaseName_ = baseNames.join(", ");
     loadedPaths_.clear();
     for (const auto& p : paths) loadedPaths_ << QFileInfo(QString::fromStdString(p)).absoluteFilePath();
+    const bool stepping = std::exchange(navigationStep_, false);
     updateDirectoryFileList(paths);
+    // Not a step through the folder (startup, File > Open, drop, reload): get the
+    // neighbours' previews decoding on the workers right now, in parallel with
+    // this thread decoding and showing the file itself below, instead of after.
+    if (!stepping) prefetchNeighbours();
 
     QString error;
     if (!viewport_->loadFiles(paths, &error))
@@ -840,8 +845,16 @@ void MainWindow::loadFilesInternal(const std::vector<std::string>& paths)
     balloonAction_->setChecked(false);
     measureDistanceAction_->setChecked(false);
     spdlog::info("Loaded {} file(s) successfully", paths.size());
+    const auto perfLoaded = std::chrono::steady_clock::now();
     updateThumbnailStrip();
-    prefetchNeighbours();
+    // Stepping waits for a pause before decoding full images (they would be
+    // wasted on files flying past); anything else has no reason to wait.
+    if (stepping) prefetchNeighbours();
+    else runPrefetch();
+    const auto perfEnd = std::chrono::steady_clock::now();
+    spdlog::info("[perf] step: load {:.1f} ms, thumbnail strip + prefetch bookkeeping {:.1f} ms, key age {} ms",
+                 std::chrono::duration<double, std::milli>(perfLoaded - perfStart).count(),
+                 std::chrono::duration<double, std::milli>(perfEnd - perfLoaded).count(), lastKeyAgeMs_);
 }
 
 // The row of buttons over the thumbnail strip: previous / fit / next, then
@@ -897,12 +910,19 @@ void MainWindow::updateThumbnailStrip()
     thumbnailStrip_->setFiles(directoryFiles_, directoryFileIndex_);
 }
 
+// loadFilesInternal() for stepping to another file of the directory.
+void MainWindow::loadNavigationStep(const std::vector<std::string>& paths)
+{
+    navigationStep_ = true;
+    loadFilesInternal(paths);
+}
+
 void MainWindow::goToDirectoryIndex(int index)
 {
     if (index < 0 || index >= directoryFiles_.size() || index == directoryFileIndex_) return;
     lastNavigationStep_ = index > directoryFileIndex_ ? 1 : -1;
     directoryFileIndex_ = index;
-    loadFilesInternal({directoryFiles_[index].toStdString()});
+    loadNavigationStep({directoryFiles_[index].toStdString()});
 }
 
 // The directory files at the given offsets from the current one (wrapping),
@@ -975,7 +995,6 @@ std::vector<PrefetchPool::Want> MainWindow::prefetchWanted(bool withFull) const
 // sharpen the displayed image, and queue the full decodes still missing.
 void MainWindow::runPrefetch()
 {
-    viewport_->setNavigationBurst(false);
     std::unordered_set<std::string> keepFull, keepPreview;
     if (directoryFileIndex_ >= 0)
     {
@@ -992,6 +1011,8 @@ void MainWindow::runPrefetch()
 void MainWindow::onPrefetchReady(const QString& path, bool preview, const std::shared_ptr<giv::LoadedImage>& image)
 {
     const std::string key = path.toStdString();
+    spdlog::info("[perf] worker finished {} of {}{}", preview ? "preview" : "full decode", QFileInfo(path).fileName().toStdString(),
+                 image ? "" : " (nothing)");
     if (preview)
     {
         if (image && previewWindow().contains(path)) viewport_->cachePrefetchedPreview(key, std::move(*image));
@@ -1160,7 +1181,7 @@ void MainWindow::goFirstImage()
     }
     if (directoryFileIndex_ == 0) return;
     directoryFileIndex_ = 0;
-    loadFilesInternal({directoryFiles_[0].toStdString()});
+    loadNavigationStep({directoryFiles_[0].toStdString()});
 }
 
 void MainWindow::goLastImage()
@@ -1174,7 +1195,7 @@ void MainWindow::goLastImage()
     const int last = directoryFiles_.size() - 1;
     if (directoryFileIndex_ == last) return;
     directoryFileIndex_ = last;
-    loadFilesInternal({directoryFiles_[last].toStdString()});
+    loadNavigationStep({directoryFiles_[last].toStdString()});
 }
 
 void MainWindow::goNextImage()
@@ -1190,7 +1211,7 @@ void MainWindow::goNextImage()
     lastNavigationStep_ = 1;
     directoryFileIndex_ = (directoryFileIndex_ + 1) % directoryFiles_.size();
     spdlog::info("Directory navigation: switching to {}", directoryFiles_[directoryFileIndex_].toStdString());
-    loadFilesInternal({directoryFiles_[directoryFileIndex_].toStdString()});
+    loadNavigationStep({directoryFiles_[directoryFileIndex_].toStdString()});
 }
 
 void MainWindow::goPreviousImage()
@@ -1206,7 +1227,7 @@ void MainWindow::goPreviousImage()
     lastNavigationStep_ = -1;
     directoryFileIndex_ = (directoryFileIndex_ - 1 + directoryFiles_.size()) % directoryFiles_.size();
     spdlog::info("Directory navigation: switching to {}", directoryFiles_[directoryFileIndex_].toStdString());
-    loadFilesInternal({directoryFiles_[directoryFileIndex_].toStdString()});
+    loadNavigationStep({directoryFiles_[directoryFileIndex_].toStdString()});
 }
 
 QString MainWindow::currentFilePath() const

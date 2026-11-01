@@ -150,6 +150,18 @@ add_dependencies(wiv wiv_shaders)
 target_include_directories(wiv PRIVATE src ${CMAKE_SOURCE_DIR}/third_party)
 target_link_libraries(wiv PRIVATE vsg::vsg vsgXchange::vsgXchange vsgQt::vsgQt Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent Qt6::Network QtAwesome spdlog::spdlog)
 
+# X11 only: the render window's bit gravity (see VulkanViewport::keepContentsInPlaceOnResize()).
+if(UNIX AND NOT APPLE)
+  find_package(PkgConfig QUIET)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(XCB QUIET IMPORTED_TARGET xcb)
+    if(XCB_FOUND)
+      target_link_libraries(wiv PRIVATE PkgConfig::XCB)
+      target_compile_definitions(wiv PRIVATE WIV_HAVE_XCB)
+    endif()
+  endif()
+endif()
+
 # Version / commit info shown in Help > About. Generated at BUILD time by an
 # always-out-of-date target (the header is rewritten only when it changes), so
 # a new commit rebuilds just BuildInfo.cpp - no reconfigure needed.

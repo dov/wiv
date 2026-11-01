@@ -126,10 +126,6 @@ public:
     void cachePrefetchedPreview(const std::string& path, giv::LoadedImage preview) { previewCache_.put(path, 0, std::move(preview)); }
     void markNoPreview(const std::string& path) { noPreview_.insert(path); }
     bool hasPreviewOrNone(const std::string& path) const { return previewCache_.contains(path) || noPreview_.count(path); }
-    // While true (the user is stepping through files in quick succession) a
-    // cached preview is shown even if the full image is cached too: putting
-    // a full-resolution texture on screen costs the GUI thread far more.
-    void setNavigationBurst(bool burst) { navigationBurst_ = burst; }
     // After stepping stops: swaps the preview for the full image if that is
     // already cached. Returns false if it is not (the caller must decode it).
     bool upgradePreviewFromCache();
@@ -439,10 +435,25 @@ private:
     int currentSlice_ = 0; // see nextSlice()/previousSlice(); reset to 0 by decodeImageAt()
     giv::ImageCache previewCache_{kPreviewCacheCapacity}; // small decodes, see cachePrefetchedPreview()
     std::unordered_set<std::string> noPreview_;
-    bool navigationBurst_ = false;
     giv::ImageCache imageCache_{kImageCacheCapacity}; // bounds how many decoded images are resident at once while paging with next/previousImage()
 
     bool balloonEnabled_ = false;
+    // Manual window resizing (see applyExtent()): a view that is not a "fit"
+    // keeps what part of the image it shows by scaling with the widget. The
+    // scale is always derived from the state when the resize began - not
+    // accumulated step by step - so dragging back restores the view exactly,
+    // and the size used is this widget's, so a scrollbar appearing or
+    // disappearing (which only resizes the canvas inside it) does not rescale.
+    WId bitGravityWindow_ = 0; // native window whose X11 bit gravity keepContentsInPlaceOnResize() has set
+    void keepContentsInPlaceOnResize();
+    struct ResizeReference
+    {
+        bool valid = false;
+        QSize widgetPx;      // widget size, device pixels, when the resize began
+        double scale = 0.0;  // pixels per world unit at that moment
+    } resizeRef_;
+    QSize lastWidgetPx_;           // widget size (device px) at the end of the last applyExtent()
+    double resizeAppliedScale_ = 0.0; // scale the last applyExtent() produced; a different current scale means the view was changed since
     int lastWidth_ = 0;
     bool preserveView_ = false; // see preserveViewOnNextResize()
     double preserveHalfW_ = 0.0, preserveHalfH_ = 0.0;

@@ -4,3 +4,6 @@ vcpkg_installed/
 *.spv
 compile_commands.json
 *~
+/barnsley_10M.giv
+/.thumbnails
+.thumbnails
