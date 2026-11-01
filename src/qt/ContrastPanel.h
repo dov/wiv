@@ -11,6 +11,7 @@
 //
 #include <QWidget>
 
+class QCheckBox;
 class QComboBox;
 class QLineEdit;
 class QRadioButton;
@@ -34,6 +35,10 @@ public:
     // image changes while this panel is open (see MainWindow::imageChanged).
     void refreshForImage();
 
+    // The displayed slice of a multi-slice image changed: refreshes the
+    // histogram if it is of the current slice (a whole-volume one is unchanged).
+    void refreshForSlice();
+
 signals:
     // Emitted when the user picks a colormap here (so ColorTablePanel can
     // resync its selection).
@@ -50,6 +55,9 @@ private:
     QLineEdit* windowEdit_ = nullptr;
     QSlider* strengthSlider_ = nullptr;
     QComboBox* colormapCombo_ = nullptr;
+    QCheckBox* volumeHistogramCheck_ = nullptr; // shown only for multi-slice images
+
+    void updateHistogram();
 
     void onRadioToggled();
     void onUpdateClicked();

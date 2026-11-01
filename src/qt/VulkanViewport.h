@@ -327,7 +327,9 @@ public:
     // against its own sampleMin/sampleMax (a fixed axis, independent of the
     // live contrast window - mirrors giv's giv_histo). Empty if the current
     // image has no raw sample buffer.
-    std::array<uint32_t, 256> computeHistogram() const;
+    // `wholeVolume`: of every slice of a multi-slice image instead of just the
+    // current one (the same as the default for a single-slice image).
+    std::array<uint32_t, 256> computeHistogram(bool wholeVolume = false) const;
 
     // json-rpc giv_string command: parses `text` as a .giv scene-description
     // buffer (see GivParser::parseString()) and merges it into the current
@@ -481,6 +483,8 @@ private:
     double animSpeed_ = 1.0;
     int animTextureDirty_ = 0;   // frames left to re-dirty the texture for (see onAnimationFrameHook())
     vsg::ref_ptr<vsg::ubvec4Array2D> animTexture_;
+    vsg::ref_ptr<vsg::vec4Array> sampleParams_; // raw-sample image: window + colormap uniforms (see SceneBuilder::sampleParams())
+    vsg::ref_ptr<vsg::Data> sampleTexture_;     // raw-sample volume: the live slice texture
     QTimer* animTimer_ = nullptr;
     QElapsedTimer animClock_;
     qint64 animDueMs_ = 0;       // animClock_ time the next frame is due
@@ -648,6 +652,7 @@ private:
     // colormap settings change. Does not itself rebuild the scene graph.
     void recomputeDisplayImage();
     bool applyDisplayImage(QString* error);
+    bool applySlice(QString* error);
 
     // nextImage()/previousImage()'s shared tail: decodes `index`, rebuilds
     // the scene graph so its texture actually replaces whatever was

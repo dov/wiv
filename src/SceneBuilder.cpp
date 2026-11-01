@@ -232,17 +232,19 @@ struct ImagePipeline
 // other batch in this file uses. Returns the pipelineLayout alongside the
 // stateGroup since each image's per-filter vsg::DescriptorSet is built
 // against it (see the "Image batch" section of build()).
-ImagePipeline makeImagePipeline(const std::string& shaderDir)
+ImagePipeline makeImagePipeline(const std::string& shaderDir, bool rawSamples = false)
 {
     auto vertexShader = loadShader(VK_SHADER_STAGE_VERTEX_BIT, shaderDir, "image.vert.spv");
-    auto fragmentShader = loadShader(VK_SHADER_STAGE_FRAGMENT_BIT, shaderDir, "image.frag.spv");
+    auto fragmentShader = loadShader(VK_SHADER_STAGE_FRAGMENT_BIT, shaderDir, rawSamples ? "image_samples.frag.spv" : "image.frag.spv");
 
     vsg::PushConstantRanges pushConstantRanges{
         {VK_SHADER_STAGE_VERTEX_BIT, 0, 128} // projection + modelview, auto-supplied by RecordTraversal
     };
 
-    auto descriptorSetLayout = vsg::DescriptorSetLayout::create(vsg::DescriptorSetLayoutBindings{
-        {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}});
+    vsg::DescriptorSetLayoutBindings layoutBindings{{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}};
+    if (rawSamples) // window + colormap uniform buffer (image_samples.frag)
+        layoutBindings.push_back({1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr});
+    auto descriptorSetLayout = vsg::DescriptorSetLayout::create(layoutBindings);
 
     auto rasterization = vsg::RasterizationState::create();
     rasterization->cullMode = VK_CULL_MODE_NONE;
@@ -1034,6 +1036,8 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     // top of any background image.
     // -------------------------------------------------------------
     animatedTexture_ = nullptr;
+    sampleParams_ = nullptr;
+    sampleTexture_ = nullptr;
     if (!images.empty())
     {
         // Cached across calls (see build()'s doc comment) - this is the fix
@@ -1060,6 +1064,12 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             linearSampler_->magFilter = VK_FILTER_LINEAR;
             linearSampler_->addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
             linearSampler_->addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        }
+        if (!samplesPipelineLayout_ && std::any_of(images.begin(), images.end(), [](const LoadedImage& li) { return li.sampleType != WIV_SAMPLE_NONE; }))
+        {
+            auto [samplesStateGroup, layout] = makeImagePipeline(shaderDir, /*rawSamples=*/true);
+            samplesBind_ = samplesStateGroup->stateCommands.front().cast<vsg::BindGraphicsPipeline>();
+            samplesPipelineLayout_ = layout;
         }
         auto& imagePipelineLayout = imagePipelineLayout_;
         auto& nearestSampler = nearestSampler_;
@@ -1104,17 +1114,32 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             // (ALLOCATOR_TYPE_NO_DELETE: it never frees it) instead of
             // copying tens of megabytes; the buffer is kept alive for as long
             // as the texture object by attaching its owner to it.
+            const bool rawSamples = li.sampleType != WIV_SAMPLE_NONE;
             vsg::Data::Properties textureProperties{VK_FORMAT_R8G8B8A8_UNORM};
-            vsg::ref_ptr<vsg::ubvec4Array2D> textureData;
-            if (li.animated)
+            vsg::ref_ptr<vsg::Data> textureData;
+            vsg::ref_ptr<vsg::vec4Array> sampleParams;
+            if (rawSamples)
+            {
+                textureData = makeSampleTexture(li);
+                sampleParams = vsg::vec4Array::create(257);
+                sampleParams->properties.dataVariance = vsg::DYNAMIC_DATA;
+                fillSampleParams(*sampleParams, li);
+                if (!sampleParams_)
+                {
+                    sampleParams_ = sampleParams;
+                    if (textureData->properties.dataVariance == vsg::DYNAMIC_DATA) sampleTexture_ = textureData;
+                }
+            }
+            else if (li.animated)
             {
                 // Rewritten per frame, so it owns its pixels (the shared
                 // buffer is immutable and also lives in the decode cache).
                 textureProperties.dataVariance = vsg::DYNAMIC_DATA;
-                textureData = vsg::ubvec4Array2D::create(static_cast<uint32_t>(li.width), static_cast<uint32_t>(li.height),
-                                                         textureProperties);
-                std::memcpy(textureData->dataPointer(), li.rgba.data(), li.rgba.size());
-                if (!animatedTexture_) animatedTexture_ = textureData;
+                auto animData = vsg::ubvec4Array2D::create(static_cast<uint32_t>(li.width), static_cast<uint32_t>(li.height),
+                                                           textureProperties);
+                std::memcpy(animData->dataPointer(), li.rgba.data(), li.rgba.size());
+                if (!animatedTexture_) animatedTexture_ = animData;
+                textureData = animData;
             }
             else
             {
@@ -1130,12 +1155,16 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             {
                 auto descriptorImage = vsg::DescriptorImage::create(sampler, textureData, 0, 0,
                                                                       VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-                auto descriptorSet =
-                    vsg::DescriptorSet::create(imagePipelineLayout->setLayouts[0], vsg::Descriptors{descriptorImage});
+                vsg::Descriptors descriptors{descriptorImage};
+                if (rawSamples)
+                    descriptors.push_back(vsg::DescriptorBuffer::create(sampleParams, 1, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER));
+                const auto& layoutForImage = rawSamples ? samplesPipelineLayout_ : imagePipelineLayout;
+                auto descriptorSet = vsg::DescriptorSet::create(layoutForImage->setLayouts[0], descriptors);
                 auto bindDescriptorSet = vsg::BindDescriptorSet::create(VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                                                         imagePipelineLayout, 0, descriptorSet);
+                                                                         layoutForImage, 0, descriptorSet);
 
                 auto variantGroup = vsg::StateGroup::create();
+                if (rawSamples) variantGroup->add(samplesBind_); // overrides the parent's plain image pipeline
                 variantGroup->add(bindDescriptorSet);
 
                 auto drawCommands = vsg::Commands::create();
@@ -1888,6 +1917,67 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     labelGraph_ = labelRoot;
 
     return root;
+}
+
+void SceneBuilder::fillSampleParams(vsg::vec4Array& out, const LoadedImage& li)
+{
+    const double typeMax = li.sampleType == WIV_SAMPLE_U8 ? 255.0 : (li.sampleType == WIV_SAMPLE_U16 ? 65535.0 : 1.0);
+    const double range = static_cast<double>(li.display.max) - li.display.min;
+    out.set(0, vsg::vec4(static_cast<float>(typeMax), li.display.min, range != 0.0 ? static_cast<float>(1.0 / range) : 0.0f,
+                         range != 0.0 ? 0.0f : 0.5f));
+    const uint8_t* lut = li.display.colormapEnabled ? colormaps::lut(li.display.colormap) : nullptr;
+    for (int i = 0; i < 256; ++i)
+    {
+        const float r = lut ? lut[i * 3 + 0] / 255.0f : i / 255.0f;
+        const float g = lut ? lut[i * 3 + 1] / 255.0f : i / 255.0f;
+        const float b = lut ? lut[i * 3 + 2] / 255.0f : i / 255.0f;
+        out.set(static_cast<size_t>(i) + 1, vsg::vec4(r, g, b, 1.0f));
+    }
+}
+
+namespace
+{
+template <class Array, class T> vsg::ref_ptr<vsg::Data> makeSampleArray(const LoadedImage& li, VkFormat format)
+{
+    const size_t pixels = static_cast<size_t>(li.width) * li.height;
+    vsg::Data::Properties properties{format};
+    const T* base = reinterpret_cast<const T*>(li.samples.data());
+    if (li.depth <= 1)
+    {
+        // The only slice: wrap the image's own immutable buffer, zero-copy (see the RGBA case in build()).
+        properties.allocatorType = vsg::ALLOCATOR_TYPE_NO_DELETE;
+        auto data = Array::create(static_cast<uint32_t>(li.width), static_cast<uint32_t>(li.height), const_cast<T*>(base), properties);
+        data->setValue("pixels", li.samples.owner());
+        return data;
+    }
+    // A volume: one owned, rewritable slice - stepping slices copies the next one in (see setSampleSlice()).
+    properties.dataVariance = vsg::DYNAMIC_DATA;
+    auto data = Array::create(static_cast<uint32_t>(li.width), static_cast<uint32_t>(li.height), properties);
+    const int slice = std::clamp(li.display.slice, 0, li.depth - 1);
+    std::memcpy(data->dataPointer(), base + pixels * static_cast<size_t>(slice), pixels * sizeof(T));
+    return data;
+}
+} // namespace
+
+vsg::ref_ptr<vsg::Data> SceneBuilder::makeSampleTexture(const LoadedImage& li)
+{
+    switch (li.sampleType)
+    {
+        case WIV_SAMPLE_U16: return makeSampleArray<vsg::ushortArray2D, uint16_t>(li, VK_FORMAT_R16_UNORM);
+        case WIV_SAMPLE_FLOAT: return makeSampleArray<vsg::floatArray2D, float>(li, VK_FORMAT_R32_SFLOAT);
+        default: return makeSampleArray<vsg::ubyteArray2D, uint8_t>(li, VK_FORMAT_R8_UNORM);
+    }
+}
+
+bool SceneBuilder::setSampleSlice(const LoadedImage& li)
+{
+    if (!sampleTexture_ || li.depth <= 1) return false;
+    const size_t elem = li.sampleType == WIV_SAMPLE_U16 ? 2 : (li.sampleType == WIV_SAMPLE_FLOAT ? 4 : 1);
+    const size_t bytes = static_cast<size_t>(li.width) * li.height * elem;
+    if (sampleTexture_->dataSize() != bytes) return false;
+    const int slice = std::clamp(li.display.slice, 0, li.depth - 1);
+    std::memcpy(sampleTexture_->dataPointer(), li.samples.data() + bytes * static_cast<size_t>(slice), bytes);
+    return true;
 }
 
 } // namespace giv

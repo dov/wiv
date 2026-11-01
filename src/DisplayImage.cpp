@@ -129,4 +129,19 @@ void renderDisplayRgba(const LoadedImage& src, float contrastMin, float contrast
     outRgba = std::move(rendered);
 }
 
+uint32_t displayRgbaAt(const LoadedImage& src, float contrastMin, float contrastMax, colormaps::Id colormapId,
+                       bool colormapEnabled, size_t sampleIndex)
+{
+    double v = 0.0;
+    switch (src.sampleType)
+    {
+        case WIV_SAMPLE_U8: v = src.samples[sampleIndex]; break;
+        case WIV_SAMPLE_U16: v = reinterpret_cast<const uint16_t*>(src.samples.data())[sampleIndex]; break;
+        case WIV_SAMPLE_FLOAT: v = reinterpret_cast<const float*>(src.samples.data())[sampleIndex]; break;
+        default: break;
+    }
+    const double range = static_cast<double>(contrastMax) - contrastMin;
+    return packRgba(colormapEnabled ? colormaps::lut(colormapId) : nullptr, stretch(v, contrastMin, range));
+}
+
 } // namespace giv

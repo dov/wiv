@@ -6,6 +6,7 @@
 #include "ImagePluginHost.h"
 #include "VulkanViewport.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleValidator>
 #include <QIcon>
@@ -81,6 +82,11 @@ ContrastPanel::ContrastPanel(VulkanViewport* viewport, QWidget* parent) : QWidge
     auto* histoLayout = new QGridLayout();
     histoLayout->addWidget(strengthSlider_, 0, 0);
     histoLayout->addWidget(histogram_, 0, 1);
+    volumeHistogramCheck_ = new QCheckBox("Whole volume", this);
+    volumeHistogramCheck_->setToolTip("Histogram of every slice instead of just the current one");
+    volumeHistogramCheck_->hide();
+    connect(volumeHistogramCheck_, &QCheckBox::toggled, this, &ContrastPanel::updateHistogram);
+    histoLayout->addWidget(volumeHistogramCheck_, 1, 1);
     auto* histoBox = new QGroupBox("Histogram", this);
     histoBox->setLayout(histoLayout);
 
@@ -101,6 +107,20 @@ ContrastPanel::ContrastPanel(VulkanViewport* viewport, QWidget* parent) : QWidge
     refreshForImage();
 }
 
+void ContrastPanel::updateHistogram()
+{
+    const giv::LoadedImage* img = viewport_->currentImage();
+    if (!img || img->sampleType == WIV_SAMPLE_NONE) return;
+    const bool wholeVolume = !volumeHistogramCheck_->isHidden() && volumeHistogramCheck_->isChecked();
+    histogram_->setHistogram(viewport_->computeHistogram(wholeVolume), img->sampleMin, img->sampleMax);
+}
+
+void ContrastPanel::refreshForSlice()
+{
+    if (!volumeHistogramCheck_->isHidden() && volumeHistogramCheck_->isChecked()) return;
+    updateHistogram();
+}
+
 void ContrastPanel::refreshForImage()
 {
     const giv::LoadedImage* img = viewport_->currentImage();
@@ -111,7 +131,8 @@ void ContrastPanel::refreshForImage()
     }
     setEnabled(true);
 
-    histogram_->setHistogram(viewport_->computeHistogram(), img->sampleMin, img->sampleMax);
+    volumeHistogramCheck_->setVisible(viewport_->sliceCount() > 1);
+    updateHistogram();
 
     VulkanViewport::ContrastState state = viewport_->currentContrastState();
     histogram_->setContrastRange(state.min, state.max);
