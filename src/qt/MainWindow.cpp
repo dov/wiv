@@ -436,10 +436,10 @@ void MainWindow::buildMenus()
 
     viewMenu->addSeparator();
     nextImageAction_ = viewMenu->addAction("Next Image", this, &MainWindow::goNextImage);
-    nextImageAction_->setShortcuts({QKeySequence("Shift+Up"), QKeySequence("Right")});
+    nextImageAction_->setShortcuts({QKeySequence("Shift+Up")});
     nextImageAction_->setEnabled(false);
     previousImageAction_ = viewMenu->addAction("Previous Image", this, &MainWindow::goPreviousImage);
-    previousImageAction_->setShortcuts({QKeySequence("Shift+Down"), QKeySequence("Backspace"), QKeySequence("Left")});
+    previousImageAction_->setShortcuts({QKeySequence("Shift+Down"), QKeySequence("Backspace")});
     previousImageAction_->setEnabled(false);
 
     firstImageAction_ = viewMenu->addAction("First Image", this, &MainWindow::goFirstImage);
@@ -491,6 +491,21 @@ void MainWindow::buildMenus()
         else if (nextImageAction_->isEnabled()) goNextImage();
     });
     addAction(spaceAction);
+    // Right/Left step a frame (Shift: 10) while an animation is stopped, else
+    // go to the next/previous image. Always-enabled dispatchers, like Space.
+    auto arrowAction = [this](const char* key, const char* shiftKey, int dir) {
+        auto* a = new QAction(this);
+        a->setShortcuts({QKeySequence(key), QKeySequence(shiftKey)});
+        connect(a, &QAction::triggered, this, [this, dir]() {
+            if (viewport_->hasAnimation() && !viewport_->animationPlaying())
+                viewport_->stepAnimationFrame(QGuiApplication::keyboardModifiers() & Qt::ShiftModifier ? dir * 10 : dir);
+            else if (dir > 0 && nextImageAction_->isEnabled()) goNextImage();
+            else if (dir < 0 && previousImageAction_->isEnabled()) goPreviousImage();
+        });
+        addAction(a);
+    };
+    arrowAction("Right", "Shift+Right", +1);
+    arrowAction("Left", "Shift+Left", -1);
     auto addAnimAction = [this, viewMenu](const QString& text, const char* key, auto&& fn) {
         QAction* a = viewMenu->addAction(text, viewport_, fn);
         a->setShortcut(QKeySequence(key));
