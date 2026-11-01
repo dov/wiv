@@ -1,4 +1,5 @@
 #include "SvgLoader.h"
+#include "PathUtils.h"
 
 #define NANOSVG_IMPLEMENTATION
 #include "nanosvg.h"
@@ -324,7 +325,8 @@ bool rasterizeBlurredShape(NSVGshape* shape, float stdDev, Dataset& out)
 
 bool loadSvgFile(const std::string& filename, SceneData& scene, std::string& error)
 {
-    NSVGimage* svg = nsvgParseFromFile(filename.c_str(), "px", 96.0f);
+    std::vector<char> svgText;
+    NSVGimage* svg = giv::readFileUtf8(filename, svgText) ? nsvgParse(svgText.data(), "px", 96.0f) : nullptr;
     if (!svg)
     {
         error = "could not parse svg file: " + filename;
@@ -333,7 +335,7 @@ bool loadSvgFile(const std::string& filename, SceneData& scene, std::string& err
 
     std::unordered_map<std::string, float> elementBlur;
     {
-        std::ifstream in(filename, std::ios::binary);
+        std::ifstream in(giv::utf8ToPath(filename), std::ios::binary);
         if (in)
         {
             std::ostringstream ss;

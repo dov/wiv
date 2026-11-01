@@ -1,4 +1,5 @@
 #include "ExifReader.h"
+#include "PathUtils.h"
 
 #include <algorithm>
 #include <cmath>
@@ -315,7 +316,7 @@ std::vector<ExifEntry> decodeBlob(std::vector<uint8_t> blob)
 
 std::vector<ExifEntry> readExif(const std::string& path)
 {
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(giv::utf8ToPath(path), std::ios::binary);
     if (!f) return {};
     f.seekg(0, std::ios::end);
     const uint64_t size = static_cast<uint64_t>(f.tellg());

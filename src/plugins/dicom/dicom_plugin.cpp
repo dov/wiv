@@ -79,7 +79,7 @@ extern "C" bool wiv_plugin_supports_file(const char* filename)
 // a DICOM Part 10 file has "DICM" at offset 128.
 extern "C" bool wiv_plugin_sniff_file(const char* filename)
 {
-    FILE* fh = std::fopen(filename, "rb");
+    FILE* fh = wiv_plugin::fopenUtf8(filename, "rb");
     if (!fh)
         return false;
     char preamble[132];
@@ -91,7 +91,7 @@ extern "C" bool wiv_plugin_sniff_file(const char* filename)
 
 extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** error_msg)
 {
-    FILE* fh = std::fopen(filename, "rb");
+    FILE* fh = wiv_plugin::fopenUtf8(filename, "rb");
     if (!fh)
     {
         if (error_msg)

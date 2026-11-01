@@ -151,7 +151,8 @@ QStringList liveSubdirectoryNames(const QString& path)
 // translation unit, this one only needs the declarations).
 QImage rasterizeSvgThumbnail(const QString& path)
 {
-    NSVGimage* image = nsvgParseFromFile(path.toLocal8Bit().constData(), "px", 96.0f);
+    std::vector<char> svgText;
+    NSVGimage* image = giv::readFileUtf8(path.toUtf8().toStdString(), svgText) ? nsvgParse(svgText.data(), "px", 96.0f) : nullptr;
     if (!image || image->width <= 0 || image->height <= 0)
     {
         if (image) nsvgDelete(image);

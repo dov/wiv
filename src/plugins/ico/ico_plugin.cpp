@@ -134,7 +134,7 @@ extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** er
         return nullptr;
     };
 
-    FILE* fh = std::fopen(filename, "rb");
+    FILE* fh = wiv_plugin::fopenUtf8(filename, "rb");
     if (!fh)
         return fail("ico: failed to open %s");
     std::fseek(fh, 0, SEEK_END);

@@ -14,10 +14,73 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+
+
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 
 namespace wiv_plugin
 {
 
+// fopen for UTF-8 filenames. On Windows narrow fopen goes through the ANSI
+// code page (the UTF-8 manifest isn't reliable for every CRT), so convert to
+// UTF-16 and use _wfopen.
+inline FILE* fopenUtf8(const char* filename, const char* mode)
+{
+#ifdef _WIN32
+    int n = MultiByteToWideChar(CP_UTF8, 0, filename, -1, nullptr, 0);
+    if (n <= 0) return std::fopen(filename, mode);
+    wchar_t* w = static_cast<wchar_t*>(std::malloc(sizeof(wchar_t) * n));
+    MultiByteToWideChar(CP_UTF8, 0, filename, -1, w, n);
+    wchar_t wmode[8] = {};
+    for (int i = 0; mode[i] && i < 7; ++i) wmode[i] = static_cast<wchar_t>(mode[i]);
+    FILE* f = _wfopen(w, wmode);
+    std::free(w);
+    return f;
+#else
+    return std::fopen(filename, mode);
+#endif
+}
+
+
+// UTF-8 -> UTF-16 (Windows only).
+#ifdef _WIN32
+inline std::wstring utf8ToWide(const char* s)
+{
+    int n = MultiByteToWideChar(CP_UTF8, 0, s, -1, nullptr, 0);
+    if (n <= 0) return std::wstring();
+    std::wstring w(static_cast<size_t>(n), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, s, -1, &w[0], n);
+    w.resize(static_cast<size_t>(n - 1));
+    return w;
+}
+
+// For libraries that only take narrow paths and open them with fopen (cfitsio):
+// return the 8.3 short name, which is pure ASCII, when the path is non-ASCII.
+inline std::string asciiSafePath(const char* utf8)
+{
+    bool ascii = true;
+    for (const char* p = utf8; *p; ++p) if (static_cast<unsigned char>(*p) >= 0x80) ascii = false;
+    if (ascii) return utf8;
+    const std::wstring w = utf8ToWide(utf8);
+    wchar_t buf[MAX_PATH * 4];
+    DWORD n = GetShortPathNameW(w.c_str(), buf, MAX_PATH * 4);
+    if (n == 0 || n >= MAX_PATH * 4) return utf8;
+    std::string out;
+    for (DWORD i = 0; i < n; ++i) out.push_back(static_cast<char>(buf[i]));
+    return out;
+}
+#else
+inline std::string asciiSafePath(const char* utf8) { return utf8; }
+#endif
 inline WivPluginImage* allocImage(int width, int height)
 {
     auto* img = static_cast<WivPluginImage*>(std::malloc(sizeof(WivPluginImage)));

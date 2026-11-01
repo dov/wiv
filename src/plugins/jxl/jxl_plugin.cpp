@@ -32,7 +32,7 @@ bool hasExtension(const std::string& filename, const char* ext)
 
 bool readFile(const char* filename, std::vector<unsigned char>& data)
 {
-    FILE* fh = std::fopen(filename, "rb");
+    FILE* fh = wiv_plugin::fopenUtf8(filename, "rb");
     if (!fh)
         return false;
     std::fseek(fh, 0, SEEK_END);
