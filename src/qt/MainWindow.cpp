@@ -38,6 +38,11 @@
 #include <QHBoxLayout>
 #include <QProcess>
 #include <QToolButton>
+#include <QFrame>
+#include <QProxyStyle>
+#include <QSignalBlocker>
+#include <QSlider>
+#include <QLabel>
 #include <QThread>
 #include "PrefetchPool.h"
 #include <QUrl>
@@ -197,6 +202,18 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
             if (std::abs(speed - 1.0) > 0.01) lastAnimText_ += QString(" %1x").arg(speed, 0, 'g', 3);
         }
         for (QAction* a : animActions_) a->setEnabled(count > 1);
+        if (animBar_)
+        {
+            animBar_->setVisible(count > 1);
+            if (count > 1)
+            {
+                QSignalBlocker block(animSlider_);
+                animSlider_->setRange(0, count - 1);
+                animSlider_->setValue(frame);
+                animPlayButton_->setIcon(playing ? pauseIcon_ : playIcon_);
+                animFrameLabel_->setText(QString("%1/%2").arg(frame + 1).arg(count));
+            }
+        }
         infoLabel_->setText(statusLineText());
     });
     connect(viewport_, &VulkanViewport::pageChanged, this, [this](int page, int count) {
@@ -934,6 +951,58 @@ void MainWindow::buildNavigationBar()
     navButtonRow_->addSpacing(14);
     auto* full = makeButton(icon(fa::fa_up_right_and_down_left_from_center), {}, "Full screen");
     auto* actual = makeButton(QIcon(), "1:1", "Actual pixels");
+
+    // Animation controls: shown only while the current file is an animation.
+    animBar_ = new QWidget(bottomBar_);
+    auto* animRow = new QHBoxLayout(animBar_);
+    animRow->setContentsMargins(0, 0, 0, 0);
+    auto* divider = new QFrame(animBar_);
+    divider->setFrameShape(QFrame::VLine);
+    divider->setFrameShadow(QFrame::Sunken);
+    animRow->addWidget(divider);
+    auto makeAnimButton = [&](const QIcon& ic, const QString& tip) {
+        auto* b = new QToolButton(animBar_);
+        b->setAutoRaise(true);
+        b->setToolTip(tip);
+        b->setFocusPolicy(Qt::NoFocus);
+        b->setMinimumWidth(34);
+        b->setIcon(ic);
+        animRow->addWidget(b);
+        return b;
+    };
+    playIcon_ = icon(fa::fa_play);
+    pauseIcon_ = icon(fa::fa_pause);
+    auto* rewind = makeAnimButton(icon(fa::fa_backward_step), "Rewind to the first frame");
+    animPlayButton_ = makeAnimButton(playIcon_, "Play / pause");
+    auto* stop = makeAnimButton(icon(fa::fa_stop), "Stop (back to the first frame)");
+    // A click on the groove jumps there (like a video scrubber) instead of paging by one step.
+    struct JumpStyle : QProxyStyle
+    {
+        using QProxyStyle::QProxyStyle;
+        int styleHint(StyleHint hint, const QStyleOption* opt, const QWidget* w, QStyleHintReturn* ret) const override
+        {
+            return hint == SH_Slider_AbsoluteSetButtons ? int(Qt::LeftButton) : QProxyStyle::styleHint(hint, opt, w, ret);
+        }
+    };
+    animSlider_ = new QSlider(Qt::Horizontal, animBar_);
+    animSlider_->setStyle(new JumpStyle(animSlider_->style()->name()));
+    animSlider_->setFocusPolicy(Qt::NoFocus);
+    animSlider_->setMinimumWidth(160);
+    animSlider_->setMaximumWidth(360);
+    animSlider_->setToolTip("Frame");
+    animRow->addWidget(animSlider_);
+    animFrameLabel_ = new QLabel(animBar_);
+    animFrameLabel_->setMinimumWidth(70);
+    animRow->addWidget(animFrameLabel_);
+    navButtonRow_->addSpacing(8);
+    navButtonRow_->addWidget(animBar_);
+    animBar_->hide();
+    connect(rewind, &QToolButton::clicked, viewport_, &VulkanViewport::rewindAnimation);
+    connect(animPlayButton_, &QToolButton::clicked, viewport_, &VulkanViewport::toggleAnimationPlay);
+    connect(stop, &QToolButton::clicked, viewport_, &VulkanViewport::stopAnimation);
+    // Dragging pauses and shows that frame; programmatic updates (playback)
+    // use a signal blocker so they don't count as a seek.
+    connect(animSlider_, &QSlider::valueChanged, viewport_, &VulkanViewport::seekAnimationFrame);
     navButtonRow_->addStretch(1);
 
     connect(prev, &QToolButton::clicked, previousImageAction_, &QAction::trigger);
