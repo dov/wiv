@@ -127,6 +127,7 @@ add_executable(wiv
   src/qt/InfoPanel.cpp
   src/qt/ColorTablePanel.cpp
   src/qt/MainWindow.cpp
+  src/qt/PrefetchPool.cpp
   src/qt/MarkTreeView.cpp
   src/qt/OpenFileDialog.cpp
   src/qt/RpcServer.cpp

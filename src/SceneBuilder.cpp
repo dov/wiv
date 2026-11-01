@@ -1087,8 +1087,10 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
 
         for (const LoadedImage& li : images)
         {
-            const float w = static_cast<float>(li.width);
-            const float h = static_cast<float>(li.height);
+            // A preview texture is smaller than the image it stands in for
+            // but covers the same world rectangle.
+            const float w = static_cast<float>(li.isPreview() ? li.fullWidth : li.width);
+            const float h = static_cast<float>(li.isPreview() ? li.fullHeight : li.height);
             // Top-left at world (0,0), extending to (w,-h): giv's $image has
             // no placement/calibration args (one image pixel == one world
             // unit, anchored at the origin), and -h applies the same

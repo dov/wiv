@@ -56,6 +56,7 @@ public:
     // purpose: wiv only ever displays one at a time, this just avoids
     // re-decoding on every step back and forth.
     static constexpr size_t kImageCacheCapacity = 8;
+    static constexpr size_t kPreviewCacheCapacity = 24;
 
     explicit VulkanViewport(QWidget* parent = nullptr);
     ~VulkanViewport() override;
@@ -114,6 +115,24 @@ public:
     // Hands the decode cache an image decoded off-thread (see
     // MainWindow::prefetchNeighbours()) so showing it later skips the decode.
     void cachePrefetchedImage(const std::string& path, giv::LoadedImage image);
+    void retainCachedImages(const std::unordered_set<std::string>& keepFull, const std::unordered_set<std::string>& keepPreview)
+    {
+        imageCache_.retain(keepFull);
+        previewCache_.retain(keepPreview);
+    }
+    // Low-resolution previews decoded ahead of time by the prefetcher (see
+    // ImagePluginHost::loadPreview()); cheap enough to show while keys are
+    // being held down. A file known to have none is remembered too.
+    void cachePrefetchedPreview(const std::string& path, giv::LoadedImage preview) { previewCache_.put(path, 0, std::move(preview)); }
+    void markNoPreview(const std::string& path) { noPreview_.insert(path); }
+    bool hasPreviewOrNone(const std::string& path) const { return previewCache_.contains(path) || noPreview_.count(path); }
+    // While true (the user is stepping through files in quick succession) a
+    // cached preview is shown even if the full image is cached too: putting
+    // a full-resolution texture on screen costs the GUI thread far more.
+    void setNavigationBurst(bool burst) { navigationBurst_ = burst; }
+    // After stepping stops: swaps the preview for the full image if that is
+    // already cached. Returns false if it is not (the caller must decode it).
+    bool upgradePreviewFromCache();
     bool isImageCached(const std::string& path) const { return imageCache_.contains(path); }
     // Jump to the first / last of the file's own images.
     void firstImage();
@@ -244,7 +263,21 @@ public:
     // it has no raw sample buffer (sampleType == WIV_SAMPLE_NONE). Used by
     // ContrastDialog to compute the histogram and by MainWindow to decide
     // whether to enable the Contrast/Color Table tool actions.
-    const giv::LoadedImage* currentImage() const { return loadedImages_.empty() ? nullptr : &loadedImages_.front(); }
+    // (nullptr while only a reduced-resolution preview is up, so nothing
+    // reads its pixels or dimensions as if they were the real image's.)
+    const giv::LoadedImage* currentImage() const
+    {
+        return loadedImages_.empty() || loadedImages_.front().isPreview() ? nullptr : &loadedImages_.front();
+    }
+
+    // True while the displayed image is a quick low-resolution preview
+    // standing in for a full decode that has not finished yet; the owner
+    // should decode currentImageName() in the background and hand the result
+    // to upgradePreview().
+    bool isShowingPreview() const { return !loadedImages_.empty() && loadedImages_.front().isPreview(); }
+    // Replaces the preview with the full decode, keeping the view as is.
+    // No-op unless a preview of `path` is what is currently displayed.
+    void upgradePreview(const std::string& path, giv::LoadedImage full);
 
     // Current contrast/colormap settings for the displayed image, defaulted
     // (and recorded) to sampleMin/sampleMax and the last-chosen colormap the
@@ -404,6 +437,9 @@ private:
     int currentPage_ = 0; // see gotoPage(); reset to 0 by decodeImageAt()
     void gotoPage(int page);
     int currentSlice_ = 0; // see nextSlice()/previousSlice(); reset to 0 by decodeImageAt()
+    giv::ImageCache previewCache_{kPreviewCacheCapacity}; // small decodes, see cachePrefetchedPreview()
+    std::unordered_set<std::string> noPreview_;
+    bool navigationBurst_ = false;
     giv::ImageCache imageCache_{kImageCacheCapacity}; // bounds how many decoded images are resident at once while paging with next/previousImage()
 
     bool balloonEnabled_ = false;
@@ -509,7 +545,7 @@ private:
     // updates currentImageIndex_/loadedImages_/currentImageSize_ to match.
     // Does not rebuild the scene graph or touch the view - see
     // switchToImage() for the full next/previousImage() path.
-    bool decodeImageAt(int index, int page = 0);
+    bool decodeImageAt(int index, int page = 0, bool allowPreview = true);
 
     // Initial-load counterpart of decodeImageAt(): decodes
     // loadedImageNames_[currentImageIndex_] (currently always 0), scanning

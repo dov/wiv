@@ -12,6 +12,9 @@
 
 #include "ExifReader.h"
 
+#include "PrefetchPool.h"
+#include <QElapsedTimer>
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <vector>
@@ -28,17 +31,18 @@ class QCloseEvent;
 class QDragEnterEvent;
 class QDropEvent;
 class QTimer;
+namespace giv { struct LoadedImage; }
 
 namespace givqt
 {
 
 class VulkanViewport;
 class MarkTreeView;
+class CalibratePanel;
 class ContrastPanel;
 class ColorMapBar;
 class ColorTablePanel;
 class InfoPanel;
-class CalibratePanel;
 class RpcServer;
 class ThumbnailStrip;
 
@@ -64,6 +68,7 @@ public:
 protected:
     void showEvent(QShowEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
     VulkanViewport* viewport_ = nullptr;
@@ -121,13 +126,13 @@ private:
     ColorTablePanel* colorTablePanel_ = nullptr;
     QDockWidget* contrastDock_ = nullptr;
     QDockWidget* colorTableDock_ = nullptr;
+    CalibratePanel* calibratePanel_ = nullptr;
+    QDockWidget* calibrateDock_ = nullptr;
 
     // View > Image Info ("i"): giv's info panel, a dock the user can float.
     // While visible it is rebuilt on image/slice/scene changes and by
     // infoRefreshTimer_ (for state with no change signal: zoom, contrast).
     InfoPanel* infoPanel_ = nullptr;
-    CalibratePanel* calibratePanel_ = nullptr;
-    QDockWidget* calibrateDock_ = nullptr;
     QDockWidget* infoDock_ = nullptr;
     QTimer* infoRefreshTimer_ = nullptr;
     // EXIF of the displayed file, re-read only when the path or mtime changes
@@ -210,11 +215,33 @@ private:
     QHBoxLayout* navButtonRow_ = nullptr;
     void buildNavigationBar();
     QAction* thumbnailStripAction_ = nullptr;
-    QSet<QString> prefetchInFlight_;
+    PrefetchPool* prefetchPool_ = nullptr; // persistent decode workers
     int lastNavigationStep_ = 1; // +1/-1: which side to prefetch further on
     void goToDirectoryIndex(int index);
     void updateThumbnailStrip();
-    void prefetchNeighbours();
+    void prefetchNeighbours();      // debounced: restarts prefetchTimer_
+    void runPrefetch();
+    std::vector<PrefetchPool::Want> prefetchWanted(bool withFull) const;
+    void onPrefetchReady(const QString& path, bool preview, const std::shared_ptr<giv::LoadedImage>& image);
+    QStringList prefetchWindow() const;
+    QTimer* prefetchTimer_ = nullptr;
+    QStringList neighbourPaths(std::initializer_list<int> offsets) const;
+    QStringList previewWindow() const;
+
+    // Navigation by a held-down arrow key. A step can take longer than the
+    // key-repeat interval, so repeats pile up in the event queue and would
+    // keep stepping after the key is released. Each repeat's age (how long
+    // ago the window system generated it) is measured as it arrives
+    // (eventFilter) and navigationIsStale() drops the ones that are old.
+    QElapsedTimer sinceLastNavigation_;  // for burst detection
+    qint64 lastKeyAgeMs_ = 0;
+    qint64 lastKeyArrivalMs_ = -1000;    // steady-clock ms when the last key event was seen
+    bool lastKeyWasRepeat_ = false;
+    qint64 keyClockOffsetMs_ = 0;        // event timestamp minus steady clock, at zero lag
+    bool keyClockOffsetKnown_ = false;
+    quint32 lastKeyTimestamp_ = 0;
+    qint64 unwrappedKeyTimestamp_ = 0;
+    bool navigationIsStale();
 
     // Enables/disables the Next/Previous Page actions for the displayed
     // image (see VulkanViewport::canStepPart()).
@@ -233,6 +260,7 @@ private:
 
     void buildContrastDock();
     void buildColorTableDock();
+    void buildCalibrateDock();
     void updateContrastToolsEnabled();
 
     void refreshInfoPanel();
@@ -240,4 +268,3 @@ private:
 };
 
 } // namespace givqt
-    void buildCalibrateDock();

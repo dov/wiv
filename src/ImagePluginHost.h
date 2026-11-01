@@ -14,6 +14,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace giv
@@ -41,6 +42,14 @@ struct LoadedImage
     // Number of pages in the file this image was loaded from (1 unless the
     // plugin exports wiv_plugin_page_count, e.g. multi-page TIFF).
     int pageCount = 1;
+
+    // Non-zero only for a reduced-resolution preview (see
+    // ImagePluginHost::loadPreview()): the dimensions, after orientation, of
+    // the full image this one stands in for. width/height are then those of
+    // the preview itself; it is drawn stretched to fullWidth x fullHeight.
+    int fullWidth = 0;
+    int fullHeight = 0;
+    bool isPreview() const { return fullWidth > 0; }
 };
 
 class ImagePluginHost
@@ -53,12 +62,23 @@ public:
     // prints a "wiv: ..." diagnostic to stderr on failure.
     // `page` (0-based) selects a page of a multi-page file; ignored by
     // plugins that have a single page.
-    static std::optional<LoadedImage> load(const std::string& filename, int page = 0);
+    // `cancel`, if non-null, is polled (by plugins exporting
+    // wiv_plugin_load_page_cancellable, and between host stages) and
+    // abandons the load - returning nullopt without logging an error - once
+    // it reads non-zero. May be set from any thread.
+    static std::optional<LoadedImage> load(const std::string& filename, int page = 0,
+                                           const volatile int* cancel = nullptr);
 
     // Cheap check ("does some plugin claim this filename") that never
     // decodes the file - used to build the $image cycling list without
     // paying for a full decode of every candidate up front.
     static bool isSupported(const std::string& filename);
+
+    // A quick reduced-resolution stand-in for load(filename) - only for
+    // plugins exporting wiv_plugin_load_preview, and only when the image is
+    // big enough for that to pay off. Returns nullopt otherwise (the caller
+    // should then do the full load). The result has isPreview() set.
+    static std::optional<LoadedImage> loadPreview(const std::string& filename, int minLongSide = 800);
 
     // Like isSupported(), but falls back to content sniffing (opens the
     // file) for a name no plugin claims by suffix. Only for a file the user
@@ -88,6 +108,14 @@ public:
     // No-op if `path` is already cached.
     void put(const std::string& path, int page, LoadedImage image);
     bool contains(const std::string& path, int page = 0) const;
+
+    // Like get() but never decodes: nullptr on a miss. Counts as a use.
+    const LoadedImage* peek(const std::string& path, int page = 0);
+
+    // Drops every entry (any page) whose path is not in `keep`: the
+    // sliding-window eviction of the prefetcher, so neighbours of the
+    // current file never compete with stale, already-visited ones.
+    void retain(const std::unordered_set<std::string>& keep);
 
 private:
     static std::string keyFor(const std::string& path, int page)

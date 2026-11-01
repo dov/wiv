@@ -1045,7 +1045,7 @@ std::string VulkanViewport::currentImageName() const
 
 QString VulkanViewport::pixelValueText(double worldX, double worldY) const
 {
-    if (loadedImages_.empty() || displayImages_.empty() || !currentImageSize_) return {};
+    if (loadedImages_.empty() || displayImages_.empty() || !currentImageSize_ || loadedImages_.front().isPreview()) return {};
     const giv::LoadedImage& raw = loadedImages_.front();
     const giv::LoadedImage& img = displayImages_.front(); // what's actually on screen (post contrast/colormap)
 
@@ -1208,15 +1208,68 @@ void VulkanViewport::previousSlice()
     emit sliceChanged(currentSlice_, count);
 }
 
+void VulkanViewport::upgradePreview(const std::string& path, giv::LoadedImage full)
+{
+    if (!isShowingPreview() || currentImageName() != path || currentPage_ != 0) return;
+    imageCache_.put(path, 0, std::move(full));
+    upgradePreviewFromCache();
+}
+
+bool VulkanViewport::upgradePreviewFromCache()
+{
+    if (!isShowingPreview()) return true;
+    if (!imageCache_.contains(currentImageName())) return false;
+    const auto start = std::chrono::steady_clock::now();
+    if (!decodeImageAt(currentImageIndex_, 0, /*allowPreview=*/false)) return false;
+    QString error;
+    if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
+    {
+        spdlog::error("Failed to show full-resolution image: {}", error.toStdString());
+        return true;
+    }
+    updateScrollBars();
+    viewer_->request();
+    spdlog::info("Preview replaced by full image {} ({:.0f} ms)", currentImageName(),
+                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+    return true;
+}
+
 void VulkanViewport::cachePrefetchedImage(const std::string& path, giv::LoadedImage image)
 {
     imageCache_.put(path, 0, std::move(image));
 }
 
-bool VulkanViewport::decodeImageAt(int index, int page)
+bool VulkanViewport::decodeImageAt(int index, int page, bool allowPreview)
 {
     if (index < 0 || index >= static_cast<int>(loadedImageNames_.size())) return false;
-    const giv::LoadedImage* img = imageCache_.get(loadedImageNames_[static_cast<size_t>(index)], page);
+    const std::string& name = loadedImageNames_[static_cast<size_t>(index)];
+    // Show a low-resolution preview instead of the full image when the full
+    // one is not cached (decoding it would block), or while stepping fast
+    // (uploading it would). A prefetched preview is free; otherwise decode one
+    // right here if the plugin can do so cheaply. The owner fetches the full
+    // decode in the background and upgrades.
+    const bool fullCached = imageCache_.contains(name);
+    if (allowPreview && page == 0 && (!fullCached || navigationBurst_))
+    {
+        const giv::LoadedImage* cached = previewCache_.peek(name);
+        std::optional<giv::LoadedImage> preview;
+        if (cached) preview = *cached;
+        else if (!fullCached && !noPreview_.count(name)) preview = giv::ImagePluginHost::loadPreview(name);
+        if (preview)
+        {
+            currentImageIndex_ = index;
+            currentPage_ = 0;
+            currentSlice_ = 0;
+            currentImageSize_ = std::make_pair(static_cast<double>(preview->fullWidth), static_cast<double>(preview->fullHeight));
+            loadedImages_ = {std::move(*preview)};
+            recomputeDisplayImage();
+            emit sliceChanged(currentSlice_, sliceCount());
+            emit pageChanged(currentPage_, pageCount());
+            return true;
+        }
+        if (!cached && !fullCached) noPreview_.insert(name);
+    }
+    const giv::LoadedImage* img = imageCache_.get(name, page);
     if (!img) return false;
     currentImageIndex_ = index;
     currentPage_ = page;

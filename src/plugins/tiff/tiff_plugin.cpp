@@ -50,7 +50,10 @@ extern "C" int wiv_plugin_page_count(const char* filename)
     return count;
 }
 
-extern "C" WivPluginImage* wiv_plugin_load_page(const char* filename, int page, char** error_msg)
+namespace
+{
+
+WivPluginImage* loadTiff(const char* filename, int page, const volatile int* cancel, char** error_msg)
 {
     TIFF* tif = TIFFOpen(filename, "r");
     if (!tif)
@@ -108,6 +111,12 @@ extern "C" WivPluginImage* wiv_plugin_load_page(const char* filename, int page, 
         bool ok = true;
         for (uint32_t row = 0; row < height; ++row)
         {
+            if (cancel && (row & 15) == 0 && *cancel)
+            {
+                TIFFClose(tif);
+                wiv_plugin_free_image(img);
+                return nullptr;
+            }
             if (TIFFReadScanline(tif, scanline.data(), row, 0) < 0)
             {
                 ok = false;
@@ -127,6 +136,15 @@ extern "C" WivPluginImage* wiv_plugin_load_page(const char* filename, int page, 
         }
     }
 
+    // TIFFReadRGBAImageOriented below is one monolithic libtiff call, so
+    // this is the last point at which a cancel request can take effect.
+    if (cancel && *cancel)
+    {
+        TIFFClose(tif);
+        wiv_plugin_free_image(img);
+        return nullptr;
+    }
+
     // TIFFReadRGBAImageOriented fills top-to-bottom, ABGR-packed-as-uint32
     // (i.e. byte order R,G,B,A on little-endian hosts) - exactly the
     // layout WivPluginImage::rgba expects.
@@ -144,7 +162,20 @@ extern "C" WivPluginImage* wiv_plugin_load_page(const char* filename, int page, 
     return img;
 }
 
+} // namespace
+
+extern "C" WivPluginImage* wiv_plugin_load_page(const char* filename, int page, char** error_msg)
+{
+    return loadTiff(filename, page, nullptr, error_msg);
+}
+
+extern "C" WivPluginImage* wiv_plugin_load_page_cancellable(const char* filename, int page,
+                                                              const volatile int* cancel, char** error_msg)
+{
+    return loadTiff(filename, page, cancel, error_msg);
+}
+
 extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** error_msg)
 {
-    return wiv_plugin_load_page(filename, 0, error_msg);
+    return loadTiff(filename, 0, nullptr, error_msg);
 }
