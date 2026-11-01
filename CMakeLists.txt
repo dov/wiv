@@ -120,7 +120,7 @@ add_executable(wiv
   src/qt/GivViewer.cpp
   src/qt/VulkanViewport.cpp
   src/qt/PreferencesDialog.cpp
-  src/qt/CalibrateDialog.cpp
+  src/qt/CalibratePanel.cpp
   src/qt/ColorMapBar.cpp
   src/qt/HistogramWidget.cpp
   src/qt/ContrastPanel.cpp

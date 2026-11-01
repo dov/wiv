@@ -209,7 +209,7 @@ public:
     void toggleMeasureDistance();
     bool measureDistanceEnabled() const { return measureEnabled_; }
 
-    // Tools > Calibrate Pixel Size - see CalibrateDialog.h. Reapplied to
+    // Tools > Calibrate Pixel Size - see CalibratePanel.h. Reapplied to
     // caliperTool_ on every scene rebuild (it's recreated each time - see
     // rebuildSceneGraph()), so calibration survives across file loads/next-
     // previousImage() within one wiv session.

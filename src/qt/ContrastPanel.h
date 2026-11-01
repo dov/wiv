@@ -4,10 +4,8 @@
 // (src/giv-contrast.gob + src/giv-histo.gob there): shows a histogram of
 // the current image's real pixel values with draggable min/max handles,
 // min/max/center/window entry fields, and "Auto Contrast" (stretch to the
-// image's own min/max). Unlike CalibrateDialog's fire-and-forget "read
-// initial values in, emit a signal with the final result out" pattern,
-// this is a live tool (mirrors MarkTreeView, not CalibrateDialog)
-// that needs to keep reading/writing VulkanViewport as the user drags
+// image's own min/max). This is a live tool (like MarkTreeView and
+// CalibratePanel) that needs to keep reading/writing VulkanViewport as the user drags
 // handles or switches images while it stays open - see MainWindow::
 // showContrastPanel().
 //

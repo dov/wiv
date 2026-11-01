@@ -38,6 +38,7 @@ class ContrastPanel;
 class ColorMapBar;
 class ColorTablePanel;
 class InfoPanel;
+class CalibratePanel;
 class RpcServer;
 class ThumbnailStrip;
 
@@ -125,6 +126,8 @@ private:
     // While visible it is rebuilt on image/slice/scene changes and by
     // infoRefreshTimer_ (for state with no change signal: zoom, contrast).
     InfoPanel* infoPanel_ = nullptr;
+    CalibratePanel* calibratePanel_ = nullptr;
+    QDockWidget* calibrateDock_ = nullptr;
     QDockWidget* infoDock_ = nullptr;
     QTimer* infoRefreshTimer_ = nullptr;
     // EXIF of the displayed file, re-read only when the path or mtime changes
@@ -237,3 +240,4 @@ private:
 };
 
 } // namespace givqt
+    void buildCalibrateDock();
