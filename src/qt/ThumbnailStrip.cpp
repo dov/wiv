@@ -94,23 +94,25 @@ public:
 ThumbnailStrip::ThumbnailStrip(QWidget* parent) : QListWidget(parent)
 {
     setViewMode(QListView::IconMode);
-    setFlow(QListView::LeftToRight);
-    setWrapping(false);
+    setFlow(QListView::TopToBottom); // fills a column, then wraps to the next: several rows, scrolled sideways
+    setWrapping(true);
     setMovement(QListView::Static);
     setResizeMode(QListView::Adjust);
     setUniformItemSizes(true);
-    setIconSize(QSize(kThumbSize, kThumbSize));
-    setGridSize(QSize(kThumbSize + 12, kThumbSize + 12));
+    setIconSize(QSize(thumbSize_, thumbSize_));
+    setGridSize(QSize(thumbSize_ + 12, thumbSize_ + 12));
     setSelectionMode(QAbstractItemView::SingleSelection);
     setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
+    setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    setMinimumHeight(rowHeight());
     setFrameShape(QFrame::NoFrame);
     setItemDelegate(new StripDelegate(this));
     // Paint with the window colour (not the list's own Base colour) so the
     // strip blends with the rest of the window like the scroll bars do.
     viewport()->setBackgroundRole(QPalette::Window);
     viewport()->setAutoFillBackground(true);
-    setFixedHeight(kThumbSize + 12 + horizontalScrollBar()->sizeHint().height() + 4);
 
     connect(this, &QListWidget::itemClicked, this, [this](QListWidgetItem* item) { emit fileClicked(row(item)); });
     connect(horizontalScrollBar(), &QScrollBar::valueChanged, this, [this]() { loadVisibleThumbnails(); });
@@ -136,16 +138,37 @@ void ThumbnailStrip::setFiles(const QStringList& files, int current)
         setCurrentRow(current);
         scrollToItem(item(current), QAbstractItemView::PositionAtCenter);
     }
-    updateCentering();
     loadVisibleThumbnails();
 }
 
-// IconMode packs items to the left; a short list is centred by margining the viewport.
-void ThumbnailStrip::updateCentering()
+int ThumbnailStrip::rowHeight() const
 {
-    const int total = count() * gridSize().width();
-    const int margin = std::max(0, (width() - total) / 2);
-    setViewportMargins(margin, 0, margin, 0);
+    return thumbSize_ + 12 + horizontalScrollBar()->sizeHint().height() + 4;
+}
+
+void ThumbnailStrip::setThumbSize(int size)
+{
+    size = std::clamp(size, kMinThumbSize, kMaxThumbSize);
+    if (size == thumbSize_) return;
+    thumbSize_ = size;
+    setIconSize(QSize(size, size));
+    setGridSize(QSize(size + 12, size + 12));
+    setMinimumHeight(rowHeight());
+    // Uniform item sizes are cached from the first item; drop the cache so the new size takes effect.
+    setUniformItemSizes(false);
+    for (int i = 0; i < count(); ++i)
+    {
+        item(i)->setSizeHint(gridSize());
+        const QImage image = item(i)->data(kImageRole).value<QImage>();
+        if (!image.isNull())
+            item(i)->setData(kThumbRole, makeSquareThumbnail(image, thumbSize_, devicePixelRatioF(), background_));
+    }
+    setUniformItemSizes(true);
+    scheduleDelayedItemsLayout();
+    if (currentRow() >= 0) scrollToItem(currentItem(), QAbstractItemView::PositionAtCenter);
+    viewport()->update();
+    loadVisibleThumbnails();
+    emit thumbSizeChanged(size);
 }
 
 // The colour transparent areas and letterboxing are drawn on - the canvas background.
@@ -156,7 +179,7 @@ void ThumbnailStrip::setBackgroundColor(const QColor& color)
     {
         const QImage image = item(i)->data(kImageRole).value<QImage>();
         if (!image.isNull())
-            item(i)->setData(kThumbRole, makeSquareThumbnail(image, kThumbSize, devicePixelRatioF(), background_));
+            item(i)->setData(kThumbRole, makeSquareThumbnail(image, thumbSize_, devicePixelRatioF(), background_));
     }
     viewport()->update();
 }
@@ -182,7 +205,7 @@ void ThumbnailStrip::loadVisibleThumbnails()
             if (gen != generation_ || i >= count() || image.isNull()) return;
             if (item(i)->data(kSerialRole).toInt() != serial) return; // regenerated meanwhile
             item(i)->setData(kImageRole, image);
-            item(i)->setData(kThumbRole, makeSquareThumbnail(image, kThumbSize, devicePixelRatioF(), background_));
+            item(i)->setData(kThumbRole, makeSquareThumbnail(image, thumbSize_, devicePixelRatioF(), background_));
             viewport()->update();
         });
         watcher->setFuture(QtConcurrent::run(decodeFileThumbnail, path, fresh));
@@ -229,6 +252,13 @@ void ThumbnailStrip::contextMenuEvent(QContextMenuEvent* event)
 
 void ThumbnailStrip::wheelEvent(QWheelEvent* event)
 {
+    if (event->modifiers() & Qt::ControlModifier)
+    {
+        const int dy = event->angleDelta().y();
+        if (dy != 0) setThumbSize(thumbSize_ + (dy > 0 ? 1 : -1) * std::max(4, thumbSize_ / 8));
+        event->accept();
+        return;
+    }
     const int dy = event->angleDelta().y() != 0 ? event->angleDelta().y() : event->angleDelta().x();
     if (dy != 0) emit stepRequested(dy > 0 ? -1 : 1);
     event->accept();
@@ -237,7 +267,6 @@ void ThumbnailStrip::wheelEvent(QWheelEvent* event)
 void ThumbnailStrip::resizeEvent(QResizeEvent* event)
 {
     QListWidget::resizeEvent(event);
-    updateCentering();
     loadVisibleThumbnails();
 }
 
