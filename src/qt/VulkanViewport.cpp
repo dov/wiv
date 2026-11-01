@@ -437,8 +437,16 @@ void VulkanViewport::handleViewportResize()
 // once with no later resizeEvent to fix it up).
 void VulkanViewport::applyExtent(VkExtent2D extent)
 {
-    cancelViewAnimation(); // its targets were computed for the old extent
+    const bool animating = viewAnim_.active;
     syncRenderExtent(extent);
+    // A running fit animation was aimed at the old extent (e.g. the scrollbars
+    // vanishing as it starts changes the viewport size): aim it at the new one
+    // rather than dropping it and stranding the view part-way.
+    FitView retarget;
+    if (animating && computeFitView(retarget))
+        viewAnim_.to = retarget;
+    else
+        cancelViewAnimation();
 
     const double dpr = devicePixelRatioF();
     const QSize widgetPx(static_cast<int>(std::lround(width() * dpr)), static_cast<int>(std::lround(height() * dpr)));
