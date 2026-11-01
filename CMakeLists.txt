@@ -31,6 +31,11 @@ find_package(vsgXchange CONFIG REQUIRED)
 # (before Qt6, whose cross config rewrites the find root path)
 find_package(spdlog CONFIG REQUIRED)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Concurrent Network)
+if(MINGW AND MINGW_DEPS_PREFIX)
+  # Qt6's cross config replaced CMAKE_FIND_ROOT_PATH; put our prefix back so the
+  # plugins' pkg-config lookups (libheif, libjxl, LibRaw) can find their libs.
+  list(APPEND CMAKE_FIND_ROOT_PATH ${MINGW_DEPS_PREFIX})
+endif()
 
 # The system-wide vsgQt install (/usr/local) was built against Qt5, so it
 # can't be used by this (Qt6) app - vsgQt is a thin library, so build it

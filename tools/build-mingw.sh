@@ -8,7 +8,7 @@
 # `tools/build-mingw-deps.sh` (once). Output: build/mingw-release/, a
 # staged install tree in build/mingw-release/stage/ (bin/ with exe, DLLs and
 # Qt plugins; lib/wiv/plugins/; share/wiv/shaders/; examples/) and, with --installer,
-# Installers/Installwiv-v<ver>-<sha>.exe.
+# Installers/InstallWiv-v<ver>-<sha>.exe.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -70,5 +70,5 @@ if [ "${1:-}" = "--installer" ]; then
   rm -rf tmp
   cp -r "$STAGE" tmp
   makensis -V2 -DVERSION="$VERSION" -DSHORTSHA1="$SHORTSHA1" -DSTAGING=tmp wiv.nsi
-  echo "Built: $ROOT/Installers/Installwiv-v$VERSION-$SHORTSHA1.exe"
+  echo "Built: $ROOT/Installers/InstallWiv-v$VERSION-$SHORTSHA1.exe"
 fi

@@ -43,7 +43,7 @@ build\windows-release\wiv.exe file.giv
 ```sh
 sudo ./install-mingw-deps.sh      # dnf packages (Qt6, vulkan, NSIS, ...)
 tools/build-mingw-deps.sh         # optional: also run automatically by cmake
-./windows-cross-compile.sh        # (= tools/build-mingw.sh --installer)  # build/mingw-release/stage + Installers/Installwiv-*.exe
+./windows-cross-compile.sh        # (= tools/build-mingw.sh --installer)  # build/mingw-release/stage + Installers/InstallWiv-*.exe
 ```
 
 `MINGW_DEPS_PREFIX` overrides the dependency prefix (default
