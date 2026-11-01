@@ -1,0 +1,7273 @@
+# Two rings of translucent filled circles of varying size, orbiting one another.
+# Generated frames: the red and green ring centres circle a common point while
+# each ring also spins. Play with the animation bar (Space).
+$fps 24
+
+$balloon Static
+$color black/0.3
+$lw 1
+$marks circle
+$mark_size 4
+$nomark
+0 0
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+58.00 0.00
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+51.89 18.81
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+35.89 30.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+16.11 30.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+0.11 18.81
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-6.00 0.00
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+0.11 -18.81
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+16.11 -30.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+35.89 -30.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+51.89 -18.81
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+6.00 0.00
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-0.11 18.81
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-16.11 30.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-35.89 30.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-51.89 18.81
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-58.00 0.00
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-51.89 -18.81
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-35.89 -30.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-16.11 -30.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-0.11 -18.81
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+57.16 9.37
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+47.27 26.50
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+29.20 34.54
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+9.86 30.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-3.38 15.73
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-5.44 -3.94
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+4.45 -21.06
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+22.51 -29.11
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+41.86 -25.00
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+55.09 -10.30
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+5.44 -9.37
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+3.38 10.30
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-9.86 25.00
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-29.20 29.11
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-47.27 21.06
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-57.16 3.94
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-55.09 -15.73
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-41.86 -30.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-22.51 -34.54
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-4.45 -26.50
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+54.67 18.42
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+41.43 33.12
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+22.09 37.23
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+4.02 29.19
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-5.87 12.06
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-3.80 -7.61
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+9.43 -22.31
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+28.78 -26.42
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+46.84 -18.37
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+56.73 -1.25
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+3.80 -18.42
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+5.87 1.25
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-4.02 18.37
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-22.09 26.42
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-41.43 22.31
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-54.67 7.61
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-56.73 -12.06
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-46.84 -29.19
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-28.78 -37.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-9.43 -33.12
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+50.62 26.84
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+34.62 38.47
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+14.84 38.47
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-1.16 26.84
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-7.27 8.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-1.16 -10.77
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+14.84 -22.40
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+34.62 -22.40
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+50.62 -10.77
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+56.73 8.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+1.16 -26.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+7.27 -8.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+1.16 10.77
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-14.84 22.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-34.62 22.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-50.62 10.77
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-56.73 -8.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-50.62 -26.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-34.62 -38.47
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-14.84 -38.47
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+45.16 34.36
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+27.10 42.40
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+7.75 38.29
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-5.48 23.59
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-7.55 3.92
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+2.34 -13.21
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+20.41 -21.25
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+39.75 -17.14
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+52.99 -2.44
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+55.05 17.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-2.34 -34.36
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+7.55 -17.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+5.48 2.44
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-7.75 17.14
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-27.10 21.25
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-45.16 13.21
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-55.05 -3.92
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-52.99 -23.59
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-39.75 -38.29
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-20.41 -42.40
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+38.52 40.71
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+19.17 44.82
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+1.10 36.78
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-8.78 19.65
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-6.72 -0.02
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+6.52 -14.71
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+25.86 -18.82
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+43.93 -10.78
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+53.82 6.35
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+51.75 26.02
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-6.52 -40.71
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+6.72 -26.02
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+8.78 -6.35
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-1.10 10.78
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-19.17 18.82
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-38.52 14.71
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-51.75 0.02
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-53.82 -19.65
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-43.93 -36.78
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-25.86 -44.82
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+30.92 45.72
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+11.15 45.72
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-4.85 34.09
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-10.97 15.28
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-4.85 -3.53
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+11.15 -15.15
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+30.92 -15.15
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+46.92 -3.53
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+53.03 15.28
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+46.92 34.09
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-11.15 -45.72
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+4.85 -34.09
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+10.97 -15.28
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+4.85 3.53
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-11.15 15.15
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-30.92 15.15
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-46.92 3.53
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-53.03 -15.28
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-46.92 -34.09
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-30.92 -45.72
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+22.67 49.22
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+3.32 45.11
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-9.91 30.41
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-11.98 10.74
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-2.09 -6.38
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+15.98 -14.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+35.32 -10.32
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+48.56 4.38
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+50.62 24.05
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+40.73 41.18
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-15.98 -49.22
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+2.09 -41.18
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+11.98 -24.05
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+9.91 -4.38
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-3.32 10.32
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-22.67 14.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-40.73 6.38
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-50.62 -10.74
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-48.56 -30.41
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-35.32 -45.11
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+14.05 51.15
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-4.01 43.10
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-13.90 25.97
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-11.84 6.31
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+1.40 -8.39
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+20.74 -12.50
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+38.81 -4.46
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+48.70 12.67
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+46.63 32.34
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+33.40 47.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-20.74 -51.15
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-1.40 -47.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+11.84 -32.34
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+13.90 -12.67
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+4.01 4.46
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-14.05 12.50
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-33.40 8.39
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-46.63 -6.31
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-48.70 -25.97
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-38.81 -43.10
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+5.39 51.47
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-10.61 39.84
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-16.72 21.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-10.61 2.23
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+5.39 -9.40
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+25.17 -9.40
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+41.17 2.23
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+47.28 21.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+41.17 39.84
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+25.17 51.47
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-25.17 -51.47
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-5.39 -51.47
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+10.61 -39.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+16.72 -21.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+10.61 -2.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-5.39 9.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-25.17 9.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-41.17 -2.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-47.28 -21.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-41.17 -39.84
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-3.00 50.23
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-16.23 35.53
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-18.30 15.86
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-8.41 -1.26
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+9.66 -9.31
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+29.00 -5.20
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+42.23 9.50
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+44.30 29.17
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+34.41 46.30
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+16.34 54.34
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-29.00 -50.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-9.66 -54.34
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+8.41 -46.30
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+18.30 -29.17
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+16.23 -9.50
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+3.00 5.20
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-16.34 9.31
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-34.41 1.26
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-44.30 -15.86
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-42.23 -35.53
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-10.84 47.53
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-20.73 30.41
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-18.66 10.74
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-5.42 -3.96
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+13.92 -8.07
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+31.99 -0.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+41.88 17.10
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+39.81 36.77
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+26.58 51.46
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+7.23 55.58
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-31.99 -47.53
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-13.92 -55.58
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+5.42 -51.46
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+18.66 -36.77
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+20.73 -17.10
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+10.84 0.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-7.23 8.07
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-26.58 3.96
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-39.81 -10.74
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-41.88 -30.41
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-17.85 43.54
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-23.97 24.73
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-17.85 5.92
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-1.85 -5.71
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+17.92 -5.71
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+33.92 5.92
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+40.03 24.73
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+33.92 43.54
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+17.92 55.16
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-1.85 55.16
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-33.92 -43.54
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-17.92 -55.16
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+1.85 -55.16
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+17.85 -43.54
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+23.97 -24.73
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+17.85 -5.92
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+1.85 5.71
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-17.92 5.71
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-33.92 -5.92
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-40.03 -24.73
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-23.83 38.45
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-25.90 18.78
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-16.01 1.65
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+2.06 -6.39
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+21.41 -2.28
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+34.64 12.42
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+36.71 32.09
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+26.82 49.21
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+8.75 57.26
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-10.59 53.14
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-34.64 -38.45
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-21.41 -53.14
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-2.06 -57.26
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+16.01 -49.21
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+25.90 -32.09
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+23.83 -12.42
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+10.59 2.28
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-8.75 6.39
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-26.82 -1.65
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-36.71 -18.78
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-28.58 32.51
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-26.52 12.84
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-13.28 -1.86
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+6.06 -5.97
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+24.13 2.08
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+34.02 19.20
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+31.95 38.87
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+18.72 53.57
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-0.63 57.68
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-18.69 49.64
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-34.02 -32.51
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-24.13 -49.64
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-6.06 -57.68
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+13.28 -53.57
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+26.52 -38.87
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+28.58 -19.20
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+18.69 -2.08
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+0.63 5.97
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-18.72 1.86
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-31.95 -12.84
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-32.00 26.00
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-25.89 7.19
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-9.89 -4.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+9.89 -4.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+25.89 7.19
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+32.00 26.00
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+25.89 44.81
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+9.89 56.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-9.89 56.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-25.89 44.81
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-32.00 -26.00
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-25.89 -44.81
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-9.89 -56.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+9.89 -56.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+25.89 -44.81
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+32.00 -26.00
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+25.89 -7.19
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+9.89 4.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-9.89 4.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-25.89 -7.19
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-34.02 19.20
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-24.13 2.08
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-6.06 -5.97
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+13.28 -1.86
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+26.52 12.84
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+28.58 32.51
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+18.69 49.64
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+0.63 57.68
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-18.72 53.57
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-31.95 38.87
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-28.58 -19.20
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-26.52 -38.87
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-13.28 -53.57
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+6.06 -57.68
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+24.13 -49.64
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+34.02 -32.51
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+31.95 -12.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+18.72 1.86
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-0.63 5.97
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-18.69 -2.08
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-34.64 12.42
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-21.41 -2.28
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-2.06 -6.39
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+16.01 1.65
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+25.90 18.78
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+23.83 38.45
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+10.59 53.14
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-8.75 57.26
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-26.82 49.21
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-36.71 32.09
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-23.83 -12.42
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-25.90 -32.09
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-16.01 -49.21
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+2.06 -57.26
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+21.41 -53.14
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+34.64 -38.45
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+36.71 -18.78
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+26.82 -1.65
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+8.75 6.39
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-10.59 2.28
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-33.92 5.92
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-17.92 -5.71
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+1.85 -5.71
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+17.85 5.92
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+23.97 24.73
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+17.85 43.54
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+1.85 55.16
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-17.92 55.16
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-33.92 43.54
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-40.03 24.73
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-17.85 -5.92
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-23.97 -24.73
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-17.85 -43.54
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-1.85 -55.16
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+17.92 -55.16
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+33.92 -43.54
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+40.03 -24.73
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+33.92 -5.92
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+17.92 5.71
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-1.85 5.71
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-31.99 -0.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-13.92 -8.07
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+5.42 -3.96
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+18.66 10.74
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+20.73 30.41
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+10.84 47.53
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-7.23 55.58
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-26.58 51.46
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-39.81 36.77
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-41.88 17.10
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-10.84 0.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-20.73 -17.10
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-18.66 -36.77
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-5.42 -51.46
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+13.92 -55.58
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+31.99 -47.53
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+41.88 -30.41
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+39.81 -10.74
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+26.58 3.96
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+7.23 8.07
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-29.00 -5.20
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-9.66 -9.31
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+8.41 -1.26
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+18.30 15.86
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+16.23 35.53
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+3.00 50.23
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-16.34 54.34
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-34.41 46.30
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-44.30 29.17
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-42.23 9.50
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-3.00 5.20
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-16.23 -9.50
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-18.30 -29.17
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-8.41 -46.30
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+9.66 -54.34
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+29.00 -50.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+42.23 -35.53
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+44.30 -15.86
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+34.41 1.26
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+16.34 9.31
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-25.17 -9.40
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-5.39 -9.40
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+10.61 2.23
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+16.72 21.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+10.61 39.84
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-5.39 51.47
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-25.17 51.47
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-41.17 39.84
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-47.28 21.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-41.17 2.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+5.39 9.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-10.61 -2.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-16.72 -21.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-10.61 -39.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+5.39 -51.47
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+25.17 -51.47
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+41.17 -39.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+47.28 -21.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+41.17 -2.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+25.17 9.40
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-20.74 -12.50
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-1.40 -8.39
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+11.84 6.31
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+13.90 25.97
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+4.01 43.10
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-14.05 51.15
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-33.40 47.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-46.63 32.34
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-48.70 12.67
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-38.81 -4.46
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+14.05 12.50
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-4.01 4.46
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-13.90 -12.67
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-11.84 -32.34
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+1.40 -47.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+20.74 -51.15
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+38.81 -43.10
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+48.70 -25.97
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+46.63 -6.31
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+33.40 8.39
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-15.98 -14.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+2.09 -6.38
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+11.98 10.74
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+9.91 30.41
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-3.32 45.11
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-22.67 49.22
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-40.73 41.18
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-50.62 24.05
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-48.56 4.38
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-35.32 -10.32
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+22.67 14.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+3.32 10.32
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-9.91 -4.38
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-11.98 -24.05
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-2.09 -41.18
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+15.98 -49.22
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+35.32 -45.11
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+48.56 -30.41
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+50.62 -10.74
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+40.73 6.38
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-11.15 -15.15
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+4.85 -3.53
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+10.97 15.28
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+4.85 34.09
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-11.15 45.72
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-30.92 45.72
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-46.92 34.09
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-53.03 15.28
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-46.92 -3.53
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-30.92 -15.15
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+30.92 15.15
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+11.15 15.15
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-4.85 3.53
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-10.97 -15.28
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-4.85 -34.09
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+11.15 -45.72
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+30.92 -45.72
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+46.92 -34.09
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+53.03 -15.28
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+46.92 3.53
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-6.52 -14.71
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+6.72 -0.02
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+8.78 19.65
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-1.10 36.78
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-19.17 44.82
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-38.52 40.71
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-51.75 26.02
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-53.82 6.35
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-43.93 -10.78
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-25.86 -18.82
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+38.52 14.71
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+19.17 18.82
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+1.10 10.78
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-8.78 -6.35
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-6.72 -26.02
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+6.52 -40.71
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+25.86 -44.82
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+43.93 -36.78
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+53.82 -19.65
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+51.75 0.02
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-2.34 -13.21
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+7.55 3.92
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+5.48 23.59
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-7.75 38.29
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-27.10 42.40
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-45.16 34.36
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-55.05 17.23
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-52.99 -2.44
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-39.75 -17.14
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-20.41 -21.25
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+45.16 13.21
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+27.10 21.25
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+7.75 17.14
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-5.48 2.44
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-7.55 -17.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+2.34 -34.36
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+20.41 -42.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+39.75 -38.29
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+52.99 -23.59
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+55.05 -3.92
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+1.16 -10.77
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+7.27 8.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+1.16 26.84
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-14.84 38.47
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-34.62 38.47
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-50.62 26.84
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-56.73 8.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-50.62 -10.77
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-34.62 -22.40
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-14.84 -22.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+50.62 10.77
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+34.62 22.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+14.84 22.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-1.16 10.77
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-7.27 -8.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-1.16 -26.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+14.84 -38.47
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+34.62 -38.47
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+50.62 -26.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+56.73 -8.03
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+3.80 -7.61
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+5.87 12.06
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-4.02 29.19
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-22.09 37.23
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-41.43 33.12
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-54.67 18.42
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-56.73 -1.25
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-46.84 -18.37
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-28.78 -26.42
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-9.43 -22.31
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+54.67 7.61
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+41.43 22.31
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+22.09 26.42
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+4.02 18.37
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-5.87 1.25
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-3.80 -18.42
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+9.43 -33.12
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+28.78 -37.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+46.84 -29.19
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+56.73 -12.06
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+5.44 -3.94
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+3.38 15.73
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-9.86 30.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-29.20 34.54
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-47.27 26.50
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-57.16 9.37
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-55.09 -10.30
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-41.86 -25.00
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-22.51 -29.11
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-4.45 -21.06
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+57.16 3.94
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+47.27 21.06
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+29.20 29.11
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+9.86 25.00
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-3.38 10.30
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-5.44 -9.37
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+4.45 -26.50
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+22.51 -34.54
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+41.86 -30.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+55.09 -15.73
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+6.00 -0.00
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-0.11 18.81
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-16.11 30.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-35.89 30.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-51.89 18.81
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-58.00 0.00
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-51.89 -18.81
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-35.89 -30.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-16.11 -30.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-0.11 -18.81
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+58.00 0.00
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+51.89 18.81
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+35.89 30.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+16.11 30.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+0.11 18.81
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-6.00 -0.00
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+0.11 -18.81
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+16.11 -30.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+35.89 -30.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+51.89 -18.81
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+5.44 3.94
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-4.45 21.06
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-22.51 29.11
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-41.86 25.00
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-55.09 10.30
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-57.16 -9.37
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-47.27 -26.50
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-29.20 -34.54
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-9.86 -30.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+3.38 -15.73
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+57.16 -3.94
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+55.09 15.73
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+41.86 30.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+22.51 34.54
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+4.45 26.50
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-5.44 9.37
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-3.38 -10.30
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+9.86 -25.00
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+29.20 -29.11
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+47.27 -21.06
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+3.80 7.61
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-9.43 22.31
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-28.78 26.42
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-46.84 18.37
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-56.73 1.25
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-54.67 -18.42
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-41.43 -33.12
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-22.09 -37.23
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-4.02 -29.19
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+5.87 -12.06
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+54.67 -7.61
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+56.73 12.06
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+46.84 29.19
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+28.78 37.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+9.43 33.12
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-3.80 18.42
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-5.87 -1.25
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+4.02 -18.37
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+22.09 -26.42
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+41.43 -22.31
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+1.16 10.77
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-14.84 22.40
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-34.62 22.40
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-50.62 10.77
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-56.73 -8.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-50.62 -26.84
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-34.62 -38.47
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-14.84 -38.47
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+1.16 -26.84
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+7.27 -8.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+50.62 -10.77
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+56.73 8.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+50.62 26.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+34.62 38.47
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+14.84 38.47
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-1.16 26.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-7.27 8.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-1.16 -10.77
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+14.84 -22.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+34.62 -22.40
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-2.34 13.21
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-20.41 21.25
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-39.75 17.14
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-52.99 2.44
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-55.05 -17.23
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-45.16 -34.36
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-27.10 -42.40
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-7.75 -38.29
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+5.48 -23.59
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+7.55 -3.92
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+45.16 -13.21
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+55.05 3.92
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+52.99 23.59
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+39.75 38.29
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+20.41 42.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+2.34 34.36
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-7.55 17.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-5.48 -2.44
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+7.75 -17.14
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+27.10 -21.25
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-6.52 14.71
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-25.86 18.82
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-43.93 10.78
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-53.82 -6.35
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-51.75 -26.02
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-38.52 -40.71
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-19.17 -44.82
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-1.10 -36.78
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+8.78 -19.65
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+6.72 0.02
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+38.52 -14.71
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+51.75 -0.02
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+53.82 19.65
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+43.93 36.78
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+25.86 44.82
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+6.52 40.71
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-6.72 26.02
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-8.78 6.35
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+1.10 -10.78
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+19.17 -18.82
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-11.15 15.15
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-30.92 15.15
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-46.92 3.53
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-53.03 -15.28
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-46.92 -34.09
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-30.92 -45.72
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-11.15 -45.72
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+4.85 -34.09
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+10.97 -15.28
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+4.85 3.53
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+30.92 -15.15
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+46.92 -3.53
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+53.03 15.28
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+46.92 34.09
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+30.92 45.72
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+11.15 45.72
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-4.85 34.09
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-10.97 15.28
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-4.85 -3.53
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+11.15 -15.15
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-15.98 14.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-35.32 10.32
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-48.56 -4.38
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-50.62 -24.05
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-40.73 -41.18
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-22.67 -49.22
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-3.32 -45.11
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+9.91 -30.41
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+11.98 -10.74
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+2.09 6.38
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+22.67 -14.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+40.73 -6.38
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+50.62 10.74
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+48.56 30.41
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+35.32 45.11
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+15.98 49.22
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-2.09 41.18
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-11.98 24.05
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-9.91 4.38
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+3.32 -10.32
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-20.74 12.50
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-38.81 4.46
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-48.70 -12.67
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-46.63 -32.34
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-33.40 -47.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-14.05 -51.15
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+4.01 -43.10
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+13.90 -25.97
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+11.84 -6.31
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-1.40 8.39
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+14.05 -12.50
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+33.40 -8.39
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+46.63 6.31
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+48.70 25.97
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+38.81 43.10
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+20.74 51.15
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+1.40 47.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-11.84 32.34
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-13.90 12.67
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-4.01 -4.46
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-25.17 9.40
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-41.17 -2.23
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-47.28 -21.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-41.17 -39.84
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-25.17 -51.47
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-5.39 -51.47
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+10.61 -39.84
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+16.72 -21.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+10.61 -2.23
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-5.39 9.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+5.39 -9.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+25.17 -9.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+41.17 2.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+47.28 21.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+41.17 39.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+25.17 51.47
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+5.39 51.47
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-10.61 39.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-16.72 21.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-10.61 2.23
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-29.00 5.20
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-42.23 -9.50
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-44.30 -29.17
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-34.41 -46.30
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-16.34 -54.34
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+3.00 -50.23
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+16.23 -35.53
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+18.30 -15.86
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+8.41 1.26
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-9.66 9.31
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-3.00 -5.20
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+16.34 -9.31
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+34.41 -1.26
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+44.30 15.86
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+42.23 35.53
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+29.00 50.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+9.66 54.34
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-8.41 46.30
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-18.30 29.17
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-16.23 9.50
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-31.99 0.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-41.88 -17.10
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-39.81 -36.77
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-26.58 -51.46
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-7.23 -55.58
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+10.84 -47.53
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+20.73 -30.41
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+18.66 -10.74
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+5.42 3.96
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-13.92 8.07
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-10.84 -0.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+7.23 -8.07
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+26.58 -3.96
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+39.81 10.74
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+41.88 30.41
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+31.99 47.53
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+13.92 55.58
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-5.42 51.46
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-18.66 36.77
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-20.73 17.10
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-33.92 -5.92
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-40.03 -24.73
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-33.92 -43.54
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-17.92 -55.16
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+1.85 -55.16
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+17.85 -43.54
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+23.97 -24.73
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+17.85 -5.92
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+1.85 5.71
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-17.92 5.71
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-17.85 5.92
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-1.85 -5.71
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+17.92 -5.71
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+33.92 5.92
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+40.03 24.73
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+33.92 43.54
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+17.92 55.16
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-1.85 55.16
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-17.85 43.54
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-23.97 24.73
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-34.64 -12.42
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-36.71 -32.09
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-26.82 -49.21
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-8.75 -57.26
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+10.59 -53.14
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+23.83 -38.45
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+25.90 -18.78
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+16.01 -1.65
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-2.06 6.39
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-21.41 2.28
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-23.83 12.42
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-10.59 -2.28
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+8.75 -6.39
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+26.82 1.65
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+36.71 18.78
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+34.64 38.45
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+21.41 53.14
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+2.06 57.26
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-16.01 49.21
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-25.90 32.09
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-34.02 -19.20
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-31.95 -38.87
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-18.72 -53.57
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+0.63 -57.68
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+18.69 -49.64
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+28.58 -32.51
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+26.52 -12.84
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+13.28 1.86
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-6.06 5.97
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-24.13 -2.08
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-28.58 19.20
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-18.69 2.08
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-0.63 -5.97
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+18.72 -1.86
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+31.95 12.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+34.02 32.51
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+24.13 49.64
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+6.06 57.68
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-13.28 53.57
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-26.52 38.87
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-32.00 -26.00
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-25.89 -44.81
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-9.89 -56.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+9.89 -56.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+25.89 -44.81
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+32.00 -26.00
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+25.89 -7.19
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+9.89 4.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-9.89 4.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-25.89 -7.19
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-32.00 26.00
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-25.89 7.19
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-9.89 -4.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+9.89 -4.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+25.89 7.19
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+32.00 26.00
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+25.89 44.81
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+9.89 56.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-9.89 56.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-25.89 44.81
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-28.58 -32.51
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-18.69 -49.64
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-0.63 -57.68
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+18.72 -53.57
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+31.95 -38.87
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+34.02 -19.20
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+24.13 -2.08
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+6.06 5.97
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-13.28 1.86
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-26.52 -12.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-34.02 32.51
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-31.95 12.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-18.72 -1.86
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+0.63 -5.97
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+18.69 2.08
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+28.58 19.20
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+26.52 38.87
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+13.28 53.57
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-6.06 57.68
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-24.13 49.64
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-23.83 -38.45
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-10.59 -53.14
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+8.75 -57.26
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+26.82 -49.21
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+36.71 -32.09
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+34.64 -12.42
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+21.41 2.28
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+2.06 6.39
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-16.01 -1.65
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-25.90 -18.78
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-34.64 38.45
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-36.71 18.78
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-26.82 1.65
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-8.75 -6.39
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+10.59 -2.28
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+23.83 12.42
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+25.90 32.09
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+16.01 49.21
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-2.06 57.26
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-21.41 53.14
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-17.85 -43.54
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-1.85 -55.16
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+17.92 -55.16
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+33.92 -43.54
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+40.03 -24.73
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+33.92 -5.92
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+17.92 5.71
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-1.85 5.71
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-17.85 -5.92
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-23.97 -24.73
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-33.92 43.54
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-40.03 24.73
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-33.92 5.92
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-17.92 -5.71
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+1.85 -5.71
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+17.85 5.92
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+23.97 24.73
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+17.85 43.54
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+1.85 55.16
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-17.92 55.16
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-10.84 -47.53
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+7.23 -55.58
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+26.58 -51.46
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+39.81 -36.77
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+41.88 -17.10
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+31.99 0.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+13.92 8.07
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-5.42 3.96
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-18.66 -10.74
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-20.73 -30.41
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-31.99 47.53
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-41.88 30.41
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-39.81 10.74
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-26.58 -3.96
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-7.23 -8.07
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+10.84 -0.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+20.73 17.10
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+18.66 36.77
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+5.42 51.46
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-13.92 55.58
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-3.00 -50.23
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+16.34 -54.34
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+34.41 -46.30
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+44.30 -29.17
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+42.23 -9.50
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+29.00 5.20
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+9.66 9.31
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-8.41 1.26
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-18.30 -15.86
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-16.23 -35.53
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-29.00 50.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-42.23 35.53
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-44.30 15.86
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-34.41 -1.26
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-16.34 -9.31
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+3.00 -5.20
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+16.23 9.50
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+18.30 29.17
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+8.41 46.30
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-9.66 54.34
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+5.39 -51.47
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+25.17 -51.47
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+41.17 -39.84
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+47.28 -21.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+41.17 -2.23
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+25.17 9.40
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+5.39 9.40
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-10.61 -2.23
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-16.72 -21.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-10.61 -39.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-25.17 51.47
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-41.17 39.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-47.28 21.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-41.17 2.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-25.17 -9.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-5.39 -9.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+10.61 2.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+16.72 21.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+10.61 39.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-5.39 51.47
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+14.05 -51.15
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+33.40 -47.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+46.63 -32.34
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+48.70 -12.67
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+38.81 4.46
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+20.74 12.50
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+1.40 8.39
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-11.84 -6.31
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-13.90 -25.97
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-4.01 -43.10
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-20.74 51.15
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-38.81 43.10
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-48.70 25.97
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-46.63 6.31
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-33.40 -8.39
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-14.05 -12.50
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+4.01 -4.46
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+13.90 12.67
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+11.84 32.34
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+-1.40 47.03
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+22.67 -49.22
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+40.73 -41.18
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+50.62 -24.05
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+48.56 -4.38
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+35.32 10.32
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+15.98 14.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-2.09 6.38
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-11.98 -10.74
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-9.91 -30.41
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+3.32 -45.11
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-15.98 49.22
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-35.32 45.11
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-48.56 30.41
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-50.62 10.74
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-40.73 -6.38
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-22.67 -14.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-3.32 -10.32
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+9.91 4.38
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+11.98 24.05
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+2.09 41.18
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+30.92 -45.72
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+46.92 -34.09
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+53.03 -15.28
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+46.92 3.53
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+30.92 15.15
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+11.15 15.15
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-4.85 3.53
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-10.97 -15.28
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-4.85 -34.09
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+11.15 -45.72
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-11.15 45.72
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-30.92 45.72
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-46.92 34.09
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-53.03 15.28
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-46.92 -3.53
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-30.92 -15.15
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-11.15 -15.15
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+4.85 -3.53
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+10.97 15.28
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+4.85 34.09
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+38.52 -40.71
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+51.75 -26.02
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+53.82 -6.35
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+43.93 10.78
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+25.86 18.82
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+6.52 14.71
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-6.72 0.02
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-8.78 -19.65
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+1.10 -36.78
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+19.17 -44.82
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-6.52 40.71
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-25.86 44.82
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-43.93 36.78
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-53.82 19.65
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-51.75 -0.02
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-38.52 -14.71
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-19.17 -18.82
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-1.10 -10.78
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+8.78 6.35
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+6.72 26.02
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+45.16 -34.36
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+55.05 -17.23
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+52.99 2.44
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+39.75 17.14
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+20.41 21.25
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+2.34 13.21
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-7.55 -3.92
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-5.48 -23.59
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+7.75 -38.29
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+27.10 -42.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+-2.34 34.36
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-20.41 42.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-39.75 38.29
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-52.99 23.59
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-55.05 3.92
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-45.16 -13.21
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-27.10 -21.25
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-7.75 -17.14
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+5.48 -2.44
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+7.55 17.23
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+50.62 -26.84
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+56.73 -8.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+50.62 10.77
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+34.62 22.40
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+14.84 22.40
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-1.16 10.77
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-7.27 -8.03
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-1.16 -26.84
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+14.84 -38.47
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+34.62 -38.47
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+1.16 26.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-14.84 38.47
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-34.62 38.47
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-50.62 26.84
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-56.73 8.03
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-50.62 -10.77
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-34.62 -22.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-14.84 -22.40
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+1.16 -10.77
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+7.27 8.03
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+54.67 -18.42
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+56.73 1.25
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+46.84 18.37
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+28.78 26.42
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+9.43 22.31
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-3.80 7.61
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-5.87 -12.06
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+4.02 -29.19
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+22.09 -37.23
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+41.43 -33.12
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+3.80 18.42
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-9.43 33.12
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-28.78 37.23
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-46.84 29.19
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-56.73 12.06
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-54.67 -7.61
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-41.43 -22.31
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-22.09 -26.42
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-4.02 -18.37
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+5.87 -1.25
+
+$frame
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+57.16 -9.37
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+55.09 10.30
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+41.86 25.00
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+22.51 29.11
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+4.45 21.06
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-5.44 3.94
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-3.38 -15.73
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+9.86 -30.43
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+29.20 -34.54
+
+$color red/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+47.27 -26.50
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 10.00
+5.44 9.37
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 16.29
+-4.45 26.50
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 18.94
+-22.51 34.54
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 12.06
+-41.86 30.43
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 14.71
+-55.09 15.73
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.00
+-57.16 -3.94
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 15.51
+-47.27 -21.06
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 13.66
+-29.20 -29.11
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 21.34
+-9.86 -25.00
+
+$color green/0.45
+$marks fcircle
+$scale_marks
+$mark_size 19.49
+3.38 -10.30
+
