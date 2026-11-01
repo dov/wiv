@@ -455,7 +455,11 @@ QImage renderGivThumbnail(const SceneData& scene, int maxSize, const QImage& bac
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
     if (!background.isNull())
         painter.drawImage(QRectF(ctx.toPixel(0, 0), ctx.toPixel(background.width(), background.height())), background);
-    for (const Dataset& ds : scene.datasets) renderDataset(painter, ds, ctx);
+    for (const Dataset& ds : scene.datasets)
+    {
+        if (ds.frame > 0) continue; // an animation's thumbnail shows its first frame (and the static background)
+        renderDataset(painter, ds, ctx);
+    }
     painter.end();
 
     return image;
