@@ -1,9 +1,9 @@
 #pragma once
 //
-// CalibrateDialog.h - Tools > Calibrate Pixel Size, giv's GivCalibrateDialog
-// (src/giv-calibrate-dialog.gob there): lets the user tell wiv how many
-// real-world units a single image pixel spans, so the caliper tool's
-// distance readout can show real units instead of raw pixels.
+// CalibratePanel.h - Tools > Calibrate Pixel Size, giv's GivCalibrateDialog
+// (src/giv-calibrate-dialog.gob there) as a dock widget: lets the user tell
+// wiv how many real-world units a single image pixel spans, so the caliper
+// tool's distance readout can show real units instead of raw pixels.
 //
 // The "Source" combo picks what the "Distance" field's number means:
 //   Pixel        - the field *is* the pixel size directly (real units/px).
@@ -15,7 +15,7 @@
 // Switching sources re-derives the field's displayed number so it always
 // reflects the same underlying pixel size (mirrors giv's cb_combo_changed).
 //
-#include <QDialog>
+#include <QWidget>
 
 #include <optional>
 #include <utility>
@@ -26,19 +26,24 @@ class QLineEdit;
 namespace givqt
 {
 
-class CalibrateDialog : public QDialog
+class VulkanViewport;
+
+class CalibratePanel final : public QWidget
 {
     Q_OBJECT
 
 public:
-    // `lastMeasureDistancePixels` <= 0 disables the "Last measure" source;
-    // no `imageSize` disables "Image width"/"Image height".
-    CalibrateDialog(QWidget* parent, double pixelSize, const QString& unit,
-                     double lastMeasureDistancePixels,
-                     std::optional<std::pair<double, double>> imageSize);
+    explicit CalibratePanel(VulkanViewport* viewport, QWidget* parent = nullptr);
 
-signals:
-    void calibrationChanged(double pixelSize, QString unit);
+    // Re-reads the calibration, the last caliper distance and the image size
+    // from the viewport and resets the fields. Call when the panel is shown
+    // and whenever the displayed image changes.
+    void refresh();
+
+    // Re-reads only the last caliper distance and image size to enable or
+    // disable the sources that depend on them, leaving the fields as typed.
+    // Call after a measurement.
+    void refreshSources();
 
 private:
     enum Source
@@ -49,6 +54,7 @@ private:
         kImageHeight
     };
 
+    VulkanViewport* viewport_ = nullptr;
     QComboBox* sourceCombo_ = nullptr;
     QLineEdit* distanceEdit_ = nullptr;
     QLineEdit* unitEdit_ = nullptr;

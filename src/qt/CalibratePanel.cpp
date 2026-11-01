@@ -1,61 +1,69 @@
-#include "CalibrateDialog.h"
+#include "CalibratePanel.h"
+
+#include "VulkanViewport.h"
 
 #include <QComboBox>
-#include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QStandardItemModel>
 #include <QVBoxLayout>
 
 namespace givqt
 {
 
-CalibrateDialog::CalibrateDialog(QWidget* parent, double pixelSize, const QString& unit,
-                                  double lastMeasureDistancePixels,
-                                  std::optional<std::pair<double, double>> imageSize)
-    : QDialog(parent), lastMeasureDistancePixels_(lastMeasureDistancePixels), imageSize_(imageSize)
+CalibratePanel::CalibratePanel(VulkanViewport* viewport, QWidget* parent) : QWidget(parent), viewport_(viewport)
 {
-    setWindowTitle("Calibrate Pixel Size");
-
     sourceCombo_ = new QComboBox(this);
     sourceCombo_->addItem("Pixel", kPixel);
     sourceCombo_->addItem("Last measure", kLastMeasure);
     sourceCombo_->addItem("Image width", kImageWidth);
     sourceCombo_->addItem("Image height", kImageHeight);
-    auto* model = qobject_cast<QStandardItemModel*>(sourceCombo_->model());
-    if (lastMeasureDistancePixels_ <= 0.0) model->item(kLastMeasure)->setEnabled(false);
-    if (!imageSize_)
-    {
-        model->item(kImageWidth)->setEnabled(false);
-        model->item(kImageHeight)->setEnabled(false);
-    }
-    connect(sourceCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &CalibrateDialog::onSourceChanged);
+    connect(sourceCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &CalibratePanel::onSourceChanged);
 
-    distanceEdit_ = new QLineEdit(QString::number(pixelSize, 'g', 4), this);
-
-    unitEdit_ = new QLineEdit(unit, this);
+    distanceEdit_ = new QLineEdit(this);
+    unitEdit_ = new QLineEdit(this);
 
     auto form = new QFormLayout();
     form->addRow("Source:", sourceCombo_);
     form->addRow("Distance:", distanceEdit_);
     form->addRow("Unit:", unitEdit_);
 
-    auto buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Apply, this);
-    connect(buttons, &QDialogButtonBox::accepted, this, [this]() {
-        applyCalibration();
-        accept();
-    });
-    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    connect(buttons->button(QDialogButtonBox::Apply), &QPushButton::clicked, this, &CalibrateDialog::applyCalibration);
+    auto apply = new QPushButton("Apply", this);
+    connect(apply, &QPushButton::clicked, this, &CalibratePanel::applyCalibration);
+    connect(distanceEdit_, &QLineEdit::returnPressed, this, &CalibratePanel::applyCalibration);
+    connect(unitEdit_, &QLineEdit::returnPressed, this, &CalibratePanel::applyCalibration);
 
     auto layout = new QVBoxLayout(this);
     layout->addLayout(form);
-    layout->addWidget(buttons);
-    setLayout(layout);
+    layout->addWidget(apply);
+    layout->addStretch(1);
+
+    refresh();
 }
 
-double CalibrateDialog::calcPixelSize(int source) const
+void CalibratePanel::refresh()
+{
+    QSignalBlocker blocker(sourceCombo_); // resetting must not re-derive the number
+    sourceCombo_->setCurrentIndex(kPixel);
+    currentSource_ = kPixel;
+    distanceEdit_->setText(QString::number(viewport_->pixelSize(), 'g', 4));
+    unitEdit_->setText(QString::fromStdString(viewport_->pixelSizeUnit()));
+    refreshSources();
+}
+
+void CalibratePanel::refreshSources()
+{
+    lastMeasureDistancePixels_ = viewport_->lastMeasureDistancePixels();
+    imageSize_ = viewport_->currentImageSize();
+    auto* model = qobject_cast<QStandardItemModel*>(sourceCombo_->model());
+    model->item(kLastMeasure)->setEnabled(lastMeasureDistancePixels_ > 0.0);
+    model->item(kImageWidth)->setEnabled(imageSize_.has_value());
+    model->item(kImageHeight)->setEnabled(imageSize_.has_value());
+}
+
+double CalibratePanel::calcPixelSize(int source) const
 {
     double pixelSize = distanceEdit_->text().toDouble();
     switch (source)
@@ -75,7 +83,7 @@ double CalibrateDialog::calcPixelSize(int source) const
     return pixelSize;
 }
 
-void CalibrateDialog::onSourceChanged(int index)
+void CalibratePanel::onSourceChanged(int index)
 {
     int newSource = sourceCombo_->itemData(index).toInt();
 
@@ -97,9 +105,9 @@ void CalibrateDialog::onSourceChanged(int index)
     currentSource_ = newSource;
 }
 
-void CalibrateDialog::applyCalibration()
+void CalibratePanel::applyCalibration()
 {
-    emit calibrationChanged(calcPixelSize(currentSource_), unitEdit_->text());
+    viewport_->setPixelCalibration(calcPixelSize(currentSource_), unitEdit_->text().toStdString());
 }
 
 } // namespace givqt

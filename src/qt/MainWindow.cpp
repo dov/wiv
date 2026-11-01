@@ -1,7 +1,7 @@
 #include "MainWindow.h"
 #include "BuildInfo.h"
 
-#include "CalibrateDialog.h"
+#include "CalibratePanel.h"
 #include "ColorMapBar.h"
 #include "ColorTablePanel.h"
 #include "ContrastPanel.h"
@@ -133,6 +133,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     buildMenus();
     buildNavigationBar();
     buildStatusBar();
+    buildCalibrateDock();
 
     // A horizontal two-finger touchpad swipe pages through the sibling files.
     connect(viewport_, &VulkanViewport::swipeNavigate, this, [this](int direction) {
@@ -200,6 +201,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         refreshInfoPanel();
         // Sole owner of the title/status-label text for both the initial
         // load and every next/previousImage() step (loadFilesInternal only
+        if (calibrateDock_->isVisible()) calibratePanel_->refresh();
         // updates loadedBaseName_, before calling viewport_->loadFiles() -
         // see its comment - so this always sees the current file list).
         if (count == 0)
@@ -442,16 +444,7 @@ void MainWindow::buildMenus()
     measureDistanceAction_->setCheckable(true);
     measureDistanceAction_->setShortcut(QKeySequence("Z"));
 
-    toolsMenu->addAction("Calibrate Pixel Size...", this, [this]() {
-        spdlog::info("Calibrate Pixel Size dialog opened");
-        CalibrateDialog dlg(this, viewport_->pixelSize(), QString::fromStdString(viewport_->pixelSizeUnit()),
-                            viewport_->lastMeasureDistancePixels(), viewport_->currentImageSize());
-        connect(&dlg, &CalibrateDialog::calibrationChanged, this, [this](double pixelSize, QString unit) {
-            viewport_->setPixelCalibration(pixelSize, unit.toStdString());
-        });
-        dlg.exec();
-        spdlog::info("Calibrate Pixel Size dialog closed");
-    });
+    toolsMenu->addAction(calibrateDock_->toggleViewAction());
 
     toolsMenu->addSeparator();
     // The docks' own checkable toggles; disabled until an image with raw
@@ -1389,3 +1382,19 @@ void MainWindow::toggleFullScreen()
 }
 
 } // namespace givqt
+void MainWindow::buildCalibrateDock()
+{
+    calibratePanel_ = new CalibratePanel(viewport_, this);
+    // The title is also the Tools menu action's text, so it keeps the old
+    // dialog's wording (rebound shortcuts are saved under it).
+    calibrateDock_ = new QDockWidget("Calibrate Pixel Size", this);
+    calibrateDock_->setWidget(calibratePanel_);
+    registerDock(calibrateDock_, "CalibrateDock", Qt::RightDockWidgetArea);
+    connect(calibrateDock_, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+        if (visible) calibratePanel_->refresh();
+    });
+    connect(viewport_, &VulkanViewport::measurementChanged, this, [this]() {
+        if (calibrateDock_->isVisible()) calibratePanel_->refreshSources();
+    });
+}
+

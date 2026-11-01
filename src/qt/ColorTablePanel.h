@@ -4,7 +4,7 @@
 // (see Colormaps.h, ported from giv's colormaps.cc) to recolor the current
 // contrast-stretched grayscale image. Mirrors giv's View > Pseudo Color
 // radio-group menu, as a dock widget (matches ContrastPanel/MarkTreeView's
-// "live tool" pattern rather than CalibrateDialog's one-shot modal).
+// "live tool" pattern).
 //
 #include "Colormaps.h"
 
