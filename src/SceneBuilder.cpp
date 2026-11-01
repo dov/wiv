@@ -1099,10 +1099,16 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             auto positions = vsg::vec2Array::create({{0.0f, 0.0f}, {w, 0.0f}, {w, -h}, {0.0f, -h}});
             auto uvs = vsg::vec2Array::create({{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}});
 
-            auto textureData =
-                vsg::ubvec4Array2D::create(static_cast<uint32_t>(li.width), static_cast<uint32_t>(li.height),
-                                            vsg::Data::Properties{VK_FORMAT_R8G8B8A8_UNORM});
-            std::memcpy(textureData->dataPointer(), li.rgba.data(), li.rgba.size());
+            // The texture's CPU-side data wraps the image's own pixel buffer
+            // (ALLOCATOR_TYPE_NO_DELETE: it never frees it) instead of
+            // copying tens of megabytes; the buffer is kept alive for as long
+            // as the texture object by attaching its owner to it.
+            vsg::Data::Properties textureProperties{VK_FORMAT_R8G8B8A8_UNORM};
+            textureProperties.allocatorType = vsg::ALLOCATOR_TYPE_NO_DELETE;
+            auto textureData = vsg::ubvec4Array2D::create(static_cast<uint32_t>(li.width), static_cast<uint32_t>(li.height),
+                                                          reinterpret_cast<vsg::ubvec4*>(const_cast<uint8_t*>(li.rgba.data())),
+                                                          textureProperties);
+            textureData->setValue("pixels", li.rgba.owner());
 
             auto innerSwitch = vsg::Switch::create(); // child 0 = nearest, child 1 = linear
             for (auto& sampler : {nearestSampler, linearSampler})

@@ -220,6 +220,8 @@ private:
     void goToDirectoryIndex(int index);
     void updateThumbnailStrip();
     void prefetchNeighbours();      // debounced: restarts prefetchTimer_
+    void loadNavigationStep(const std::vector<std::string>& paths);
+    bool navigationStep_ = false;   // the loadFilesInternal() now running is a step through the directory
     void runPrefetch();
     std::vector<PrefetchPool::Want> prefetchWanted(bool withFull) const;
     void onPrefetchReady(const QString& path, bool preview, const std::shared_ptr<giv::LoadedImage>& image);
@@ -233,7 +235,6 @@ private:
     // keep stepping after the key is released. Each repeat's age (how long
     // ago the window system generated it) is measured as it arrives
     // (eventFilter) and navigationIsStale() drops the ones that are old.
-    QElapsedTimer sinceLastNavigation_;  // for burst detection
     qint64 lastKeyAgeMs_ = 0;
     qint64 lastKeyArrivalMs_ = -1000;    // steady-clock ms when the last key event was seen
     bool lastKeyWasRepeat_ = false;

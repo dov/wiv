@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <list>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -20,17 +21,49 @@
 namespace giv
 {
 
+// An immutable, reference-counted byte buffer. Copying a LoadedImage - which
+// happens every time one moves from the decode cache to the viewport and on
+// to the texture - then costs a refcount instead of a copy of tens of
+// megabytes. Never modified once built: write a new buffer and assign it.
+class PixelBuffer
+{
+public:
+    PixelBuffer() = default;
+    PixelBuffer(std::vector<uint8_t>&& bytes) { *this = std::move(bytes); }
+    PixelBuffer& operator=(std::vector<uint8_t>&& bytes)
+    {
+        buf_ = std::make_shared<const std::vector<uint8_t>>(std::move(bytes));
+        return *this;
+    }
+    void assign(const uint8_t* begin, const uint8_t* end) { buf_ = std::make_shared<const std::vector<uint8_t>>(begin, end); }
+
+    const uint8_t* data() const { return buf_ ? buf_->data() : nullptr; }
+    size_t size() const { return buf_ ? buf_->size() : 0; }
+    bool empty() const { return size() == 0; }
+    const uint8_t& operator[](size_t i) const { return (*buf_)[i]; }
+    const std::vector<uint8_t>& vec() const
+    {
+        static const std::vector<uint8_t> kEmpty;
+        return buf_ ? *buf_ : kEmpty;
+    }
+    // For handing the bytes to something that must keep them alive (a GPU texture's CPU-side data).
+    const std::shared_ptr<const std::vector<uint8_t>>& owner() const { return buf_; }
+
+private:
+    std::shared_ptr<const std::vector<uint8_t>> buf_;
+};
+
 struct LoadedImage
 {
     int width = 0;
     int height = 0;
-    std::vector<uint8_t> rgba; // width*height*4, top-to-bottom row order
+    PixelBuffer rgba; // width*height*4, top-to-bottom row order
 
     // Optional raw single-channel sample buffer (see wiv_plugin.h) used by
     // the Contrast/Color Table tools. sampleType == WIV_SAMPLE_NONE for
     // images with no raw dynamic range beyond the RGBA8 preview above.
     WivSampleType sampleType = WIV_SAMPLE_NONE;
-    std::vector<uint8_t> samples; // width*height*depth samples, slice-major
+    PixelBuffer samples; // width*height*depth samples, slice-major
     float sampleMin = 0.0f; // full-volume scan, computed once at load
     float sampleMax = 0.0f;
 

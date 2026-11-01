@@ -18,17 +18,18 @@ namespace giv
 {
 
 struct LoadedImage;
+class PixelBuffer;
 
-// Renders `outRgba` (resized to src.width*src.height*4) from src's raw
+// Renders `outRgba` (src.width*src.height*4 bytes) from src's raw
 // samples: each native sample value is linearly stretched to [0,255] by
 // (contrastMin, contrastMax) and clamped, then either replicated to gray
 // (colormapEnabled == false) or looked up in colormaps::lut(colormapId).
 // If src has no raw sample buffer (sampleType == WIV_SAMPLE_NONE, e.g. a
-// color image), src.rgba is copied through unchanged - contrast/colormap
+// color image), src.rgba is shared through unchanged (no copy) - contrast/colormap
 // only apply to genuine single-channel sample data. `slice` (0..src.depth-1)
 // selects which of src's stacked slices to render - see WivPluginImage::depth.
 void renderDisplayRgba(const LoadedImage& src, float contrastMin, float contrastMax,
-                        colormaps::Id colormapId, bool colormapEnabled, std::vector<uint8_t>& outRgba,
+                        colormaps::Id colormapId, bool colormapEnabled, PixelBuffer& outRgba,
                         int slice = 0);
 
 } // namespace giv
