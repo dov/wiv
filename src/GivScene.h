@@ -159,6 +159,18 @@ struct SceneData
     std::optional<double> pixelSize;
     std::string pixelSizeUnit;
 
+    // Estimated extent of each text label around its anchor (data x, data
+    // y-down), so the fit-to-window view can leave room for it. l/r/b/t are
+    // offsets from the anchor in y-up screen space: pixels unless `scaled`
+    // ($scale_font), then world units. See VulkanViewport::currentFitBoundsYDown.
+    struct TextExtent
+    {
+        double x, y;
+        double l, r, b, t;
+        bool scaled;
+    };
+    std::vector<TextExtent> textExtents;
+
     double minX = 1e30, minY = 1e30;
     double maxX = -1e30, maxY = -1e30;
 

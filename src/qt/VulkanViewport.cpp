@@ -1636,6 +1636,33 @@ void VulkanViewport::currentFitBoundsYDown(double& minX, double& minY, double& m
         maxY = std::max(maxY, currentImageSize_->second);
     }
 
+    if (!scene_.textExtents.empty() && window_ && window_->windowAdapter && minX <= maxX && minY <= maxY)
+    {
+        // Text labels are pixel-sized, so their world extent depends on the
+        // zoom, which in turn depends on the bounds: iterate to a fixed point.
+        const auto extent = window_->windowAdapter->extent2D();
+        if (extent.width > 0 && extent.height > 0)
+        {
+            const double bMinX = minX, bMaxX = maxX, bMinY = minY, bMaxY = maxY;
+            for (int iter = 0; iter < 8; ++iter)
+            {
+                double w = std::max(maxX - minX, 2e-3), h = std::max(maxY - minY, 2e-3);
+                rotatedSize(w, h);
+                const double wpp = 1.0 / containScale(extent.width, extent.height, w, h);
+                minX = bMinX; maxX = bMaxX; minY = bMinY; maxY = bMaxY;
+                for (const auto& t : scene_.textExtents)
+                {
+                    const double k = t.scaled ? 1.0 : wpp;
+                    minX = std::min(minX, t.x + t.l * k);
+                    maxX = std::max(maxX, t.x + t.r * k);
+                    // y-up offsets b..t -> data (y-down) range y-t..y-b
+                    minY = std::min(minY, t.y - t.t * k);
+                    maxY = std::max(maxY, t.y - t.b * k);
+                }
+            }
+        }
+    }
+
     if (minX > maxX || minY > maxY)
     {
         // Nothing loaded (no datasets, no image) - an empty unit-square

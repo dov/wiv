@@ -56,6 +56,17 @@ public:
     // by grid.vert.
     vsg::ref_ptr<vsg::vec4Value> value;
 
+    // Text labels sized in screen pixels (giv's default, no $scale_font):
+    // the text geometry is built at 1 unit == 1 pixel around the local
+    // origin, and update() sets each transform to translate(anchor) *
+    // scale(worldPerPixel) so the glyphs keep their pixel size under zoom.
+    struct PixelText
+    {
+        vsg::ref_ptr<vsg::MatrixTransform> xform;
+        vsg::vec3 anchor;
+    };
+    std::vector<PixelText> pixelTexts;
+
     // Call once per frame - not just on zoom, see the implementation - with
     // the current world-units-per-pixel scale (assumed isotropic: x and y
     // scale equally since the view is always fit to the window aspect).

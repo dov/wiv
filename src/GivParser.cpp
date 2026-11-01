@@ -554,19 +554,32 @@ void GivParser::parseLine(Dataset& ds, const char* line, size_t len, SceneData& 
                 }
             }
             ds.texts.push_back(TextItem{ds.pointCount(), align, out});
-            // giv's own auto-fit bbox computation ignores text entirely -
-            // real giv's STRING_TEXT case in giv-parser.cc never calls
-            // update_bbox(), unlike every other mark/line case. So a label
-            // can extend past the fitted view in real giv too (it's simply
-            // clipped by the window edge if it does); the auto-fit itself
-            // is driven only by marks/line points. Match that exactly here
-            // - do NOT feed the text anchor or an estimated glyph box into
-            // the scene bounds (an earlier attempt to do so, estimating
-            // glyph metrics to avoid clipping large/edge-positioned text,
-            // instead made wiv's auto-fit scale/pan diverge from giv's by
-            // a variable, label-dependent amount - e.g. it shifted the
-            // whole scene ~55px off from giv on example.giv, whose 50pt
-            // "GIV" logo anchor sits exactly on the marks-only bbox edge).
+            {
+                // Estimated glyph box (the real metrics live in the font,
+                // which the parser doesn't have): ~0.55 em per character.
+                // Same size rule as SceneBuilder: font-spec size, else
+                // $text_size, else 12; Pango points -> pixels (x 4/3).
+                double size = -1.0;
+                size_t sp = ds.fontName.find_last_of(' ');
+                if (sp != std::string::npos && sp + 1 < ds.fontName.size() && std::isdigit(static_cast<unsigned char>(ds.fontName[sp + 1])))
+                    size = std::atof(ds.fontName.c_str() + sp + 1);
+                if (size <= 0) size = ds.textSize > 0 ? ds.textSize : 12.0;
+                const double em = size * 96.0 / 72.0;
+                size_t lines = 1, maxChars = 0, cur = 0;
+                for (char c : out)
+                {
+                    if (c == '\n') { ++lines; cur = 0; }
+                    else if ((static_cast<unsigned char>(c) & 0xC0) != 0x80 && ++cur > maxChars) maxChars = cur;
+                }
+                const double w = 0.55 * em * maxChars, h = em * lines;
+                const int col = (align - 1) % 3, row = (align - 1) / 3;
+                SceneData::TextExtent te{x, y, 0, w, 0, h, ds.doScaleFonts};
+                if (col == 1) { te.l = -w / 2; te.r = w / 2; }
+                else if (col == 2) { te.l = -w; te.r = 0; }
+                if (row == 1) { te.b = -h / 2; te.t = h / 2; }
+                else if (row == 2) { te.b = -h; te.t = 0; }
+                scene.textExtents.push_back(te);
+            }
             ds.addPoint(static_cast<float>(x), static_cast<float>(y), Op::Text);
         }
         return;
