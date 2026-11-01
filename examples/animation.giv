@@ -1,0 +1,227 @@
+$fps 12
+$color gray
+$lw 3
+0 0
+100 0
+100 100
+0 100
+0 0
+
+$color blue
+20 0
+20 80
+
+$color blue
+60 20
+60 100
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+5 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+8 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+11 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+14 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+17 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+20 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+23 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+26 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+29 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+32 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+35 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+38 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+41 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+44 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+47 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+50 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+53 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+56 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+59 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+62 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+65 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+68 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+71 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+74 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+77 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+80 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+83 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+86 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+89 50
+
+$frame
+$marks fcircle
+$mark_size 14
+$color red
+
+92 50
+

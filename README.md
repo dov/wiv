@@ -137,6 +137,17 @@ Two environment variables help when benchmarking the render path:
     matching giv's `gtk_image_viewer` zoom-dependent filter. Multiple
     `$image` lines in one file can be cycled with Shift+Up/Shift+Down (View
     menu), matching giv's own image cycling.
+  - **Mark animation** (a wiv extension; original giv ignores these and
+    shows everything overlaid): `$frame [<N>ms|<N>s]` starts a new frame,
+    optionally with its own duration. Everything before the first `$frame` is
+    the static background, drawn in every frame; each frame's datasets are
+    drawn only in that frame, and styles do not carry across `$frame`.
+    `$fps N` sets the rate (default 24), `$loop N` the number of plays
+    (default 0 = forever). An `$image` inside a frame swaps the base image
+    from that frame on, and `$image f.gif frame=N` picks frame N of a
+    multi-frame file. The animation bar drives the frames. Scene bounds are
+    the union over all frames. If a file has `$frame`, an animated `$image`
+    is not played on its own.
   - Camera: orthographic, auto-fit to the parsed scene bounds.
 - **Image plugins** (`src/plugins/`, `src/ImagePluginHost.h/.cpp`): image
   formats are loaded via real runtime-`dlopen`ed `.so` plugins, mirroring

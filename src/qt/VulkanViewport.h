@@ -289,10 +289,16 @@ public:
     // Idempotent; a no-op for stills, multi-page files and over-budget files.
     void startAnimationIfAny();
     const giv::Animation* animation() const { return anim_.get(); }
-    bool hasAnimation() const { return anim_ != nullptr; }
+    // True if the scene has $frame sections (mark animation). The animation
+    // controls then drive those frames, and an animated $image is not played.
+    bool hasMarkFrames() const { return hasScene_ && scene_.frameCount > 0; }
+    bool hasAnimation() const { return anim_ != nullptr || hasMarkFrames(); }
     bool animationPlaying() const { return animPlaying_; }
     int animationFrame() const { return animFrame_; }
-    int animationFrameCount() const { return anim_ ? static_cast<int>(anim_->frameCount()) : 0; }
+    int animationFrameCount() const
+    {
+        return anim_ ? static_cast<int>(anim_->frameCount()) : (hasMarkFrames() ? scene_.frameCount : 0);
+    }
     double animationSpeed() const { return animSpeed_; }
     bool animationLooping() const { return animLoop_; }
     void toggleAnimationPlay();       // play <-> pause (at the end of a non-looping run: play again from the start)
@@ -480,6 +486,16 @@ private:
     qint64 animDueMs_ = 0;       // animClock_ time the next frame is due
     std::shared_ptr<std::atomic<int>> animCancel_;
     QFutureWatcher<std::shared_ptr<const giv::Animation>>* animWatcher_ = nullptr;
+    void startMarkAnimation();   // (re)starts playback of the scene's $frame sections
+    int animationDelayMs(int frame) const;
+    // $image per $frame (see SceneData::frameImage): per frame, the index into
+    // loadedImageNames_ in effect (-1 = leave as is), and per loaded image the
+    // frame to show of a multi-frame file (-1 = the default first frame).
+    std::vector<int> markFrameImage_;
+    std::vector<int> loadedImageFrameSel_;
+    std::shared_ptr<const giv::Animation> selAnim_;
+    std::string selAnimPath_;
+    int animationLoopCount() const; // plays through the frames; 0 = forever
     void resetAnimation();       // drops everything animation-related (navigating away, reload)
     void onAnimationDecoded(const std::shared_ptr<const giv::Animation>& anim);
     void showAnimationFrame(int frame);
