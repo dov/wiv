@@ -184,10 +184,15 @@ extern "C" void* wiv_plugin_anim_open(const char* filename, WivAnimInfo* info)
     // Play the media once per pass; looping is the host's job.
     a->options = heif_decoding_options_alloc();
     a->options->ignore_sequence_editlist = 1;
+#if LIBHEIF_NUMERIC_VERSION > ((1 << 24) | (21 << 16) | (2 << 8)) // getter absent in libheif <= 1.21.2
     const uint32_t reps = heif_track_get_number_of_repetitions(a->track);
+    const bool infinite = reps == heif_sequence_track_number_of_repetitions_infinite;
+#else
+    const uint32_t reps = 1;
+    const bool infinite = false;
+#endif
     // Sequences carry no frame count up front.
-    *info = {a->width, a->height, 0,
-             reps == heif_sequence_track_number_of_repetitions_infinite ? 0 : static_cast<int>(std::max<uint32_t>(1, reps))};
+    *info = {a->width, a->height, 0, infinite ? 0 : static_cast<int>(std::max<uint32_t>(1, reps))};
     return a.release();
 }
 
