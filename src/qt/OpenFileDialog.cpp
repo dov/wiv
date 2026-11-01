@@ -158,16 +158,29 @@ QImage rasterizeSvgThumbnail(const QString& path)
         return QImage();
     }
 
-    const float scale = static_cast<float>(kThumbnailDecodeSize) / std::max(image->width, image->height);
-    const int w = std::max(1, static_cast<int>(image->width * scale));
-    const int h = std::max(1, static_cast<int>(image->height * scale));
+    // Fit the drawn content, not the declared page size: artwork may extend
+    // past the viewBox (drop.svg does) and the viewer shows all of it.
+    float x0 = 0.0f, y0 = 0.0f, x1 = image->width, y1 = image->height;
+    bool have = false;
+    for (NSVGshape* shape = image->shapes; shape; shape = shape->next)
+    {
+        if (!(shape->flags & NSVG_FLAGS_VISIBLE)) continue;
+        if (!have) { x0 = shape->bounds[0]; y0 = shape->bounds[1]; x1 = shape->bounds[2]; y1 = shape->bounds[3]; have = true; continue; }
+        x0 = std::min(x0, shape->bounds[0]); y0 = std::min(y0, shape->bounds[1]);
+        x1 = std::max(x1, shape->bounds[2]); y1 = std::max(y1, shape->bounds[3]);
+    }
+    const float bw = std::max(x1 - x0, 1e-3f);
+    const float bh = std::max(y1 - y0, 1e-3f);
+    const float scale = static_cast<float>(kThumbnailDecodeSize) / std::max(bw, bh);
+    const int w = std::max(1, static_cast<int>(bw * scale));
+    const int h = std::max(1, static_cast<int>(bh * scale));
 
     NSVGrasterizer* rast = nsvgCreateRasterizer();
     QImage result;
     if (rast)
     {
         std::vector<unsigned char> buffer(static_cast<size_t>(w) * h * 4, 0);
-        nsvgRasterize(rast, image, 0, 0, scale, buffer.data(), w, h, w * 4);
+        nsvgRasterize(rast, image, -x0 * scale, -y0 * scale, scale, buffer.data(), w, h, w * 4);
         result = QImage(buffer.data(), w, h, w * 4, QImage::Format_RGBA8888).copy();
         nsvgDeleteRasterizer(rast);
     }
@@ -209,7 +222,7 @@ QString thumbnailCacheDir(const QString& path)
 
 QString thumbnailCachePath(const QString& path)
 {
-    return thumbnailCacheDir(path) + QLatin1Char('/') + QFileInfo(path).fileName() + QStringLiteral(".v2.png") /* v2: .giv thumbnails include the $image */;
+    return thumbnailCacheDir(path) + QLatin1Char('/') + QFileInfo(path).fileName() + QStringLiteral(".v3.png") /* v2: .giv thumbnails include the $image; v3: .svg thumbnails fit the drawn content, not the page */;
 }
 
 QImage loadCachedThumbnail(const QString& path)
