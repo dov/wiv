@@ -18,6 +18,8 @@
     },
     "tiff",
     "libwebp",
+    "libheif",
+    "libraw",
     "spdlog",
     "cfitsio",
     {

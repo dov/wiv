@@ -60,3 +60,40 @@ if(WIV_CFITSIO_INCLUDE)
   target_include_directories(wiv_plugin_fits PRIVATE ${WIV_CFITSIO_INCLUDE})
 endif()
 target_link_libraries(wiv_plugin_fits PRIVATE $<IF:$<TARGET_EXISTS:CFITSIO::cfitsio>,CFITSIO::cfitsio,PkgConfig::CFITSIO>)
+
+# DDS textures (block decoding by the vendored bcdec) and Windows icons.
+wiv_add_plugin(dds dds/dds_plugin.cpp)
+target_include_directories(wiv_plugin_dds PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
+
+wiv_add_plugin(ico ico/ico_plugin.cpp)
+target_include_directories(wiv_plugin_ico PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
+
+# HEIC/HEIF/AVIF (libheif) and camera RAW (LibRaw) are optional: Fedora's
+# MinGW repos don't package libheif, and a build without the -devel packages
+# should still work, just without those formats.
+find_package(PkgConfig QUIET)
+find_package(libheif CONFIG QUIET)
+if(TARGET heif)
+  set(WIV_HEIF_TARGET heif)
+elseif(PkgConfig_FOUND)
+  pkg_check_modules(LIBHEIF IMPORTED_TARGET libheif)
+  if(LIBHEIF_FOUND)
+    set(WIV_HEIF_TARGET PkgConfig::LIBHEIF)
+  endif()
+endif()
+if(WIV_HEIF_TARGET)
+  wiv_add_plugin(heif heif/heif_plugin.cpp)
+  target_link_libraries(wiv_plugin_heif PRIVATE ${WIV_HEIF_TARGET})
+else()
+  message(STATUS "libheif not found - building without the HEIC/HEIF/AVIF plugin")
+endif()
+
+if(PkgConfig_FOUND)
+  pkg_check_modules(LIBRAW IMPORTED_TARGET libraw)
+endif()
+if(LIBRAW_FOUND)
+  wiv_add_plugin(raw raw/raw_plugin.cpp)
+  target_link_libraries(wiv_plugin_raw PRIVATE PkgConfig::LIBRAW JPEG::JPEG)
+else()
+  message(STATUS "LibRaw not found - building without the camera RAW plugin")
+endif()
