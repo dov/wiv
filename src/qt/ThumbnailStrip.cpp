@@ -114,8 +114,25 @@ ThumbnailStrip::ThumbnailStrip(QWidget* parent) : QListWidget(parent)
     viewport()->setBackgroundRole(QPalette::Window);
     viewport()->setAutoFillBackground(true);
 
-    connect(this, &QListWidget::itemClicked, this, [this](QListWidgetItem* item) { emit fileClicked(row(item)); });
+    connect(this, &QListWidget::itemClicked, this, [this](QListWidgetItem* item) {
+        // A double-click counts as its single click: the first click already
+        // selected and scrolled the strip, so the item now under the cursor is another one.
+        if (ignoreClick_) return;
+        emit fileClicked(row(item));
+    });
     connect(horizontalScrollBar(), &QScrollBar::valueChanged, this, [this]() { loadVisibleThumbnails(); });
+}
+
+void ThumbnailStrip::mousePressEvent(QMouseEvent* event)
+{
+    ignoreClick_ = false;
+    QListWidget::mousePressEvent(event);
+}
+
+void ThumbnailStrip::mouseDoubleClickEvent(QMouseEvent* event)
+{
+    ignoreClick_ = true;
+    QListWidget::mouseDoubleClickEvent(event);
 }
 
 void ThumbnailStrip::setFiles(const QStringList& files, int current)
