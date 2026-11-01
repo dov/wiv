@@ -49,6 +49,12 @@ public:
     // requested avoids the race instead of racing it.
     std::function<bool()> isResizeSettling;
 
+    // Called at the start of every frame that is actually rendered (before
+    // update()); returns true to ask for one more frame after this one. Used to
+    // re-dirty an animation's texture for each in-flight frame (see
+    // VulkanViewport::onAnimationFrameHook()).
+    std::function<bool()> beforeFrame;
+
     void render(double simulationTime = vsg::Viewer::UseTimeSinceStartPoint) override;
 
 private:

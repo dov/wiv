@@ -52,6 +52,9 @@ using PageCountFn = int (*)(const char*);
 using LoadPageFn = WivPluginImage* (*)(const char*, int, char**);
 using LoadPreviewFn = WivPluginImage* (*)(const char*, int, int*, int*, char**);
 using LoadCancellableFn = WivPluginImage* (*)(const char*, int, const volatile int*, char**);
+using AnimOpenFn = void* (*)(const char*, WivAnimInfo*);
+using AnimNextFn = bool (*)(void*, unsigned char*, int*);
+using AnimCloseFn = void (*)(void*);
 using FreeImageFn = void (*)(WivPluginImage*);
 using FreeErrorFn = void (*)(char*);
 
@@ -66,6 +69,9 @@ struct Plugin
     LoadPageFn loadPage = nullptr;
     LoadCancellableFn loadCancellable = nullptr; // optional
     LoadPreviewFn loadPreview = nullptr;         // optional
+    AnimOpenFn animOpen = nullptr;               // optional, all three or none
+    AnimNextFn animNext = nullptr;
+    AnimCloseFn animClose = nullptr;
     FreeImageFn freeImage = nullptr;
     FreeErrorFn freeError = nullptr;
 };
@@ -231,6 +237,11 @@ std::vector<Plugin> scanPlugins()
         if (!plugin.pageCount || !plugin.loadPage) plugin.pageCount = nullptr, plugin.loadPage = nullptr;
         plugin.loadCancellable = reinterpret_cast<LoadCancellableFn>(dlsym(handle, "wiv_plugin_load_page_cancellable"));
         plugin.loadPreview = reinterpret_cast<LoadPreviewFn>(dlsym(handle, "wiv_plugin_load_preview"));
+        plugin.animOpen = reinterpret_cast<AnimOpenFn>(dlsym(handle, "wiv_plugin_anim_open"));
+        plugin.animNext = reinterpret_cast<AnimNextFn>(dlsym(handle, "wiv_plugin_anim_next"));
+        plugin.animClose = reinterpret_cast<AnimCloseFn>(dlsym(handle, "wiv_plugin_anim_close"));
+        if (!plugin.animOpen || !plugin.animNext || !plugin.animClose)
+            plugin.animOpen = nullptr, plugin.animNext = nullptr, plugin.animClose = nullptr;
         plugin.freeImage = reinterpret_cast<FreeImageFn>(dlsym(handle, "wiv_plugin_free_image"));
         plugin.freeError = reinterpret_cast<FreeErrorFn>(dlsym(handle, "wiv_plugin_free_error"));
 
@@ -322,6 +333,63 @@ std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename, in
 
     spdlog::error("No plugin supports image file {}", filename);
     return std::nullopt;
+}
+
+bool ImagePluginHost::mayBeAnimated(const std::string& filename)
+{
+    for (const Plugin& plugin : loadedPlugins())
+        if (plugin.animOpen && plugin.supportsFile(filename.c_str()))
+            return true;
+    return false;
+}
+
+std::shared_ptr<const Animation> ImagePluginHost::loadAnimation(const std::string& filename, size_t maxBytes,
+                                                                const volatile int* cancel)
+{
+    const auto cancelled = [cancel]() { return cancel && *cancel != 0; };
+    for (const Plugin& plugin : loadedPlugins())
+    {
+        if (!plugin.animOpen || !plugin.supportsFile(filename.c_str()))
+            continue;
+        WivAnimInfo info{};
+        void* decoder = plugin.animOpen(filename.c_str(), &info);
+        if (!decoder)
+            continue; // not an animation as far as this plugin can tell
+        auto anim = std::make_shared<Animation>();
+        anim->width = info.width;
+        anim->height = info.height;
+        anim->loopCount = std::max(0, info.loop_count);
+        const size_t frameBytes = static_cast<size_t>(info.width) * info.height * 4;
+        bool ok = info.width > 0 && info.height > 0 && frameBytes > 0 &&
+                  (info.frame_count <= 0 || frameBytes * static_cast<size_t>(info.frame_count) <= maxBytes);
+        if (!ok)
+            spdlog::warn("Animation {} is too large to hold in memory ({}x{}, {} frames); showing the first frame only",
+                         filename, info.width, info.height, info.frame_count);
+        std::vector<uint8_t> buffer(ok ? frameBytes : 0);
+        while (ok && !cancelled())
+        {
+            int delay = 0;
+            if (!plugin.animNext(decoder, buffer.data(), &delay))
+                break;
+            if (anim->frames.size() * frameBytes + frameBytes > maxBytes)
+            {
+                spdlog::warn("Animation {} exceeds the {} MiB frame budget; showing the first frame only", filename,
+                             maxBytes >> 20);
+                ok = false;
+                break;
+            }
+            // Zero/tiny delays mean "as fast as possible" in the files that
+            // use them; every viewer plays those at 10 fps instead.
+            anim->frames.emplace_back();
+            anim->frames.back().assign(buffer.data(), buffer.data() + frameBytes);
+            anim->delaysMs.push_back(delay <= 10 ? 100 : delay);
+        }
+        plugin.animClose(decoder);
+        if (!ok || cancelled() || anim->frames.size() < 2)
+            return nullptr;
+        return anim;
+    }
+    return nullptr;
 }
 
 std::optional<LoadedImage> ImagePluginHost::loadPreview(const std::string& filename, int minLongSide)

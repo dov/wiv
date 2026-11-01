@@ -83,11 +83,41 @@ struct LoadedImage
     int fullWidth = 0;
     int fullHeight = 0;
     bool isPreview() const { return fullWidth > 0; }
+
+    // Set by the viewport while this image is being played as an animation:
+    // the scene builder then gives it a texture the CPU may rewrite per frame
+    // (rgba is the frame currently shown).
+    bool animated = false;
+};
+
+// Every composited frame of an animation (GIF, APNG, animated WebP, AVIF
+// sequence), decoded up front. Frames cover the whole canvas and are
+// immutable, so a handle can be shared freely.
+struct Animation
+{
+    int width = 0;
+    int height = 0;
+    int loopCount = 0; // plays through the frames; 0 = forever
+    std::vector<PixelBuffer> frames;
+    std::vector<int> delaysMs; // per frame, already clamped to something displayable
+    size_t frameCount() const { return frames.size(); }
 };
 
 class ImagePluginHost
 {
 public:
+    // True if `filename` has a suffix some plugin offering animation claims -
+    // a cheap gate (no file access) before the real check, loadAnimation().
+    static bool mayBeAnimated(const std::string& filename);
+
+    // Decodes all frames of an animated file. nullopt-equivalent (nullptr) if
+    // the file is not an animation (a still, or a single frame), could not be
+    // decoded, was cancelled (`cancel`, as in load()), or would need more than
+    // `maxBytes` of frame data - an animation is held in memory in full, so
+    // that bounds it.
+    static std::shared_ptr<const Animation> loadAnimation(const std::string& filename, size_t maxBytes,
+                                                          const volatile int* cancel = nullptr);
+
     // Loads plugins (lazily, once) from WIV_PLUGIN_DIR (env var override)
     // or the compile-time default plugin directory, then attempts to load
     // `filename` with the first plugin that claims it (by suffix, else by

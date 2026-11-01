@@ -41,6 +41,7 @@ void GivViewer::renderFrame(double simulationTime)
     if (isResizeSettling && isResizeSettling()) return;
     if (!continuousUpdate && requests.load() == 0) return;
     auto tPhase = Clock::now();
+    const bool wantsAnotherFrame = beforeFrame && beforeFrame();
 
     // Hand this frame's zoom level to the vertex shaders, which size
     // pixel-constant marks/lines/arrowheads from it - see giv::ViewParams -
@@ -92,7 +93,7 @@ void GivViewer::renderFrame(double simulationTime)
         }
     }
 
-    requests = 0;
+    requests = wantsAnotherFrame ? 1 : 0;
 }
 
 } // namespace givqt

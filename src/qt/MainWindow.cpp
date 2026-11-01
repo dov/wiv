@@ -189,6 +189,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         infoLabel_->setText(statusLineText());
         refreshInfoPanel();
     });
+    connect(viewport_, &VulkanViewport::animationChanged, this, [this](int frame, int count, bool playing, double speed) {
+        lastAnimText_.clear();
+        if (count > 1)
+        {
+            lastAnimText_ = QString("Frame %1/%2 %3").arg(frame + 1).arg(count).arg(playing ? "\u25B6" : "\u23F8");
+            if (std::abs(speed - 1.0) > 0.01) lastAnimText_ += QString(" %1x").arg(speed, 0, 'g', 3);
+        }
+        for (QAction* a : animActions_) a->setEnabled(count > 1);
+        infoLabel_->setText(statusLineText());
+    });
     connect(viewport_, &VulkanViewport::pageChanged, this, [this](int page, int count) {
         lastPageText_ = count > 1 ? QString("Page %1/%2").arg(page + 1).arg(count) : QString();
         updatePageActionsEnabled();
@@ -247,6 +257,7 @@ QString MainWindow::statusLineText() const
     if (!lastMeasureText_.isEmpty()) parts << lastMeasureText_;
     if (!lastPageText_.isEmpty()) parts << lastPageText_;
     if (!lastSliceText_.isEmpty()) parts << lastSliceText_;
+    if (!lastAnimText_.isEmpty()) parts << lastAnimText_;
     return parts.join(" ");
 }
 
@@ -403,7 +414,7 @@ void MainWindow::buildMenus()
 
     viewMenu->addSeparator();
     nextImageAction_ = viewMenu->addAction("Next Image", this, &MainWindow::goNextImage);
-    nextImageAction_->setShortcuts({QKeySequence("Shift+Up"), QKeySequence("Space"), QKeySequence("Right")});
+    nextImageAction_->setShortcuts({QKeySequence("Shift+Up"), QKeySequence("Right")});
     nextImageAction_->setEnabled(false);
     previousImageAction_ = viewMenu->addAction("Previous Image", this, &MainWindow::goPreviousImage);
     previousImageAction_->setShortcuts({QKeySequence("Shift+Down"), QKeySequence("Backspace"), QKeySequence("Left")});
@@ -440,6 +451,41 @@ void MainWindow::buildMenus()
     previousPageAction_ = viewMenu->addAction("Previous Page", viewport_, &VulkanViewport::previousPage);
     previousPageAction_->setShortcuts({QKeySequence("Alt+Left"), QKeySequence("PgUp")});
     previousPageAction_->setEnabled(false);
+
+    // GIF / APNG / animated WebP / AVIF sequences (see VulkanViewport::startAnimationIfAny()).
+    // Space already steps to the next image, so play/pause lives on the
+    // video-player "K"; "," and "." step a frame at a time like they do there.
+    viewMenu->addSeparator();
+    animPlayAction_ = viewMenu->addAction("Play/Pause Animation", viewport_, &VulkanViewport::toggleAnimationPlay);
+    animPlayAction_->setShortcut(QKeySequence("K"));
+    animActions_ << animPlayAction_;
+    // Space is play/pause while the file is an animation, else next image.
+    // A single always-enabled shortcut that dispatches, since two enabled
+    // actions on one key would be ambiguous.
+    auto* spaceAction = new QAction(this);
+    spaceAction->setShortcut(QKeySequence("Space"));
+    connect(spaceAction, &QAction::triggered, this, [this]() {
+        if (viewport_->hasAnimation()) viewport_->toggleAnimationPlay();
+        else if (nextImageAction_->isEnabled()) goNextImage();
+    });
+    addAction(spaceAction);
+    auto addAnimAction = [this, viewMenu](const QString& text, const char* key, auto&& fn) {
+        QAction* a = viewMenu->addAction(text, viewport_, fn);
+        a->setShortcut(QKeySequence(key));
+        animActions_ << a;
+        return a;
+    };
+    addAnimAction("Stop Animation", "X", &VulkanViewport::stopAnimation);
+    addAnimAction("Restart Animation", "Shift+X", &VulkanViewport::restartAnimation);
+    addAnimAction("Next Frame", ".", [this]() { viewport_->stepAnimationFrame(+1); });
+    addAnimAction("Previous Frame", ",", [this]() { viewport_->stepAnimationFrame(-1); });
+    addAnimAction("Faster Animation", "]", [this]() { viewport_->scaleAnimationSpeed(1.25); });
+    addAnimAction("Slower Animation", "[", [this]() { viewport_->scaleAnimationSpeed(0.8); });
+    addAnimAction("Normal Animation Speed", "\\", [this]() { viewport_->setAnimationSpeed(1.0); });
+    QAction* loopAction = addAnimAction("Loop Animation", "Shift+K", [this](bool on) { viewport_->setAnimationLooping(on); });
+    loopAction->setCheckable(true);
+    loopAction->setChecked(viewport_->animationLooping());
+    for (QAction* a : animActions_) a->setEnabled(false);
 
 
     auto toolsMenu = menuBar()->addMenu("&Tools");
@@ -1005,6 +1051,7 @@ void MainWindow::runPrefetch()
     for (const QString& p : previewWindow()) keepPreview.insert(p.toStdString());
     viewport_->retainCachedImages(keepFull, keepPreview);
     viewport_->upgradePreviewFromCache(); // no-op unless a preview is up and its full image is already cached
+    viewport_->startAnimationIfAny();     // no-op for stills, and until the full image is up
     prefetchPool_->update(prefetchWanted(/*withFull=*/true), /*enqueueNew=*/true);
 }
 

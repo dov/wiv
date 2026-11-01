@@ -32,12 +32,14 @@
 #include <QScrollBar>
 #include <QSignalBlocker>
 #include <QThread>
+#include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <functional>
 #include <string>
@@ -170,6 +172,11 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
     };
 
     viewer_->isResizeSettling = [this]() { return checkResizeSettling(); };
+    viewer_->beforeFrame = [this]() { return onAnimationFrameHook(); };
+    animTimer_ = new QTimer(this);
+    animTimer_->setSingleShot(true);
+    animTimer_->setTimerType(Qt::PreciseTimer);
+    connect(animTimer_, &QTimer::timeout, this, &VulkanViewport::advanceAnimation);
     viewer_->addEventHandler(vsg::CloseHandler::create(viewer_));
 
     // Top-level (Qt::ToolTip) popup for the balloon tooltip - see
@@ -314,6 +321,7 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
 
 VulkanViewport::~VulkanViewport()
 {
+    resetAnimation();
     // Unlike waitForGpuIdle() (bounded, used mid-session so a wedged GPU
     // can't hang rebuildSceneGraph() forever), this runs once at shutdown,
     // so an unconditional wait is fine - and necessary: with no destructor
@@ -876,6 +884,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     // child - always select it, regardless of currentImageIndex_ (which
     // indexes into loadedImageNames_, the full $image candidate list).
     imageSwitch_ = builder.imageSwitch();
+    animTexture_ = builder.animatedTexture();
     if (imageSwitch_) imageSwitch_->setSingleChildOn(0);
     applyShowImage();
 
@@ -1294,6 +1303,7 @@ void VulkanViewport::upgradePreview(const std::string& path, giv::LoadedImage fu
     if (!isShowingPreview() || currentImageName() != path || currentPage_ != 0) return;
     imageCache_.put(path, 0, std::move(full));
     upgradePreviewFromCache();
+    startAnimationIfAny();
 }
 
 bool VulkanViewport::upgradePreviewFromCache()
@@ -1322,6 +1332,7 @@ void VulkanViewport::cachePrefetchedImage(const std::string& path, giv::LoadedIm
 
 bool VulkanViewport::decodeImageAt(int index, int page, bool allowPreview)
 {
+    resetAnimation();
     if (index < 0 || index >= static_cast<int>(loadedImageNames_.size())) return false;
     const std::string& name = loadedImageNames_[static_cast<size_t>(index)];
     const auto perfStart = std::chrono::steady_clock::now();
@@ -1375,6 +1386,231 @@ bool VulkanViewport::decodeImageAt(int index, int page, bool allowPreview)
                  img->width, img->height, fullCached ? "from cache" : "decoded synchronously", perfGet, perfCopy - perfGet,
                  perfRecompute - perfCopy, perfMs());
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// Animation playback
+// ---------------------------------------------------------------------------
+
+void VulkanViewport::resetAnimation()
+{
+    const bool hadAnimation = anim_ != nullptr;
+    if (animCancel_) animCancel_->store(1);
+    animCancel_.reset();
+    if (animWatcher_)
+    {
+        // The worker finishes (or notices the cancel) on its own; its result is simply never looked at.
+        animWatcher_->disconnect(this);
+        animWatcher_->deleteLater();
+        animWatcher_ = nullptr;
+    }
+    if (animTimer_) animTimer_->stop();
+    anim_.reset();
+    animPath_.clear();
+    animTexture_ = nullptr;
+    animFrame_ = 0;
+    animPlaysDone_ = 0;
+    animPlaying_ = false;
+    animTextureDirty_ = 0;
+    if (hadAnimation) emitAnimationChanged();
+}
+
+void VulkanViewport::emitAnimationChanged()
+{
+    emit animationChanged(animFrame_, animationFrameCount(), animPlaying_, animSpeed_);
+}
+
+void VulkanViewport::startAnimationIfAny()
+{
+    if (loadedImages_.empty() || isShowingPreview() || currentPage_ != 0 || pageCount() > 1) return;
+    const std::string path = currentImageName();
+    if (path.empty() || animPath_ == path) return; // decoding, playing, or already found to be a still
+    if (!giv::ImagePluginHost::mayBeAnimated(path)) return;
+
+    animPath_ = path;
+    animCancel_ = std::make_shared<std::atomic<int>>(0);
+    auto cancel = animCancel_;
+    animWatcher_ = new QFutureWatcher<std::shared_ptr<const giv::Animation>>(this);
+    connect(animWatcher_, &QFutureWatcherBase::finished, this, [this, w = animWatcher_]() {
+        auto anim = w->result();
+        w->deleteLater();
+        animWatcher_ = nullptr;
+        onAnimationDecoded(anim);
+    });
+    animWatcher_->setFuture(QtConcurrent::run([path, cancel]() {
+        // std::atomic<int> is layout-compatible with the plain int the plugin host polls.
+        return giv::ImagePluginHost::loadAnimation(path, kAnimationBudgetBytes,
+                                                   reinterpret_cast<const volatile int*>(cancel.get()));
+    }));
+}
+
+void VulkanViewport::onAnimationDecoded(const std::shared_ptr<const giv::Animation>& anim)
+{
+    // A still (or an animation we cannot hold): animPath_ stays set so that this file is not tried again.
+    if (!anim || loadedImages_.empty() || isShowingPreview() || currentImageName() != animPath_) return;
+    giv::LoadedImage& image = loadedImages_.front();
+    if (anim->width != image.width || anim->height != image.height)
+    {
+        spdlog::warn("Animation frames are {}x{} but the still is {}x{}; not animating", anim->width, anim->height,
+                     image.width, image.height);
+        return;
+    }
+    spdlog::info("Animation: {} frames, {}x{}, {} plays", anim->frameCount(), anim->width, anim->height,
+                 anim->loopCount ? std::to_string(anim->loopCount) : "endless");
+    anim_ = anim;
+    animFrame_ = 0;
+    animPlaysDone_ = 0;
+
+    // One rebuild to swap in a texture that can be rewritten per frame.
+    image.animated = true;
+    image.rgba = anim->frames[0];
+    recomputeDisplayImage();
+    QString error;
+    if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
+    {
+        spdlog::error("Failed to set up animation: {}", error.toStdString());
+        anim_.reset();
+        image.animated = false;
+        return;
+    }
+    viewer_->request();
+
+    animPlaying_ = true;
+    animClock_.start();
+    animDueMs_ = 0;
+    scheduleNextAnimationFrame();
+    emitAnimationChanged();
+}
+
+// Makes frame `frame` the picture: the shared pixel buffers (so pixel readout,
+// rebuilds and copies see it) and the live texture.
+void VulkanViewport::showAnimationFrame(int frame)
+{
+    if (!anim_ || loadedImages_.empty() || frame < 0 || frame >= animationFrameCount()) return;
+    animFrame_ = frame;
+    const giv::PixelBuffer& pixels = anim_->frames[static_cast<size_t>(frame)];
+    loadedImages_.front().rgba = pixels;
+    if (!displayImages_.empty()) displayImages_.front().rgba = pixels;
+    if (animTexture_ && animTexture_->dataSize() == pixels.size())
+    {
+        std::memcpy(animTexture_->dataPointer(), pixels.data(), pixels.size());
+        // vsg keeps a GPU copy per frame in flight and refreshes the one for the frame
+        // being recorded, so the change has to be flagged on each of the next few frames.
+        animTextureDirty_ = 4;
+    }
+    viewer_->request();
+}
+
+// Called by GivViewer at the start of each rendered frame.
+bool VulkanViewport::onAnimationFrameHook()
+{
+    if (animTextureDirty_ <= 0 || !animTexture_) return false;
+    animTexture_->dirty();
+    return --animTextureDirty_ > 0;
+}
+
+void VulkanViewport::scheduleNextAnimationFrame()
+{
+    if (!anim_ || !animPlaying_) return;
+    const double delay = anim_->delaysMs[static_cast<size_t>(animFrame_)] / animSpeed_;
+    // Aim for the previous frame's due time plus its delay, not "now plus delay", so
+    // slow frames don't make the whole animation run late - unless we're far behind.
+    animDueMs_ += static_cast<qint64>(delay);
+    qint64 wait = animDueMs_ - animClock_.elapsed();
+    if (wait < -200) { animDueMs_ = animClock_.elapsed(); wait = 0; }
+    animTimer_->start(static_cast<int>(std::max<qint64>(wait, 1)));
+}
+
+void VulkanViewport::advanceAnimation()
+{
+    if (!anim_ || !animPlaying_) return;
+    int next = animFrame_ + 1;
+    if (next >= animationFrameCount())
+    {
+        ++animPlaysDone_;
+        if (!animLoop_ || (anim_->loopCount > 0 && animPlaysDone_ >= anim_->loopCount))
+        {
+            animPlaying_ = false; // stays on the last frame
+            emitAnimationChanged();
+            return;
+        }
+        next = 0;
+    }
+    showAnimationFrame(next);
+    scheduleNextAnimationFrame();
+    emitAnimationChanged();
+}
+
+void VulkanViewport::toggleAnimationPlay()
+{
+    if (!anim_) return;
+    if (animPlaying_)
+    {
+        animPlaying_ = false;
+        animTimer_->stop();
+    }
+    else
+    {
+        if (animFrame_ >= animationFrameCount() - 1 && (!animLoop_ || animPlaysDone_ > 0))
+        {
+            showAnimationFrame(0); // a finished run plays again from the start
+            animPlaysDone_ = 0;
+        }
+        animPlaying_ = true;
+        animDueMs_ = animClock_.elapsed();
+        scheduleNextAnimationFrame();
+    }
+    emitAnimationChanged();
+}
+
+void VulkanViewport::stopAnimation()
+{
+    if (!anim_) return;
+    animPlaying_ = false;
+    animTimer_->stop();
+    animPlaysDone_ = 0;
+    showAnimationFrame(0);
+    emitAnimationChanged();
+}
+
+void VulkanViewport::restartAnimation()
+{
+    if (!anim_) return;
+    animTimer_->stop();
+    animPlaysDone_ = 0;
+    showAnimationFrame(0);
+    animPlaying_ = true;
+    animDueMs_ = animClock_.elapsed();
+    scheduleNextAnimationFrame();
+    emitAnimationChanged();
+}
+
+void VulkanViewport::stepAnimationFrame(int dir)
+{
+    if (!anim_) return;
+    animPlaying_ = false;
+    animTimer_->stop();
+    const int n = animationFrameCount();
+    showAnimationFrame(((animFrame_ + dir) % n + n) % n);
+    emitAnimationChanged();
+}
+
+void VulkanViewport::setAnimationSpeed(double speed)
+{
+    animSpeed_ = std::clamp(speed, 0.125, 8.0);
+    if (animPlaying_)
+    {
+        // Re-time the frame being waited on.
+        animDueMs_ = animClock_.elapsed();
+        scheduleNextAnimationFrame();
+    }
+    emitAnimationChanged();
+}
+
+void VulkanViewport::setAnimationLooping(bool loop)
+{
+    animLoop_ = loop;
+    emitAnimationChanged();
 }
 
 void VulkanViewport::recomputeDisplayImage()

@@ -151,6 +151,11 @@ public:
     // one is displayed - see giv's shift-Up/shift-Down image cycling).
     vsg::ref_ptr<vsg::Switch> imageSwitch() const { return imageSwitch_; }
 
+    // Valid after build(); non-null only if the (first) image was flagged
+    // `animated`: its texture, whose pixels the caller may overwrite and then
+    // dirty() to show another frame.
+    vsg::ref_ptr<vsg::ubvec4Array2D> animatedTexture() const { return animatedTexture_; }
+
     // Valid after build(); non-null only if `images` was non-empty.
     vsg::ref_ptr<ImageFilterAnimator> imageFilterAnimator() const { return imageFilterAnimator_; }
 
@@ -184,6 +189,7 @@ private:
     vsg::ref_ptr<vsg::Group> labelGraph_;
     vsg::ref_ptr<vsg::Switch> imageSwitch_;
     vsg::ref_ptr<ImageFilterAnimator> imageFilterAnimator_;
+    vsg::ref_ptr<vsg::ubvec4Array2D> animatedTexture_;
 
     // Cached across build() calls - see build()'s doc comment above for why.
     // None of this depends on scene/image *content*, only on the shader

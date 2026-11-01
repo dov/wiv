@@ -106,6 +106,10 @@ private:
     QAction* previousImageAction_ = nullptr;
     QAction* nextPageAction_ = nullptr;
     QAction* previousPageAction_ = nullptr;
+    // Animation controls (View menu); enabled only while the current file is an animation.
+    QAction* animPlayAction_ = nullptr;
+    QList<QAction*> animActions_;
+    QString lastAnimText_; // "Frame N/F ▶ 2x" for an animated image, empty otherwise - see animationChanged
     QString lastPageText_; // "Page N/P" for a multi-page image, empty otherwise - see pageChanged
     QAction* firstImageAction_ = nullptr;
     QAction* lastImageAction_ = nullptr;
