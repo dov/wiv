@@ -38,7 +38,7 @@ target_link_libraries(wiv_plugin_tiff PRIVATE TIFF::TIFF)
 
 find_package(WebP CONFIG REQUIRED)
 wiv_add_plugin(webp webp/webp_plugin.cpp)
-target_link_libraries(wiv_plugin_webp PRIVATE WebP::webp)
+target_link_libraries(wiv_plugin_webp PRIVATE WebP::webp WebP::webpdemux)
 
 wiv_add_plugin(npy npy/npy_plugin.cpp)
 

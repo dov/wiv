@@ -1033,6 +1033,7 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     // (marks/lines/fill/text, appended to root below) always draws on
     // top of any background image.
     // -------------------------------------------------------------
+    animatedTexture_ = nullptr;
     if (!images.empty())
     {
         // Cached across calls (see build()'s doc comment) - this is the fix
@@ -1104,11 +1105,25 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             // copying tens of megabytes; the buffer is kept alive for as long
             // as the texture object by attaching its owner to it.
             vsg::Data::Properties textureProperties{VK_FORMAT_R8G8B8A8_UNORM};
-            textureProperties.allocatorType = vsg::ALLOCATOR_TYPE_NO_DELETE;
-            auto textureData = vsg::ubvec4Array2D::create(static_cast<uint32_t>(li.width), static_cast<uint32_t>(li.height),
-                                                          reinterpret_cast<vsg::ubvec4*>(const_cast<uint8_t*>(li.rgba.data())),
-                                                          textureProperties);
-            textureData->setValue("pixels", li.rgba.owner());
+            vsg::ref_ptr<vsg::ubvec4Array2D> textureData;
+            if (li.animated)
+            {
+                // Rewritten per frame, so it owns its pixels (the shared
+                // buffer is immutable and also lives in the decode cache).
+                textureProperties.dataVariance = vsg::DYNAMIC_DATA;
+                textureData = vsg::ubvec4Array2D::create(static_cast<uint32_t>(li.width), static_cast<uint32_t>(li.height),
+                                                         textureProperties);
+                std::memcpy(textureData->dataPointer(), li.rgba.data(), li.rgba.size());
+                if (!animatedTexture_) animatedTexture_ = textureData;
+            }
+            else
+            {
+                textureProperties.allocatorType = vsg::ALLOCATOR_TYPE_NO_DELETE;
+                textureData = vsg::ubvec4Array2D::create(static_cast<uint32_t>(li.width), static_cast<uint32_t>(li.height),
+                                                         reinterpret_cast<vsg::ubvec4*>(const_cast<uint8_t*>(li.rgba.data())),
+                                                         textureProperties);
+                textureData->setValue("pixels", li.rgba.owner());
+            }
 
             auto innerSwitch = vsg::Switch::create(); // child 0 = nearest, child 1 = linear
             for (auto& sampler : {nearestSampler, linearSampler})

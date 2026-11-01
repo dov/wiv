@@ -24,12 +24,14 @@
 #include <QResizeEvent>
 #include <QSize>
 #include <QTimer>
+#include <QFutureWatcher>
 #include <QElapsedTimer>
 #include <QPointF>
 #include <QWidget>
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <map>
 #include <memory>
 #include <optional>
@@ -275,6 +277,28 @@ public:
     // No-op unless a preview of `path` is what is currently displayed.
     void upgradePreview(const std::string& path, giv::LoadedImage full);
 
+    // --- Animation (GIF, APNG, animated WebP, AVIF sequences) ---------------
+    // Once the displayed file is the full image (not a preview) and nothing
+    // has changed for a moment, the owner calls startAnimationIfAny(): it
+    // decodes every frame on a worker thread and, if the file turns out to be
+    // an animation, starts playing it. Frames are composited full-canvas RGBA
+    // that replace the image's pixels in place (no scene rebuild per frame).
+    // Idempotent; a no-op for stills, multi-page files and over-budget files.
+    void startAnimationIfAny();
+    bool hasAnimation() const { return anim_ != nullptr; }
+    bool animationPlaying() const { return animPlaying_; }
+    int animationFrame() const { return animFrame_; }
+    int animationFrameCount() const { return anim_ ? static_cast<int>(anim_->frameCount()) : 0; }
+    double animationSpeed() const { return animSpeed_; }
+    bool animationLooping() const { return animLoop_; }
+    void toggleAnimationPlay();       // play <-> pause (at the end of a non-looping run: play again from the start)
+    void stopAnimation();             // pause and go back to the first frame
+    void restartAnimation();          // go to the first frame and play
+    void stepAnimationFrame(int dir); // pauses, then shows the next/previous frame (wraps)
+    void setAnimationSpeed(double speed);
+    void scaleAnimationSpeed(double factor) { setAnimationSpeed(animSpeed_ * factor); }
+    void setAnimationLooping(bool loop);
+
     // Current contrast/colormap settings for the displayed image, defaulted
     // (and recorded) to sampleMin/sampleMax and the last-chosen colormap the
     // first time this image's path is seen.
@@ -309,6 +333,9 @@ public:
 
 signals:
     void sceneLoaded();
+    // The animation's state changed (frame shown, play/pause, speed, or one
+    // was found/dropped: count is 0 when the current image has none).
+    void animationChanged(int frame, int count, bool playing, double speed);
     // The contrast window or colormap of the displayed image changed.
     void contrastChanged();
     // Local files dropped onto the view (see DropOverlay in the .cpp).
@@ -430,6 +457,31 @@ private:
     std::vector<std::string> loadedImageNames_; // resolved paths of $image refs a plugin claims to support (not yet decoded - see ImagePluginHost::isSupported)
     std::optional<std::pair<double, double>> currentImageSize_; // (width, height) px of loadedImageNames_[currentImageIndex_], once decoded
     int currentImageIndex_ = 0;
+    // Animation playback (see startAnimationIfAny()). anim_ is the decoded
+    // animation of the file on screen, or null.
+    static constexpr size_t kAnimationBudgetBytes = size_t(768) << 20;
+    std::shared_ptr<const giv::Animation> anim_;
+    std::string animPath_;       // file anim_ (or an in-flight/failed decode) belongs to
+    int animFrame_ = 0;
+    int animPlaysDone_ = 0;
+    bool animPlaying_ = false;
+    bool animLoop_ = true;
+    double animSpeed_ = 1.0;
+    int animTextureDirty_ = 0;   // frames left to re-dirty the texture for (see onAnimationFrameHook())
+    vsg::ref_ptr<vsg::ubvec4Array2D> animTexture_;
+    QTimer* animTimer_ = nullptr;
+    QElapsedTimer animClock_;
+    qint64 animDueMs_ = 0;       // animClock_ time the next frame is due
+    std::shared_ptr<std::atomic<int>> animCancel_;
+    QFutureWatcher<std::shared_ptr<const giv::Animation>>* animWatcher_ = nullptr;
+    void resetAnimation();       // drops everything animation-related (navigating away, reload)
+    void onAnimationDecoded(const std::shared_ptr<const giv::Animation>& anim);
+    void showAnimationFrame(int frame);
+    void scheduleNextAnimationFrame();
+    void advanceAnimation();
+    bool onAnimationFrameHook();
+    void emitAnimationChanged();
+
     int currentPage_ = 0; // see gotoPage(); reset to 0 by decodeImageAt()
     void gotoPage(int page);
     int currentSlice_ = 0; // see nextSlice()/previousSlice(); reset to 0 by decodeImageAt()

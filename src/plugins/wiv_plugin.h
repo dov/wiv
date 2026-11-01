@@ -118,6 +118,32 @@ extern "C"
     WIV_PLUGIN_API WivPluginImage* wiv_plugin_load_preview(const char* filename, int min_long_side, int* full_width,
                                                               int* full_height, char** error_msg);
 
+    // OPTIONAL, for formats that can hold an animation (GIF, APNG, animated
+    // WebP, AVIF sequences). A plugin exports all three or none. This is
+    // orthogonal to the loads above: the host calls anim_open for any file
+    // the plugin claims (and for misnamed ones, so the decision is made on
+    // content), independently of which plugin did the still decode, which
+    // keeps showing frame 0.
+    //
+    // anim_open returns an opaque decoder handle positioned at the first
+    // frame, or NULL if the file is not an animation (a still GIF/PNG/...,
+    // fewer than two frames) or cannot be read; it fills *info. anim_next
+    // writes the next fully composited frame - width*height*4 RGBA bytes,
+    // top-to-bottom, over the whole canvas - to `rgba` and its display time
+    // to *delay_ms, and returns false once the frames are exhausted (it is
+    // never asked for more than one pass: the host re-opens to loop).
+    typedef struct WivAnimInfo
+    {
+        int width;
+        int height;
+        int frame_count; // 0 if not known up front
+        int loop_count;  // number of plays; 0 = forever
+    } WivAnimInfo;
+
+    WIV_PLUGIN_API void* wiv_plugin_anim_open(const char* filename, WivAnimInfo* info);
+    WIV_PLUGIN_API bool wiv_plugin_anim_next(void* decoder, unsigned char* rgba, int* delay_ms);
+    WIV_PLUGIN_API void wiv_plugin_anim_close(void* decoder);
+
     // Frees an image returned by wiv_plugin_load_image.
     WIV_PLUGIN_API void wiv_plugin_free_image(WivPluginImage* img);
 

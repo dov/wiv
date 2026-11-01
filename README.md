@@ -69,6 +69,22 @@ phase - `--remote`, `--port`, `--export`, etc. are Phase 2):
 Mouse: drag with the left button to pan, scroll wheel to zoom at the cursor.
 Escape or the window close button exits.
 
+Animated images (GIF, APNG, animated WebP, AVIF image sequences; the last
+needs libheif 1.20+) play automatically once the file is on screen, honoring
+per-frame delays and the file's loop count. Frames are composited by the
+`stbimage`, `webp` and `heif` plugins through the optional
+`wiv_plugin_anim_*` exports (see `src/plugins/wiv_plugin.h`) and held in
+memory (768 MiB budget; a larger animation shows its first frame only). The
+status bar shows `Frame N/F`. Keys (all in the View menu, rebindable):
+
+| key | action |
+| --- | --- |
+| `K` / `Space` | play / pause (Space is "next image" for non-animated files) |
+| `X` / `Shift+X` | stop (pause on the first frame) / restart (rewind and play) |
+| `.` / `,` | next / previous frame (pauses) |
+| `]` / `[` | faster / slower (1/8x to 8x); `\` back to normal speed |
+| `Shift+K` | toggle looping (off: stops on the last frame) |
+
 Parse time, scene-build time and a once-a-second FPS figure are printed to
 stderr (the FPS figure also appears in the status bar).
 
