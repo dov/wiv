@@ -93,6 +93,10 @@ struct Dataset
     bool doDrawPolygonOutline = false;
     bool isVisible = true;
 
+    // Animation frame this dataset belongs to ($frame), or -1 for the static
+    // background drawn in every frame (everything before the first $frame).
+    int frame = -1;
+
     // Structure-of-arrays point storage. op[i] describes how (x[i], y[i])
     // should be interpreted; see Op for the grammar (mirrors giv's point_t
     // stream, but flattened - no per-point text pointer).
@@ -147,6 +151,13 @@ struct SceneData
     // currently-displayed image, cycled by the user), not geometry
     // attached to a particular dataset.
     std::vector<std::string> images;
+    // Parallel to `images` (may be shorter: missing = -1): for a multi-frame
+    // image file (GIF, APNG, ...), the frame to show, from "$image f.gif frame=N".
+    std::vector<int> imageFrameSel;
+    // Per $frame: index into `images` of the $image given in that frame, or -1.
+    // An image stays in effect until a later frame sets another one.
+    std::vector<int> frameImage;
+    int baseImage = -1; // index into `images` of the first $image outside any $frame, or -1
 
     // $pixelsize <value> [<unit>] - giv's calibration directive (see
     // GivParser::parseLine's "$pixelsize" handling and
@@ -158,6 +169,18 @@ struct SceneData
     // calibration the user already dialed in alone.
     std::optional<double> pixelSize;
     std::string pixelSizeUnit;
+
+    // Mark animation: $frame starts frame N (0-based); datasets before the
+    // first $frame are the static background (Dataset::frame == -1).
+    // frameCount is 0 for a file without $frame. $fps sets the playback rate;
+    // nullopt = the viewer's default.
+    int frameCount = 0;
+    std::optional<double> fps;
+    // "$frame 500ms" / "$frame 0.5s": how long that frame is shown; 0 (or
+    // missing) = 1/fps.
+    std::vector<int> frameDelayMs;
+    // $loop N: plays through the frames; 0 (default) = forever.
+    int loopCount = 0;
 
     // Estimated extent of each text label around its anchor (data x, data
     // y-down), so the fit-to-window view can leave room for it. l/r/b/t are

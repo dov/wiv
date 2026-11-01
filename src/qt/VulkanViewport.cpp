@@ -597,9 +597,12 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     // the window even shows; see decodeCurrentImage() for the actual, lazy,
     // decode-on-display path.
     std::vector<std::string> newLoadedImageNames;
+    std::vector<int> newLoadedImageFrameSel;
+    std::vector<int> sceneImageToLoaded(newScene.images.size(), -1); // scene.images index -> loaded index
     std::filesystem::path givDir = paths.empty() ? std::filesystem::path() : giv::utf8ToPath(paths.front()).parent_path();
-    for (const auto& imgRef : newScene.images)
+    for (size_t imgIdx = 0; imgIdx < newScene.images.size(); ++imgIdx)
     {
+        const std::string& imgRef = newScene.images[imgIdx];
         std::filesystem::path resolved = giv::utf8ToPath(imgRef);
         if (!std::filesystem::exists(resolved) && !givDir.empty())
             resolved = givDir / imgRef;
@@ -621,7 +624,22 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
             }
         }
 
+        sceneImageToLoaded[imgIdx] = static_cast<int>(newLoadedImageNames.size());
         newLoadedImageNames.push_back(giv::pathToUtf8(resolved));
+        newLoadedImageFrameSel.push_back(imgIdx < newScene.imageFrameSel.size() ? newScene.imageFrameSel[imgIdx] : -1);
+    }
+
+    // The image in effect at each $frame: the last one set at or before it,
+    // else the file's static one (the first $image outside any frame).
+    std::vector<int> newMarkFrameImage(static_cast<size_t>(newScene.frameCount), -1);
+    {
+        int effective = newScene.baseImage >= 0 ? sceneImageToLoaded[static_cast<size_t>(newScene.baseImage)] : -1;
+        for (size_t f = 0; f < newMarkFrameImage.size(); ++f)
+        {
+            if (f < newScene.frameImage.size() && newScene.frameImage[f] >= 0)
+                effective = sceneImageToLoaded[static_cast<size_t>(newScene.frameImage[f])];
+            newMarkFrameImage[f] = effective;
+        }
     }
 
     scene_ = std::move(newScene);
@@ -632,7 +650,10 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     // (fired only when the directive is present).
     if (scene_.pixelSize) setPixelCalibration(*scene_.pixelSize, scene_.pixelSizeUnit);
     loadedImageNames_ = std::move(newLoadedImageNames);
+    loadedImageFrameSel_ = std::move(newLoadedImageFrameSel);
+    markFrameImage_ = std::move(newMarkFrameImage);
     hasScene_ = true;
+    animFrame_ = 0; // the build below then shows $frame 0 (see startMarkAnimation())
     currentImageIndex_ = 0;
     decodeCurrentImage();
 
@@ -648,6 +669,7 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
 
     emit sceneLoaded();
     emit imageChanged(currentImageIndex_, imageCount(), QString::fromStdString(currentImageName()));
+    startMarkAnimation(); // no-op, bar-wise, for a scene without $frame
     return true;
 }
 
@@ -688,7 +710,9 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     for (size_t i = 0; i < scene_.datasets.size(); ++i)
     {
         savedVisible[i] = scene_.datasets[i].isVisible;
-        scene_.datasets[i].isVisible = savedVisible[i] && globalShowMarks_;
+        const int f = scene_.datasets[i].frame;
+        const bool inFrame = f < 0 || !hasMarkFrames() || f == animFrame_;
+        scene_.datasets[i].isVisible = savedVisible[i] && globalShowMarks_ && inFrame;
     }
 
     // A persistent SceneBuilder (not a fresh one per call): its build()
@@ -1428,6 +1452,20 @@ bool VulkanViewport::decodeImageAt(int index, int page, bool allowPreview)
     currentSlice_ = 0;
     loadedImages_ = {*img};
     currentImageSize_ = std::make_pair(static_cast<double>(img->width), static_cast<double>(img->height));
+    // "$image f.gif frame=N": show frame N of the multi-frame file.
+    const int sel = static_cast<size_t>(index) < loadedImageFrameSel_.size() ? loadedImageFrameSel_[static_cast<size_t>(index)] : -1;
+    if (sel >= 0 && page == 0)
+    {
+        if (selAnimPath_ != name)
+        {
+            selAnim_ = giv::ImagePluginHost::loadAnimation(name, kAnimationBudgetBytes, nullptr);
+            selAnimPath_ = name;
+        }
+        if (selAnim_ && selAnim_->width == img->width && selAnim_->height == img->height && selAnim_->frameCount() > 0)
+            loadedImages_.front().rgba = selAnim_->frames[std::min(static_cast<size_t>(sel), selAnim_->frameCount() - 1)];
+        else
+            spdlog::warn("{}: no frame {} to show (not a multi-frame file?)", name, sel);
+    }
     const double perfCopy = perfMs();
     recomputeDisplayImage();
     const double perfRecompute = perfMs();
@@ -1455,15 +1493,20 @@ void VulkanViewport::resetAnimation()
         animWatcher_->deleteLater();
         animWatcher_ = nullptr;
     }
-    if (animTimer_) animTimer_->stop();
     anim_.reset();
     animPath_.clear();
     animTexture_ = nullptr;
-    animFrame_ = 0;
-    animPlaysDone_ = 0;
-    animPlaying_ = false;
     animTextureDirty_ = 0;
-    if (hadAnimation) emitAnimationChanged();
+    // The timer, frame and play state belong to the marks' $frame sections if
+    // the scene has them: navigating between images leaves those running.
+    if (!hasMarkFrames())
+    {
+        if (animTimer_) animTimer_->stop();
+        animFrame_ = 0;
+        animPlaysDone_ = 0;
+        animPlaying_ = false;
+        if (hadAnimation) emitAnimationChanged();
+    }
 }
 
 void VulkanViewport::emitAnimationChanged()
@@ -1474,6 +1517,7 @@ void VulkanViewport::emitAnimationChanged()
 void VulkanViewport::startAnimationIfAny()
 {
     if (loadedImages_.empty() || isShowingPreview() || currentPage_ != 0 || pageCount() > 1) return;
+    if (hasMarkFrames()) return; // the marks' frame clock wins
     const std::string path = currentImageName();
     if (path.empty() || animPath_ == path) return; // decoding, playing, or already found to be a still
     if (!giv::ImagePluginHost::mayBeAnimated(path)) return;
@@ -1537,6 +1581,21 @@ void VulkanViewport::onAnimationDecoded(const std::shared_ptr<const giv::Animati
 // rebuilds and copies see it) and the live texture.
 void VulkanViewport::showAnimationFrame(int frame)
 {
+    if (!anim_ && hasMarkFrames())
+    {
+        if (frame < 0 || frame >= scene_.frameCount) return;
+        animFrame_ = frame;
+        const int wantImage = static_cast<size_t>(frame) < markFrameImage_.size() ? markFrameImage_[static_cast<size_t>(frame)] : -1;
+        if (wantImage >= 0 && (wantImage != currentImageIndex_))
+        {
+            if (!decodeImageAt(wantImage))
+                spdlog::error("Failed to decode {} for frame {}", loadedImageNames_[static_cast<size_t>(wantImage)], frame);
+        }
+        QString error;
+        if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
+            spdlog::error("Failed to show mark frame {}: {}", frame, error.toStdString());
+        return;
+    }
     if (!anim_ || loadedImages_.empty() || frame < 0 || frame >= animationFrameCount()) return;
     animFrame_ = frame;
     const giv::PixelBuffer& pixels = anim_->frames[static_cast<size_t>(frame)];
@@ -1560,10 +1619,42 @@ bool VulkanViewport::onAnimationFrameHook()
     return --animTextureDirty_ > 0;
 }
 
+int VulkanViewport::animationDelayMs(int frame) const
+{
+    if (anim_) return anim_->delaysMs[static_cast<size_t>(frame)];
+    if (static_cast<size_t>(frame) < scene_.frameDelayMs.size() && scene_.frameDelayMs[static_cast<size_t>(frame)] > 0)
+        return scene_.frameDelayMs[static_cast<size_t>(frame)];
+    const double fps = scene_.fps.value_or(24.0);
+    return std::max(1, static_cast<int>(std::lround(1000.0 / fps)));
+}
+
+int VulkanViewport::animationLoopCount() const
+{
+    return anim_ ? anim_->loopCount : scene_.loopCount;
+}
+
+// Starts a scene's $frame sections from frame 0, playing; called after a load.
+void VulkanViewport::startMarkAnimation()
+{
+    if (animTimer_) animTimer_->stop();
+    animFrame_ = 0;
+    animPlaysDone_ = 0;
+    animPlaying_ = false;
+    if (!hasMarkFrames()) { emitAnimationChanged(); return; }
+    if (scene_.frameCount > 1)
+    {
+        animPlaying_ = true;
+        animClock_.start();
+        animDueMs_ = 0;
+        scheduleNextAnimationFrame();
+    }
+    emitAnimationChanged();
+}
+
 void VulkanViewport::scheduleNextAnimationFrame()
 {
-    if (!anim_ || !animPlaying_) return;
-    const double delay = anim_->delaysMs[static_cast<size_t>(animFrame_)] / animSpeed_;
+    if (!hasAnimation() || !animPlaying_) return;
+    const double delay = animationDelayMs(animFrame_) / animSpeed_;
     // Aim for the previous frame's due time plus its delay, not "now plus delay", so
     // slow frames don't make the whole animation run late - unless we're far behind.
     animDueMs_ += static_cast<qint64>(delay);
@@ -1574,12 +1665,12 @@ void VulkanViewport::scheduleNextAnimationFrame()
 
 void VulkanViewport::advanceAnimation()
 {
-    if (!anim_ || !animPlaying_) return;
+    if (!hasAnimation() || !animPlaying_) return;
     int next = animFrame_ + 1;
     if (next >= animationFrameCount())
     {
         ++animPlaysDone_;
-        if (!animLoop_ || (anim_->loopCount > 0 && animPlaysDone_ >= anim_->loopCount))
+        if (!animLoop_ || (animationLoopCount() > 0 && animPlaysDone_ >= animationLoopCount()))
         {
             animPlaying_ = false; // stays on the last frame
             emitAnimationChanged();
@@ -1594,7 +1685,7 @@ void VulkanViewport::advanceAnimation()
 
 void VulkanViewport::toggleAnimationPlay()
 {
-    if (!anim_) return;
+    if (!hasAnimation()) return;
     if (animPlaying_)
     {
         animPlaying_ = false;
@@ -1616,7 +1707,7 @@ void VulkanViewport::toggleAnimationPlay()
 
 void VulkanViewport::stopAnimation()
 {
-    if (!anim_) return;
+    if (!hasAnimation()) return;
     animPlaying_ = false;
     animTimer_->stop();
     animPlaysDone_ = 0;
@@ -1626,7 +1717,7 @@ void VulkanViewport::stopAnimation()
 
 void VulkanViewport::rewindAnimation()
 {
-    if (!anim_) return;
+    if (!hasAnimation()) return;
     animPlaysDone_ = 0;
     showAnimationFrame(0);
     if (animPlaying_)
@@ -1641,7 +1732,7 @@ void VulkanViewport::rewindAnimation()
 
 void VulkanViewport::restartAnimation()
 {
-    if (!anim_) return;
+    if (!hasAnimation()) return;
     animTimer_->stop();
     animPlaysDone_ = 0;
     showAnimationFrame(0);
@@ -1653,7 +1744,7 @@ void VulkanViewport::restartAnimation()
 
 void VulkanViewport::seekAnimationFrame(int frame)
 {
-    if (!anim_ || frame == animFrame_) return;
+    if (!hasAnimation() || frame == animFrame_) return;
     animPlaying_ = false;
     animTimer_->stop();
     showAnimationFrame(std::clamp(frame, 0, animationFrameCount() - 1));
@@ -1662,7 +1753,7 @@ void VulkanViewport::seekAnimationFrame(int frame)
 
 void VulkanViewport::stepAnimationFrame(int dir)
 {
-    if (!anim_) return;
+    if (!hasAnimation()) return;
     animPlaying_ = false;
     animTimer_->stop();
     const int n = animationFrameCount();
@@ -2382,6 +2473,7 @@ bool VulkanViewport::applyGivString(const std::string& text, bool append, QStrin
     if (!append)
     {
         scene_.datasets.clear();
+        scene_.frameCount = 0;
         scene_.minX = 1e30;
         scene_.minY = 1e30;
         scene_.maxX = -1e30;

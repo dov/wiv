@@ -416,8 +416,33 @@ void GivParser::parseLine(Dataset& ds, const char* line, size_t len, SceneData& 
         else if (w0 == "$image")
         {
             std::string filename = tok.getRest(1);
+            int sel = -1; // "$image f.gif frame=N": a frame of a multi-frame file
+            const size_t fp = filename.rfind(" frame=");
+            if (fp != std::string::npos)
+            {
+                sel = std::max(0, std::atoi(filename.c_str() + fp + 7));
+                filename.erase(fp);
+            }
             if (!filename.empty())
-                scene.images.push_back(filename);
+            {
+                auto& imgs = scene.images;
+                scene.imageFrameSel.resize(imgs.size(), -1);
+                size_t idx = imgs.size();
+                if (ds.frame >= 0) // inside a $frame: reuse an identical reference
+                    for (size_t i = 0; i < imgs.size(); ++i)
+                        if (imgs[i] == filename && scene.imageFrameSel[i] == sel) { idx = i; break; }
+                if (idx == imgs.size())
+                {
+                    imgs.push_back(filename);
+                    scene.imageFrameSel.push_back(sel);
+                }
+                if (ds.frame < 0 && scene.baseImage < 0) scene.baseImage = static_cast<int>(idx);
+                if (ds.frame >= 0)
+                {
+                    scene.frameImage.resize(static_cast<size_t>(ds.frame) + 1, -1);
+                    scene.frameImage[static_cast<size_t>(ds.frame)] = static_cast<int>(idx);
+                }
+            }
         }
         else if (w0 == "$marks_file" || w0 == "$svg" || w0 == "$svgmarks")
         {
@@ -455,6 +480,12 @@ void GivParser::parseLine(Dataset& ds, const char* line, size_t len, SceneData& 
             applyStyle(ds, tok.get(1));
         }
         else if (w0 == "$hide") ds.isVisible = false;
+        else if (w0 == "$fps")
+        {
+            double fps = tok.getFloat(1);
+            if (fps > 0) scene.fps = fps;
+        }
+        else if (w0 == "$loop") scene.loopCount = std::max(0, tok.getInt(1));
         else if (w0 == "$pixelsize")
         {
             // Whole-file calibration directive (giv's STRING_PIXEL_SIZE /
@@ -598,6 +629,7 @@ void GivParser::parseBuffer(const char* data, size_t size, SceneData& scene)
 
     bool needNewDataset = true;
     Dataset* current = nullptr;
+    int frame = -1; // current $frame index; -1 = static background
 
     while (pos < size)
     {
@@ -617,12 +649,40 @@ void GivParser::parseBuffer(const char* data, size_t size, SceneData& scene)
             if (current != nullptr && current->pointCount() > 0)
                 needNewDataset = true;
         }
+        else if (len >= 6 && std::memcmp(data + lineStart, "$frame", 6) == 0 &&
+                 (len == 6 || data[lineStart + 6] == ' ' || data[lineStart + 6] == '\t'))
+        {
+            // Starts a new animation frame. Styles do not carry across it:
+            // like a blank line, it ends the dataset, and the next one starts
+            // from the defaults.
+            if (current != nullptr && current->pointCount() == 0 && current->texts.empty())
+            {
+                scene.datasets.pop_back(); // header-only dataset, nothing to draw
+            }
+            current = nullptr;
+            needNewDataset = true;
+            ++frame;
+            scene.frameCount = std::max(scene.frameCount, frame + 1);
+            // optional duration: "$frame 500ms" or "$frame 0.5s"
+            Tokens ft(data + lineStart, len);
+            int delayMs = 0;
+            if (ft.size() > 1)
+            {
+                std::string d = toLower(ft.getRest(1));
+                const double v = std::atof(d.c_str());
+                if (d.size() > 2 && d.compare(d.size() - 2, 2, "ms") == 0) delayMs = static_cast<int>(std::lround(v));
+                else if (!d.empty() && d.back() == 's') delayMs = static_cast<int>(std::lround(v * 1000.0));
+            }
+            scene.frameDelayMs.resize(static_cast<size_t>(scene.frameCount), 0);
+            scene.frameDelayMs[static_cast<size_t>(frame)] = std::max(0, delayMs);
+        }
         else
         {
             if (needNewDataset || current == nullptr)
             {
                 scene.datasets.emplace_back();
                 current = &scene.datasets.back();
+                current->frame = frame;
                 // size()-1: the dataset just emplaced is already counted in
                 // size(), so the first dataset must index kDefaultColors[0]
                 // (red, matching giv - see gallery-cat-contour.jpg), not [1].
