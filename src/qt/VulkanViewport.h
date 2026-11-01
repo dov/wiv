@@ -285,6 +285,7 @@ public:
     // that replace the image's pixels in place (no scene rebuild per frame).
     // Idempotent; a no-op for stills, multi-page files and over-budget files.
     void startAnimationIfAny();
+    const giv::Animation* animation() const { return anim_.get(); }
     bool hasAnimation() const { return anim_ != nullptr; }
     bool animationPlaying() const { return animPlaying_; }
     int animationFrame() const { return animFrame_; }

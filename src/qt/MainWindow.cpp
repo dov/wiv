@@ -202,6 +202,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
             if (std::abs(speed - 1.0) > 0.01) lastAnimText_ += QString(" %1x").arg(speed, 0, 'g', 3);
         }
         for (QAction* a : animActions_) a->setEnabled(count > 1);
+        if ((count > 1) != (lastAnimCount_ > 1)) { lastAnimCount_ = count; refreshInfoPanel(); } // the Info panel lists the animation
+        lastAnimCount_ = count;
         if (animBar_)
         {
             animBar_->setVisible(count > 1);
@@ -1572,7 +1574,17 @@ QString MainWindow::buildInfoText() const
         }
         row("Slices", img->depth > 1 ? QString("%1 (showing %2)").arg(img->depth).arg(viewport_->currentSlice() + 1)
                                        : QString("1"));
-        const qint64 mem = qint64(img->rgba.size()) + qint64(img->samples.size());
+        qint64 mem = qint64(img->rgba.size()) + qint64(img->samples.size());
+        if (const giv::Animation* anim = viewport_->animation())
+        {
+            qint64 totalMs = 0;
+            for (int d : anim->delaysMs) totalMs += d;
+            row("Animation", QString("%1 frames, %2 s, %3").arg(anim->frameCount()).arg(totalMs / 1000.0, 0, 'f', 2)
+                                 .arg(anim->loopCount == 0 ? QString("loops forever")
+                                      : anim->loopCount == 1 ? QString("plays once")
+                                                             : QString("plays %1 times").arg(anim->loopCount)));
+            mem += qint64(anim->frameCount()) * anim->width * anim->height * 4;
+        }
         row("Decoded memory", humanBytes(mem));
 
         // ---- EXIF (JPEG/TIFF/PNG/WebP that carry it) ----
