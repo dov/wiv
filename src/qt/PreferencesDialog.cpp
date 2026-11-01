@@ -1,20 +1,28 @@
 #include "PreferencesDialog.h"
 
+#include "ExternalApps.h"
+#include "ImagePluginHost.h"
+#include "InstalledApps.h"
+
 #include <QAction>
 #include <QColorDialog>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
 
 #include <algorithm>
+#include <optional>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QVBoxLayout>
@@ -67,6 +75,36 @@ int PreferencesDialog::loadMsaaSamples()
 namespace
 {
 constexpr int kKeyColumns = 3; // most built-in commands have up to three alternative keys
+
+// A dialog listing the image applications installed on the system; the chosen
+// one, or nothing if cancelled.
+std::optional<InstalledApp> pickInstalledApp(QWidget* parent)
+{
+    const QList<InstalledApp> apps = installedImageApps();
+    QDialog dlg(parent);
+    dlg.setWindowTitle("Choose an Application");
+    auto* layout = new QVBoxLayout(&dlg);
+    auto* filter = new QLineEdit(&dlg);
+    filter->setPlaceholderText("Filter...");
+    filter->setClearButtonEnabled(true);
+    layout->addWidget(filter);
+    auto* list = new QListWidget(&dlg);
+    list->setIconSize(QSize(24, 24));
+    for (const InstalledApp& a : apps) list->addItem(new QListWidgetItem(a.icon, a.name));
+    layout->addWidget(list, 1);
+    if (apps.isEmpty()) layout->addWidget(new QLabel("The system lists no image applications; use Add Custom or Browse.", &dlg));
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    layout->addWidget(buttons);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    QObject::connect(list, &QListWidget::itemDoubleClicked, &dlg, &QDialog::accept);
+    QObject::connect(filter, &QLineEdit::textChanged, &dlg, [list](const QString& text) {
+        for (int i = 0; i < list->count(); ++i) list->item(i)->setHidden(!list->item(i)->text().contains(text, Qt::CaseInsensitive));
+    });
+    dlg.resize(380, 460);
+    if (dlg.exec() != QDialog::Accepted || list->currentRow() < 0) return std::nullopt;
+    return apps[list->currentRow()];
+}
 
 QString shortcutKey(const QAction* a) { return "shortcuts/" + a->objectName(); }
 
@@ -155,6 +193,7 @@ PreferencesDialog::PreferencesDialog(const QList<QAction*>& bindable, QWidget* p
     auto tabs = new QTabWidget(this);
     tabs->addTab(general, "General");
     tabs->addTab(buildMouseTab(), "Mouse");
+    tabs->addTab(buildExternalAppsTab(), "External Apps");
     tabs->addTab(buildKeyboardTab(), "Keyboard");
 
     auto layout = new QVBoxLayout(this);
@@ -201,6 +240,150 @@ QWidget* PreferencesDialog::buildMouseTab()
                                  "scales quivers, as in giv."));
     layout->addStretch();
     return page;
+}
+
+QWidget* PreferencesDialog::buildExternalAppsTab()
+{
+    const ExternalApps::Config cfg = ExternalApps::load();
+    auto page = new QWidget(this);
+    auto layout = new QVBoxLayout(page);
+
+    auto browse = [this](QLineEdit* edit) {
+        const QString exe = QFileDialog::getOpenFileName(this, "Choose Application");
+        if (exe.isEmpty()) return;
+        edit->setText(exe.contains(' ') ? '"' + exe + '"' : exe);
+    };
+
+    // Open With list: up to kMaxApps named applications, Ctrl+1... by default.
+    layout->addWidget(new QLabel("Open With applications (File > Open With; Ctrl+1, Ctrl+2... by default):", page));
+    extAppTable_ = new QTableWidget(0, 2, page);
+    extAppTable_->setHorizontalHeaderLabels({"Menu label", "Application"});
+    extAppTable_->verticalHeader()->setVisible(false);
+    extAppTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    extAppTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    extAppTable_->setSelectionMode(QAbstractItemView::SingleSelection);
+    extAppTable_->setMaximumHeight(150);
+    const QList<InstalledApp> known = installedImageApps();
+    for (const ExternalApps::App& a : cfg.apps) addTableRow(extAppTable_, a.name, a.command, iconForCommand(a.command, known));
+    layout->addWidget(extAppTable_);
+    auto appFromSystem = new QPushButton("Add from System...", page);
+    connect(appFromSystem, &QPushButton::clicked, this, [this]() {
+        if (extAppTable_->rowCount() >= ExternalApps::kMaxApps) return;
+        if (const auto app = pickInstalledApp(this)) addTableRow(extAppTable_, app->name, app->command, app->icon);
+    });
+    auto appAdd = new QPushButton("Add Custom", page);
+    connect(appAdd, &QPushButton::clicked, this, [this]() {
+        if (extAppTable_->rowCount() >= ExternalApps::kMaxApps) return;
+        addTableRow(extAppTable_, "", "");
+        extAppTable_->editItem(extAppTable_->item(extAppTable_->rowCount() - 1, 0));
+    });
+    auto appBrowse = new QPushButton("Browse...", page);
+    connect(appBrowse, &QPushButton::clicked, this, [this, browse]() {
+        const int row = extAppTable_->currentRow();
+        if (row < 0) return;
+        QLineEdit tmp;
+        browse(&tmp);
+        if (tmp.text().isEmpty()) return;
+        extAppTable_->item(row, 1)->setText(tmp.text());
+        extAppTable_->item(row, 0)->setIcon(iconForCommand(tmp.text(), installedImageApps()));
+        if (extAppTable_->item(row, 0)->text().isEmpty())
+            extAppTable_->item(row, 0)->setText(QFileInfo(tmp.text().remove('"')).completeBaseName());
+    });
+    auto appRemove = new QPushButton("Remove", page);
+    connect(appRemove, &QPushButton::clicked, this, [this]() {
+        if (extAppTable_->currentRow() >= 0) extAppTable_->removeRow(extAppTable_->currentRow());
+    });
+    auto appButtons = new QHBoxLayout();
+    appButtons->addWidget(appFromSystem);
+    appButtons->addWidget(appAdd);
+    appButtons->addWidget(appBrowse);
+    appButtons->addWidget(appRemove);
+    appButtons->addStretch();
+    layout->addLayout(appButtons);
+
+    extDefaultEdit_ = new QLineEdit(cfg.defaultCommand, page);
+    extDefaultEdit_->setPlaceholderText("Empty: the system's default application");
+    auto defaultBrowse = new QPushButton("Browse...", page);
+    connect(defaultBrowse, &QPushButton::clicked, this, [this, browse]() { browse(extDefaultEdit_); });
+    auto defaultSystem = new QPushButton("From System...", page);
+    connect(defaultSystem, &QPushButton::clicked, this, [this]() {
+        if (const auto app = pickInstalledApp(this)) extDefaultEdit_->setText(app->command);
+    });
+    auto defaultRow = new QHBoxLayout();
+    defaultRow->addWidget(new QLabel("Default application:", page));
+    defaultRow->addWidget(extDefaultEdit_, 1);
+    defaultRow->addWidget(defaultSystem);
+    defaultRow->addWidget(defaultBrowse);
+    layout->addLayout(defaultRow);
+
+    layout->addWidget(new QLabel("Overrides by file type (the longest matching extension wins):", page));
+    extRuleTable_ = new QTableWidget(0, 2, page);
+    extRuleTable_->setHorizontalHeaderLabels({"Extensions", "Application"});
+    extRuleTable_->verticalHeader()->setVisible(false);
+    extRuleTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    extRuleTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    extRuleTable_->setSelectionMode(QAbstractItemView::SingleSelection);
+    for (const ExternalApps::Rule& r : cfg.rules) addExternalRuleRow(r.extensions, r.command);
+    layout->addWidget(extRuleTable_, 1);
+
+    auto add = new QPushButton("Add", page);
+    connect(add, &QPushButton::clicked, this, [this]() {
+        addExternalRuleRow("", "");
+        extRuleTable_->editItem(extRuleTable_->item(extRuleTable_->rowCount() - 1, 0));
+    });
+    auto ruleSystem = new QPushButton("From System...", page);
+    connect(ruleSystem, &QPushButton::clicked, this, [this]() {
+        const int row = extRuleTable_->currentRow();
+        if (row < 0) return;
+        if (const auto app = pickInstalledApp(this)) extRuleTable_->item(row, 1)->setText(app->command);
+    });
+    auto ruleBrowse = new QPushButton("Browse...", page);
+    connect(ruleBrowse, &QPushButton::clicked, this, [this, browse]() {
+        const int row = extRuleTable_->currentRow();
+        if (row < 0) return;
+        QLineEdit tmp;
+        browse(&tmp);
+        if (!tmp.text().isEmpty()) extRuleTable_->item(row, 1)->setText(tmp.text());
+    });
+    auto remove = new QPushButton("Remove", page);
+    connect(remove, &QPushButton::clicked, this, [this]() {
+        if (extRuleTable_->currentRow() >= 0) extRuleTable_->removeRow(extRuleTable_->currentRow());
+    });
+    auto buttons = new QHBoxLayout();
+    buttons->addWidget(add);
+    buttons->addWidget(ruleSystem);
+    buttons->addWidget(ruleBrowse);
+    buttons->addWidget(remove);
+    buttons->addStretch();
+    layout->addLayout(buttons);
+
+    QStringList formatList;
+    for (const std::string& f : giv::ImagePluginHost::formatNames()) formatList << '@' + QString::fromStdString(f);
+    const QString formats = formatList.join(", ");
+    auto hint = new QLabel("File > Open in External App (E) starts the application chosen below by the file's type; "
+                           "File > Open With starts one of the listed applications. "
+                           "Write a command like  gimp \"%f\"  - %f is the file; without it the file is added "
+                           "as the last argument. Types are comma separated: extensions such as  jpg, nii.gz  or, for "
+                           "files without an extension, a format written with @, such as  @dicom. "
+                           "An empty application opens the file with the system default.\n\nFormats: " +
+                               formats,
+                           page);
+    hint->setWordWrap(true);
+    layout->addWidget(hint);
+    return page;
+}
+
+void PreferencesDialog::addTableRow(QTableWidget* table, const QString& a, const QString& b, const QIcon& icon)
+{
+    const int row = table->rowCount();
+    table->insertRow(row);
+    table->setItem(row, 0, new QTableWidgetItem(icon, a));
+    table->setItem(row, 1, new QTableWidgetItem(b));
+}
+
+void PreferencesDialog::addExternalRuleRow(const QString& extensions, const QString& command)
+{
+    addTableRow(extRuleTable_, extensions, command);
 }
 
 QWidget* PreferencesDialog::buildKeyboardTab()
@@ -328,6 +511,22 @@ void PreferencesDialog::save()
     s.setValue("mouse/swapSideButtons", swapSideCheck_->isChecked());
     s.setValue("mouse/tiltNavigates", tiltCheck_->isChecked());
     s.setValue("mouse/doubleClickToggles", dblClickCheck_->isChecked());
+    ExternalApps::Config apps;
+    apps.defaultCommand = extDefaultEdit_->text().trimmed();
+    for (int row = 0; row < extAppTable_->rowCount(); ++row)
+    {
+        const QString command = extAppTable_->item(row, 1)->text().trimmed();
+        QString name = extAppTable_->item(row, 0)->text().trimmed();
+        if (command.isEmpty()) continue;
+        if (name.isEmpty()) name = command;
+        apps.apps.append({name, command});
+    }
+    for (int row = 0; row < extRuleTable_->rowCount(); ++row)
+    {
+        const QString ext = extRuleTable_->item(row, 0)->text().trimmed();
+        if (!ext.isEmpty()) apps.rules.append({ext, extRuleTable_->item(row, 1)->text().trimmed()});
+    }
+    ExternalApps::save(apps);
     emit mouseSettingsChanged(loadMouseSettings());
     emit navigationViewChanged(loadNavigationView());
 }

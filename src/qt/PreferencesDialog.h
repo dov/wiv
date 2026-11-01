@@ -10,12 +10,14 @@
 
 #include <QColor>
 #include <QDialog>
+#include <QIcon>
 #include <QKeySequenceEdit>
 #include <QList>
 
 class QAction;
 class QCheckBox;
 class QComboBox;
+class QLineEdit;
 class QTableWidget;
 class QPushButton;
 
@@ -63,11 +65,17 @@ private:
     QCheckBox* dblClickCheck_ = nullptr;
     QList<QAction*> bindable_;
     QTableWidget* keyTable_ = nullptr;
+    QLineEdit* extDefaultEdit_ = nullptr;
+    QTableWidget* extRuleTable_ = nullptr;
+    QTableWidget* extAppTable_ = nullptr;
     // keyEdits_[row][col]: the editors of table row `row`.
     QList<QList<QKeySequenceEdit*>> keyEdits_;
 
     QWidget* buildKeyboardTab();
     QWidget* buildMouseTab();
+    QWidget* buildExternalAppsTab();
+    void addTableRow(QTableWidget* table, const QString& a, const QString& b, const QIcon& icon = {});
+    void addExternalRuleRow(const QString& extensions, const QString& command);
     void fillKeyEditors(int row, const QStringList& keys);
     bool saveShortcuts();
 

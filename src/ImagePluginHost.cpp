@@ -26,6 +26,7 @@
 #include "PathUtils.h"
 #include <filesystem>
 #include <limits>
+#include <mutex>
 #include <string>
 
 namespace giv
@@ -61,6 +62,7 @@ using FreeErrorFn = void (*)(char*);
 struct Plugin
 {
     std::string path;
+    std::string format; // short name of the file format: the library's name ("dicom", "tiff", ...)
     void* handle = nullptr;
     SupportsFileFn supportsFile = nullptr;
     SniffFileFn sniffFile = nullptr; // optional
@@ -180,6 +182,37 @@ void computeSampleMinMax(LoadedImage& image)
     image.sampleMax = static_cast<float>(hi);
 }
 
+// "dicom" from ".../dicom.so", "wiv_dicom.dll" or a debug build's "dicomd.so".
+std::string formatNameOf(const std::string& libraryPath)
+{
+    std::string name = giv::pathToUtf8(fs::path(libraryPath).stem());
+    if (name.rfind("wiv_", 0) == 0)
+        name.erase(0, 5);
+#ifndef NDEBUG
+    if (name.size() > 1 && name.back() == 'd') // debug postfix
+        name.pop_back();
+#endif
+    return name;
+}
+
+// The format each file was last recognised as, remembered from loads (which
+// run on prefetch threads too) so that asking later costs no file access.
+std::mutex& formatCacheMutex()
+{
+    static std::mutex m;
+    return m;
+}
+std::unordered_map<std::string, std::string>& formatCache()
+{
+    static std::unordered_map<std::string, std::string> cache;
+    return cache;
+}
+void rememberFormat(const std::string& filename, const std::string& format)
+{
+    std::lock_guard<std::mutex> lock(formatCacheMutex());
+    formatCache()[filename] = format;
+}
+
 std::vector<Plugin> scanPlugins()
 {
     std::vector<Plugin> plugins;
@@ -228,6 +261,7 @@ std::vector<Plugin> scanPlugins()
 
         Plugin plugin;
         plugin.path = path;
+        plugin.format = formatNameOf(path);
         plugin.handle = handle;
         plugin.supportsFile = reinterpret_cast<SupportsFileFn>(dlsym(handle, "wiv_plugin_supports_file"));
         plugin.sniffFile = reinterpret_cast<SniffFileFn>(dlsym(handle, "wiv_plugin_sniff_file"));
@@ -324,6 +358,7 @@ std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename, in
             const auto* samplesBytes = static_cast<const uint8_t*>(img->samples);
             result.samples.assign(samplesBytes, samplesBytes + bytes);
         }
+        rememberFormat(filename, plugin.format);
         const int orientation = img->orientation;
         plugin.freeImage(img);
         applyOrientation(result, orientation);
@@ -433,6 +468,42 @@ bool ImagePluginHost::isSupported(const std::string& filename)
             return true;
     }
     return false;
+}
+
+std::string ImagePluginHost::formatOf(const std::string& filename)
+{
+    {
+        std::lock_guard<std::mutex> lock(formatCacheMutex());
+        auto it = formatCache().find(filename);
+        if (it != formatCache().end())
+            return it->second;
+    }
+    // Not loaded yet: ask the plugins the way load() would - by suffix, else by content.
+    std::string format;
+    for (const Plugin& plugin : loadedPlugins())
+        if (plugin.supportsFile(filename.c_str()))
+        {
+            format = plugin.format;
+            break;
+        }
+    if (format.empty())
+        for (const Plugin& plugin : loadedPlugins())
+            if (plugin.sniffFile && plugin.sniffFile(filename.c_str()))
+            {
+                format = plugin.format;
+                break;
+            }
+    if (!format.empty())
+        rememberFormat(filename, format);
+    return format;
+}
+
+std::vector<std::string> ImagePluginHost::formatNames()
+{
+    std::vector<std::string> names;
+    for (const Plugin& plugin : loadedPlugins())
+        names.push_back(plugin.format);
+    return names;
 }
 
 bool ImagePluginHost::isSupportedExplicit(const std::string& filename)
