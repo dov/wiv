@@ -151,6 +151,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
             goPreviousImage();
     });
 
+    viewport_->setMouseSettings(PreferencesDialog::loadMouseSettings());
+    applyNavigationView(PreferencesDialog::loadNavigationView());
+
     // Dock layout (position, floating, visibility) from the previous run.
     {
         QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
@@ -533,6 +536,8 @@ void MainWindow::buildMenus()
         PreferencesDialog dlg(bindableActions_, this);
         connect(&dlg, &PreferencesDialog::backgroundColorChanged, viewport_, &VulkanViewport::setBackgroundColor);
         connect(&dlg, &PreferencesDialog::backgroundColorChanged, thumbnailStrip_, &ThumbnailStrip::setBackgroundColor);
+        connect(&dlg, &PreferencesDialog::mouseSettingsChanged, viewport_, &VulkanViewport::setMouseSettings);
+        connect(&dlg, &PreferencesDialog::navigationViewChanged, this, &MainWindow::applyNavigationView);
         dlg.exec();
         applyDockShortcuts();
         spdlog::info("Preferences dialog closed");
@@ -1314,6 +1319,16 @@ void MainWindow::goLastImage()
     if (directoryFileIndex_ == last) return;
     directoryFileIndex_ = last;
     loadNavigationStep({directoryFiles_[last].toStdString()});
+}
+
+void MainWindow::applyNavigationView(NavigationView v)
+{
+    const bool fit = v != NavigationView::Keep;
+    const bool perFile = v == NavigationView::PerFile;
+    autoFitAction_->setChecked(fit);
+    rememberViewAction_->setChecked(perFile);
+    if (viewport_->autoFit() != fit) viewport_->setAutoFit(fit);
+    if (viewport_->rememberViewPerFile() != perFile) viewport_->setRememberViewPerFile(perFile);
 }
 
 void MainWindow::goNextImage()

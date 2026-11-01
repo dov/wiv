@@ -66,7 +66,13 @@ phase - `--remote`, `--port`, `--export`, etc. are Phase 2):
 - `--zoom scale shift_x shift_y` - initial zoom/pan applied on top of auto-fit
 - `-n` - disable auto-fit-to-bounds (uses a fixed default view instead)
 
-Mouse: drag with the left button to pan, scroll wheel to zoom at the cursor.
+Mouse: middle-drag pans, right-drag zooms, scroll wheel zooms at the cursor,
+double-click toggles 1:1 / fit. Edit > Preferences > Mouse changes the wheel
+(zoom or next/previous image; Ctrl+wheel always zooms), the back/forward
+buttons (navigate, step zoom or nothing), tilt-wheel navigation and
+double-click. Preferences > General > "When switching images" picks fit /
+remember per file / keep zoom and pan (the same as View > Auto Fit and
+Remember View Per File).
 Escape or the window close button exits.
 
 Animated images (GIF, APNG, animated WebP, AVIF image sequences; the last

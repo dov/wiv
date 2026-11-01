@@ -6,12 +6,15 @@
 // effect on next launch, since changing it means recreating the Vulkan
 // swapchain/window, not attempted live.
 //
+#include "MouseSettings.h"
+
 #include <QColor>
 #include <QDialog>
 #include <QKeySequenceEdit>
 #include <QList>
 
 class QAction;
+class QCheckBox;
 class QComboBox;
 class QTableWidget;
 class QPushButton;
@@ -34,6 +37,9 @@ public:
     // Reads current values from QSettings ("wiv", "wiv").
     static QColor loadBackgroundColor();
     static int loadMsaaSamples();
+    static MouseSettings loadMouseSettings();
+    static NavigationView loadNavigationView();
+    static void saveNavigationView(NavigationView v);
 
     // Overrides `action`'s shortcuts with the user's saved ones, if any
     // (QSettings "shortcuts/<objectName>", portable text joined by newlines;
@@ -42,17 +48,26 @@ public:
 
 signals:
     void backgroundColorChanged(const QColor& color);
+    void mouseSettingsChanged(const MouseSettings& m);
+    void navigationViewChanged(NavigationView v);
 
 private:
     QColor backgroundColor_;
     QPushButton* colorButton_ = nullptr;
     QComboBox* msaaCombo_ = nullptr;
+    QComboBox* navViewCombo_ = nullptr;
+    QComboBox* wheelCombo_ = nullptr;
+    QComboBox* sideButtonsCombo_ = nullptr;
+    QCheckBox* swapSideCheck_ = nullptr;
+    QCheckBox* tiltCheck_ = nullptr;
+    QCheckBox* dblClickCheck_ = nullptr;
     QList<QAction*> bindable_;
     QTableWidget* keyTable_ = nullptr;
     // keyEdits_[row][col]: the editors of table row `row`.
     QList<QList<QKeySequenceEdit*>> keyEdits_;
 
     QWidget* buildKeyboardTab();
+    QWidget* buildMouseTab();
     void fillKeyEditors(int row, const QStringList& keys);
     bool saveShortcuts();
 
