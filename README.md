@@ -121,7 +121,7 @@ Two environment variables help when benchmarking the render path:
   giv's own plugin architecture (`givplugin.h`/`.cc`) rather than a
   compiled-in format table. Built-in plugins: `stbimage` (PNG/JPEG/BMP/
   TGA/GIF/PSD via vendored `third_party/stb_image.h`), `pgm` (binary
-  PGM/PPM, no dependency), `tiff` (libtiff), `webp` (libwebp). Plugins are
+  PGM/PPM, no dependency), `tiff` (libtiff), `webp` (libwebp)), `dds` (BC1-BC5/BC7 and uncompressed, via vendored `third_party/bcdec.h`), `ico` (.ico/.cur, PNG and DIB entries), and, when their dev packages are found at configure time, `heif` (HEIC/HEIF/AVIF via libheif) and `raw` (camera RAW via LibRaw; install `libheif-devel LibRaw-devel` on Fedora). Plugins are
   discovered from `WIV_PLUGIN_DIR` (env var override) or else the
   compile-time default `<build-dir>/plugins` - set `WIV_PLUGIN_DIR`
   explicitly if running a `wiv` binary copied out of its build tree, or a

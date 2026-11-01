@@ -13,5 +13,5 @@ dnf install -y \
     mingw64-vulkan-headers mingw64-vulkan-loader \
     mingw64-freetype mingw64-libjpeg-turbo mingw64-libtiff \
     mingw64-libwebp mingw64-libpng mingw64-zlib mingw64-bzip2 \
-    mingw64-cfitsio \
+    mingw64-cfitsio mingw64-LibRaw \
     mingw32-nsis

@@ -443,9 +443,9 @@ OpenFileDialog::OpenFileDialog(QWidget* parent, QSettings* settings)
     setAcceptMode(QFileDialog::AcceptOpen);
     setWindowTitle("Open");
     setNameFilters({
-        "Supported files (*.giv *.svg *.png *.jpg *.jpeg *.bmp *.tga *.gif *.psd *.tif *.tiff *.webp *.pgm *.ppm *.npy *.fits *.fit *.dcm)",
+        "Supported files (*.giv *.svg *.png *.jpg *.jpeg *.bmp *.tga *.gif *.psd *.tif *.tiff *.webp *.heic *.heif *.hif *.avif *.dds *.ico *.cur *.cr2 *.cr3 *.crw *.nef *.nrw *.arw *.sr2 *.srf *.dng *.orf *.rw2 *.raf *.pef *.srw *.raw *.rwl *.3fr *.fff *.erf *.kdc *.dcr *.mef *.mos *.mrw *.iiq *.x3f *.gpr *.pgm *.ppm *.npy *.fits *.fit *.dcm)",
         "giv files (*.giv)",
-        "Image files (*.svg *.png *.jpg *.jpeg *.bmp *.tga *.gif *.psd *.tif *.tiff *.webp *.pgm *.ppm *.npy *.fits *.fit *.dcm)",
+        "Image files (*.svg *.png *.jpg *.jpeg *.bmp *.tga *.gif *.psd *.tif *.tiff *.webp *.heic *.heif *.hif *.avif *.dds *.ico *.cur *.cr2 *.cr3 *.crw *.nef *.nrw *.arw *.sr2 *.srf *.dng *.orf *.rw2 *.raf *.pef *.srw *.raw *.rwl *.3fr *.fff *.erf *.kdc *.dcr *.mef *.mos *.mrw *.iiq *.x3f *.gpr *.pgm *.ppm *.npy *.fits *.fit *.dcm)",
         "All files (*)",
     });
 
