@@ -25,6 +25,8 @@ void ViewParams::update(float worldPerPixel)
     value->value().x = worldPerPixel;
     value->value().y = forceOpaque_ ? 1.0f : 0.0f;
     value->value().z = showPixelGrid_ ? 1.0f : 0.0f;
+    for (auto& t : pixelTexts)
+        t.xform->matrix = vsg::translate(t.anchor) * vsg::scale(worldPerPixel, worldPerPixel, 1.0f);
     // Written (16 bytes, whatever the scene's size) and dirtied on *every*
     // frame, not just when the value actually changes: vsg::TransferTask
     // keeps one GPU copy of a DYNAMIC_DATA buffer per in-flight frame and
@@ -708,13 +710,66 @@ void bridgeHole(std::vector<vsg::vec2>& outer, const std::vector<vsg::vec2>& hol
     outer = std::move(merged);
 }
 
+// Appends `poly` to `out`, first cutting it at self-intersections into
+// simple loops: for crossing segments (i,i+1) and (j,j+1) at X the loop
+// X,P[i+1..j] is split off and the remainder P[0..i],X,P[j+1..] is examined
+// again. Skipped for huge contours (O(n^2) search).
+void splitSelfIntersections(const std::vector<vsg::vec2>& poly, std::vector<std::vector<vsg::vec2>>& out)
+{
+    std::vector<std::vector<vsg::vec2>> work{poly};
+    int budget = 64; // max splits per contour
+    while (!work.empty())
+    {
+        std::vector<vsg::vec2> p = std::move(work.back());
+        work.pop_back();
+        if (p.size() > 1 && p.front().x == p.back().x && p.front().y == p.back().y) p.pop_back();
+        const size_t m = p.size();
+        bool split = false;
+        if (m >= 4 && m <= 3000 && budget > 0)
+        {
+            for (size_t i = 0; i < m && !split; ++i)
+            {
+                const vsg::vec2 a = p[i], b = p[(i + 1) % m];
+                for (size_t j = i + 2; j < m && !split; ++j)
+                {
+                    if (i == 0 && j == m - 1) continue; // adjacent through the closing edge
+                    const vsg::vec2 c = p[j], d = p[(j + 1) % m];
+                    const double r_x = b.x - a.x, r_y = b.y - a.y, s_x = d.x - c.x, s_y = d.y - c.y;
+                    const double den = r_x * s_y - r_y * s_x;
+                    if (std::abs(den) < 1e-18) continue;
+                    const double t = ((c.x - a.x) * s_y - (c.y - a.y) * s_x) / den;
+                    const double u = ((c.x - a.x) * r_y - (c.y - a.y) * r_x) / den;
+                    if (t <= 1e-6 || t >= 1.0 - 1e-6 || u <= 1e-6 || u >= 1.0 - 1e-6) continue;
+                    const vsg::vec2 x(static_cast<float>(a.x + t * r_x), static_cast<float>(a.y + t * r_y));
+                    std::vector<vsg::vec2> loop{x};
+                    for (size_t k = i + 1; k <= j; ++k) loop.push_back(p[k]);
+                    std::vector<vsg::vec2> rest(p.begin(), p.begin() + i + 1);
+                    rest.push_back(x);
+                    for (size_t k = j + 1; k < m; ++k) rest.push_back(p[k]);
+                    work.push_back(std::move(loop));
+                    work.push_back(std::move(rest));
+                    --budget;
+                    split = true;
+                }
+            }
+        }
+        if (!split) out.push_back(std::move(p));
+    }
+}
+
 // Fills a set of subpaths of one shape with even-odd nesting semantics: a
 // contour nested inside an odd number of others is a hole (eyes, letter
 // counters...), so painter's-order content below it shows through - as
 // Inkscape/cairo render it. Falls back to independent fills for huge sets.
-void triangulateSubpaths(std::vector<FillVertex>& tris, const std::vector<std::vector<vsg::vec2>>& subpaths,
+void triangulateSubpaths(std::vector<FillVertex>& tris, const std::vector<std::vector<vsg::vec2>>& rawSubpaths,
                          const vsg::vec4& color, const vsg::vec4& labelColor)
 {
+    // Self-crossing contours (a bezier with a loop, a figure-8) can't be
+    // ear-clipped as one polygon; cut them at their crossings into simple
+    // loops, each of which is then filled (nonzero-style: every loop of
+    // the figure is painted).
+    std::vector<std::vector<vsg::vec2>> subpaths;
+    for (const auto& sp : rawSubpaths) splitSelfIntersections(sp, subpaths);
     const size_t n = subpaths.size();
     if (n < 2 || n > 2000)
     {
@@ -1157,6 +1212,7 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     // Text nodes are created directly (not batched); typical giv scenes have
     // at most thousands of labels, not millions.
     auto textGroup = vsg::Group::create();
+    if (viewParams_) viewParams_->pixelTexts.clear();
 
     // vsg::Text::setup() calls vsg::createTextShaderSet(options_) whenever
     // text->shaderSet isn't already set, and that function only consults
@@ -1354,8 +1410,11 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
                     layout->verticalAlignment = (row == 0) ? vsg::StandardLayout::BOTTOM_ALIGNMENT
                                                             : (row == 1) ? vsg::StandardLayout::CENTER_ALIGNMENT
                                                                           : vsg::StandardLayout::TOP_ALIGNMENT;
-                    layout->position = vsg::vec3(p.x, p.y, 0.0f);
-                    float fsize = static_cast<float>(size);
+                    // Pango sizes are points (96 dpi -> 4/3 px per pt).
+                    float fsize = static_cast<float>(size * (96.0 / 72.0));
+                    // Pixel-sized text is built around the origin at 1 unit
+                    // == 1 px and positioned/scaled per frame (ViewParams).
+                    layout->position = ds.doScaleFonts ? vsg::vec3(p.x, p.y, 0.0f) : vsg::vec3(0.0f, 0.0f, 0.0f);
                     layout->horizontal = vsg::vec3(fsize, 0.0f, 0.0f);
                     layout->vertical = vsg::vec3(0.0f, fsize, 0.0f);
                     layout->color = markColor;
@@ -1369,7 +1428,15 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
                         text->font = font;
                         text->layout = layout;
                         text->setup(0, options_);
-                        textGroup->addChild(text);
+                        if (ds.doScaleFonts)
+                            textGroup->addChild(text);
+                        else
+                        {
+                            auto xf = vsg::MatrixTransform::create();
+                            xf->addChild(text);
+                            textGroup->addChild(xf);
+                            viewParams_->pixelTexts.push_back({xf, vsg::vec3(p.x, p.y, 0.0f)});
+                        }
                     }
                 }
                 break;
