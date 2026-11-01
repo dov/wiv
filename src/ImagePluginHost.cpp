@@ -7,8 +7,12 @@
 #include <spdlog/spdlog.h>
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
 #define dlopen(p, f) static_cast<void*>(LoadLibraryExA(p, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH))
 #define dlsym(h, s) reinterpret_cast<void*>(GetProcAddress(static_cast<HMODULE>(h), s))
