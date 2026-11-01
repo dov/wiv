@@ -792,7 +792,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     auto& handlers = viewer_->getEventHandlers();
     handlers.erase(std::remove_if(handlers.begin(), handlers.end(),
                                    [](const vsg::ref_ptr<vsg::Visitor>& h) {
-                                       return h.cast<giv::PanZoomHandler>() || h.cast<giv::BalloonController>() || h.cast<giv::CaliperTool>();
+                                       return h.cast<giv::BalloonController>() || h.cast<giv::CaliperTool>();
                                    }),
                    handlers.end());
 
@@ -830,25 +830,31 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
         fitToBounds(minXyd, -maxYyd, maxXyd, -minYyd);
     }
 
-    panZoom_ = giv::PanZoomHandler::create(camera_);
-    panZoom_->onCursorMove = [this](double x, double y) { emit cursorWorldPosition(x, y); };
-    panZoom_->onViewChanged = [this]() {
-        cancelViewAnimation(); // user input takes over
-        viewDirty_ = true;
-        updateScrollBars();
-    };
-    panZoom_->onClick = [this](double x, double y, int button, int modifiers) { emit clicked(x, y, button, modifiers); };
-    panZoom_->verticalLock = verticalZoomLock_;
-    // A wheel step zooms over a short motion: tick it from a timer (the
-    // render loop is on demand) until it ends.
-    zoomTimer_ = new QTimer(this);
-    zoomTimer_->setInterval(8);
-    connect(zoomTimer_, &QTimer::timeout, this, [this]() {
-        if (!panZoom_->advance()) zoomTimer_->stop();
-        viewer_->request();
-    });
-    panZoom_->onZoomStarted = [this]() { zoomTimer_->start(); };
-    viewer_->addEventHandler(panZoom_);
+    // Created once and kept across rebuilds: a mark animation rebuilds the
+    // scene every frame, which must not cancel a zoom motion or drag under
+    // way. (camera_ is never replaced once it exists.)
+    if (!panZoom_)
+    {
+        panZoom_ = giv::PanZoomHandler::create(camera_);
+        panZoom_->onCursorMove = [this](double x, double y) { emit cursorWorldPosition(x, y); };
+        panZoom_->onViewChanged = [this]() {
+            cancelViewAnimation(); // user input takes over
+            viewDirty_ = true;
+            updateScrollBars();
+        };
+        panZoom_->onClick = [this](double x, double y, int button, int modifiers) { emit clicked(x, y, button, modifiers); };
+        panZoom_->verticalLock = verticalZoomLock_;
+        // A wheel step zooms over a short motion: tick it from a timer (the
+        // render loop is on demand) until it ends.
+        zoomTimer_ = new QTimer(this);
+        zoomTimer_->setInterval(8);
+        connect(zoomTimer_, &QTimer::timeout, this, [this]() {
+            if (!panZoom_->advance()) zoomTimer_->stop();
+            viewer_->request();
+        });
+        panZoom_->onZoomStarted = [this]() { zoomTimer_->start(); };
+        viewer_->addEventHandler(panZoom_);
+    }
 
     bool wasBalloonEnabled = isInitialLoad ? false : balloonEnabled_;
 
