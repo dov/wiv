@@ -49,15 +49,15 @@ echo === makensis ===
 
 rem Keep the PDB matching the staged exe, named after the installer, for
 rem debugging crash dumps (it is not shipped in the installer).
-if exist "%BUILD%\wiv.pdb" copy /y "%BUILD%\wiv.pdb" "%~dp0Installwiv-v%VERSION%-%SHORTSHA1%.pdb" >nul
+if exist "%BUILD%\wiv.pdb" copy /y "%BUILD%\wiv.pdb" "%~dp0InstallWiv-v%VERSION%-%SHORTSHA1%.pdb" >nul
 
 echo.
-echo Built: %~dp0Installwiv-v%VERSION%-%SHORTSHA1%.exe
+echo Built: %~dp0InstallWiv-v%VERSION%-%SHORTSHA1%.exe
 
 set "DEST=w:\users\Dov\WinInstall"
 if defined COPY_W (
   if not exist "%DEST%" mkdir "%DEST%"
-  copy /y "%~dp0Installwiv-v%VERSION%-%SHORTSHA1%.exe" "%DEST%\" || exit /b 1
-  if exist "%~dp0Installwiv-v%VERSION%-%SHORTSHA1%.pdb" copy /y "%~dp0Installwiv-v%VERSION%-%SHORTSHA1%.pdb" "%DEST%\" || exit /b 1
+  copy /y "%~dp0InstallWiv-v%VERSION%-%SHORTSHA1%.exe" "%DEST%\" || exit /b 1
+  if exist "%~dp0InstallWiv-v%VERSION%-%SHORTSHA1%.pdb" copy /y "%~dp0InstallWiv-v%VERSION%-%SHORTSHA1%.pdb" "%DEST%\" || exit /b 1
   echo Copied to %DEST%
 )
