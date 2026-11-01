@@ -123,6 +123,11 @@ private:
     QAction* contrastAction_ = nullptr;
     QAction* colorTableAction_ = nullptr;
     QMenu* recentFilesMenu_ = nullptr;
+    QMenu* openWithMenu_ = nullptr;
+    QAction* openWithTail_ = nullptr; // the separator above System Default
+    QList<QAction*> openWithDetected_; // the system's suggestions for the current file, rebuilt on each show
+    QList<QAction*> openWithActions_; // File > Open With slots, one per configured application
+    QList<QAction*> dispatchActions_; // key-only commands outside the menus, still rebindable
     QList<QAction*> bindableActions_; // every menu action whose shortcuts the user may rebind
 
     // Mark Browser (View > Mark Browser, "o"): a dock the user can float.
@@ -273,6 +278,12 @@ private:
     void deleteCurrentFile();
     void renameCurrentFile();
     void openFileLocation();
+    void openInExternalApp();
+    void openWith(const QString& command);
+    void chooseApplicationAndOpen();
+    void updateOpenWithMenu();
+    void rebuildDetectedOpenWith();
+    void rememberApplication(const QString& command);
     void showFileProperties();
 
     void buildMarkBrowserDock();

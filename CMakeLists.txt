@@ -121,6 +121,8 @@ add_executable(wiv
   src/qt/GivViewer.cpp
   src/qt/VulkanViewport.cpp
   src/qt/PreferencesDialog.cpp
+  src/qt/ExternalApps.cpp
+  src/qt/InstalledApps.cpp
   src/qt/CalibratePanel.cpp
   src/qt/ColorMapBar.cpp
   src/qt/HistogramWidget.cpp

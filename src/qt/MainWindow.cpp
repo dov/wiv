@@ -7,7 +7,9 @@
 #include "ColorMapBar.h"
 #include "ColorTablePanel.h"
 #include "ContrastPanel.h"
+#include "ExternalApps.h"
 #include "ImagePluginHost.h"
+#include "InstalledApps.h"
 #include "InfoPanel.h"
 #include "MarkTreeView.h"
 #include "OpenFileDialog.h"
@@ -344,6 +346,23 @@ void MainWindow::buildMenus()
     locationAction->setShortcut(QKeySequence("W"));
     auto propertiesAction = fileMenu->addAction("&Properties...", this, &MainWindow::showFileProperties);
     propertiesAction->setShortcut(QKeySequence("Alt+Return"));
+    auto externalAppAction = fileMenu->addAction("Open in &External App", this, &MainWindow::openInExternalApp);
+    externalAppAction->setShortcut(QKeySequence("E"));
+    auto* openWithMenu = openWithMenu_ = fileMenu->addMenu("Open &With");
+    connect(openWithMenu, &QMenu::aboutToShow, this, &MainWindow::rebuildDetectedOpenWith);
+    for (int i = 0; i < ExternalApps::kMaxApps; ++i)
+    {
+        auto* a = openWithMenu->addAction(QString("Open With App %1").arg(i + 1), this, [this, i]() {
+            const auto apps = ExternalApps::load().apps;
+            if (i < apps.size()) openWith(apps[i].command);
+        });
+        a->setObjectName(QString("OpenWithApp%1").arg(i + 1)); // stable, whatever the app's name
+        a->setShortcut(QKeySequence(QString("Ctrl+%1").arg(i + 1)));
+        openWithActions_ << a;
+    }
+    openWithTail_ = openWithMenu->addSeparator();
+    openWithMenu->addAction("System Default", this, [this]() { openWith({}); });
+    openWithMenu->addAction("Choose Application...", this, &MainWindow::chooseApplicationAndOpen);
 
     fileMenu->addSeparator();
     auto quitAction = fileMenu->addAction("&Quit", qApp, &QApplication::quit);
@@ -514,7 +533,8 @@ void MainWindow::buildMenus()
     // Space is play/pause while the file is an animation, else next image.
     // A single always-enabled shortcut that dispatches, since two enabled
     // actions on one key would be ambiguous.
-    auto* spaceAction = new QAction(this);
+    auto* spaceAction = new QAction("Play/Pause Animation or Next Image", this);
+    dispatchActions_ << spaceAction;
     spaceAction->setShortcut(QKeySequence("Space"));
     connect(spaceAction, &QAction::triggered, this, [this]() {
         if (viewport_->hasAnimation()) viewport_->toggleAnimationPlay();
@@ -523,8 +543,9 @@ void MainWindow::buildMenus()
     addAction(spaceAction);
     // Right/Left step a frame (Shift: 10) while an animation is stopped, else
     // go to the next/previous image. Always-enabled dispatchers, like Space.
-    auto arrowAction = [this](const char* key, const char* shiftKey, int dir) {
-        auto* a = new QAction(this);
+    auto arrowAction = [this](const char* text, const char* key, const char* shiftKey, int dir) {
+        auto* a = new QAction(text, this);
+        dispatchActions_ << a;
         a->setShortcuts({QKeySequence(key), QKeySequence(shiftKey)});
         connect(a, &QAction::triggered, this, [this, dir]() {
             if (viewport_->hasAnimation() && !viewport_->animationPlaying())
@@ -534,8 +555,8 @@ void MainWindow::buildMenus()
         });
         addAction(a);
     };
-    arrowAction("Right", "Shift+Right", +1);
-    arrowAction("Left", "Shift+Left", -1);
+    arrowAction("Next Frame or Image", "Right", "Shift+Right", +1);
+    arrowAction("Previous Frame or Image", "Left", "Shift+Left", -1);
     auto addAnimAction = [this, viewMenu](const QString& text, const char* key, auto&& fn) {
         QAction* a = viewMenu->addAction(text, viewport_, fn);
         a->setShortcut(QKeySequence(key));
@@ -587,6 +608,7 @@ void MainWindow::buildMenus()
         connect(&dlg, &PreferencesDialog::navigationViewChanged, this, &MainWindow::applyNavigationView);
         dlg.exec();
         applyDockShortcuts();
+        updateOpenWithMenu();
         spdlog::info("Preferences dialog closed");
     });
 
@@ -603,6 +625,20 @@ void MainWindow::buildMenus()
 // the user's saved ones. The id is the action text reduced to alphanumerics.
 void MainWindow::registerBindableActions()
 {
+    auto bind = [this](QAction* a, const QString& menuTitle) {
+        QString id = a->objectName();
+        if (id.isEmpty())
+            for (QChar c : a->text())
+                if (c.isLetterOrNumber()) id += c;
+        if (id.isEmpty()) return;
+        a->setObjectName(id);
+        a->setProperty("menuTitle", menuTitle);
+        QStringList defaults;
+        for (const QKeySequence& k : a->shortcuts()) defaults << k.toString(QKeySequence::PortableText);
+        a->setProperty("defaultShortcuts", defaults);
+        PreferencesDialog::applySavedShortcuts(a);
+        bindableActions_.append(a);
+    };
     for (QAction* menuAction : menuBar()->actions())
     {
         QMenu* menu = menuAction->menu();
@@ -610,19 +646,14 @@ void MainWindow::registerBindableActions()
         for (QAction* a : menu->actions())
         {
             if (a->isSeparator() || a->menu()) continue;
-            QString id;
-            for (QChar c : a->text())
-                if (c.isLetterOrNumber()) id += c;
-            if (id.isEmpty()) continue;
-            a->setObjectName(id);
-            a->setProperty("menuTitle", menuAction->text().remove('&'));
-            QStringList defaults;
-            for (const QKeySequence& k : a->shortcuts()) defaults << k.toString(QKeySequence::PortableText);
-            a->setProperty("defaultShortcuts", defaults);
-            PreferencesDialog::applySavedShortcuts(a);
-            bindableActions_.append(a);
+            bind(a, menuAction->text().remove('&'));
         }
     }
+    // Commands that are keys only (Space, Left/Right), so that Preferences lists them too.
+    for (QAction* a : dispatchActions_) bind(a, "View");
+    // The Open With slots sit in a submenu, which the loop above does not enter.
+    for (QAction* a : openWithActions_) bind(a, "File");
+    updateOpenWithMenu();
     applyDockShortcuts();
 }
 
@@ -1501,6 +1532,107 @@ void MainWindow::openFileLocation()
 #else
     QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
 #endif
+}
+
+void MainWindow::openInExternalApp()
+{
+    const QString path = currentFilePath();
+    if (path.isEmpty()) return;
+    const ExternalApps::Config config = ExternalApps::load();
+    openWith(ExternalApps::commandFor(config, path, QString::fromStdString(giv::ImagePluginHost::formatOf(path.toStdString()))));
+}
+
+// Starts `command` (empty: the system's default application) on the current file.
+void MainWindow::openWith(const QString& command)
+{
+    const QString path = currentFilePath();
+    if (path.isEmpty()) return;
+    QString error;
+    if (!ExternalApps::launch(command, path, &error))
+    {
+        QMessageBox::warning(this, "Open With", error);
+        return;
+    }
+    spdlog::info("Opened {} with {}", path.toStdString(), command.isEmpty() ? "the system default" : command.toStdString());
+    infoLabel_->setText("Opened externally: " + QFileInfo(path).fileName());
+}
+
+void MainWindow::chooseApplicationAndOpen()
+{
+#ifdef _WIN32
+    const QString filter = "Applications (*.exe *.bat *.cmd);;All files (*)";
+#else
+    const QString filter = "All files (*)";
+#endif
+    const QString exe = QFileDialog::getOpenFileName(this, "Open With", {}, filter);
+    if (exe.isEmpty()) return;
+    const QString command = exe.contains(' ') ? '"' + exe + '"' : exe;
+    openWith(command);
+    rememberApplication(command);
+}
+
+// Adds a hand-picked application to the Open With list (and so to its keys)
+// unless it is there already; when all slots are taken the last one is replaced.
+void MainWindow::rememberApplication(const QString& command)
+{
+    ExternalApps::Config config = ExternalApps::load();
+    for (const ExternalApps::App& a : config.apps)
+        if (a.command == command) return;
+    const QString program = QProcess::splitCommand(command).value(0);
+    const ExternalApps::App app{QFileInfo(program).completeBaseName(), command};
+    if (config.apps.size() >= ExternalApps::kMaxApps) config.apps.removeLast();
+    config.apps.append(app);
+    ExternalApps::save(config);
+    updateOpenWithMenu();
+}
+
+// Lists, at the top of File > Open With, what the system offers for the
+// current file (its associated applications), skipping ones already in the list below.
+void MainWindow::rebuildDetectedOpenWith()
+{
+    qDeleteAll(openWithDetected_);
+    openWithDetected_.clear();
+    const QString path = currentFilePath();
+    if (path.isEmpty() || openWithActions_.isEmpty()) return;
+
+    const auto programOf = [](const QString& command) { return QFileInfo(QProcess::splitCommand(command).value(0)).completeBaseName().toLower(); };
+    QStringList known;
+    for (const ExternalApps::App& a : ExternalApps::load().apps) known << programOf(a.command);
+
+    QAction* before = openWithTail_; // the suggestions go below the user's list
+    for (const InstalledApp& app : installedAppsFor(path))
+    {
+        if (known.contains(programOf(app.command))) continue;
+        known << programOf(app.command);
+        auto* a = new QAction(app.icon, app.name, openWithMenu_);
+        connect(a, &QAction::triggered, this, [this, command = app.command]() {
+            openWith(command);
+            rememberApplication(command); // so it gets a slot, and a key, from now on
+        });
+        openWithMenu_->insertAction(before, a);
+        openWithDetected_ << a;
+    }
+    if (!openWithDetected_.isEmpty())
+    {
+        openWithDetected_ << openWithMenu_->insertSeparator(openWithDetected_.first());
+    }
+}
+
+// Shows one File > Open With entry per configured application; the rest of
+// the slots stay hidden and disabled so their keys do nothing.
+void MainWindow::updateOpenWithMenu()
+{
+    const auto apps = ExternalApps::load().apps;
+    const QList<InstalledApp> known = apps.isEmpty() ? QList<InstalledApp>() : installedImageApps();
+    for (int i = 0; i < openWithActions_.size(); ++i)
+    {
+        QAction* a = openWithActions_[i];
+        const bool used = i < apps.size();
+        a->setIcon(used ? iconForCommand(apps[i].command, known) : QIcon());
+        a->setText(used ? QString("Open With: %1").arg(apps[i].name) : QString("Open With App %1 (not set)").arg(i + 1));
+        a->setVisible(used);
+        a->setEnabled(used);
+    }
 }
 
 void MainWindow::showFileProperties()

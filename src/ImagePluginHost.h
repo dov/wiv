@@ -160,6 +160,17 @@ public:
     // file) for a name no plugin claims by suffix. Only for a file the user
     // named explicitly - never call from a directory scan.
     static bool isSupportedExplicit(const std::string& filename);
+
+    // The format of `filename` as the plugins see it - the name of the plugin
+    // that decodes it ("dicom", "tiff", "fits", ...), or empty if none does.
+    // Remembered from every successful load(), so for a file that is or was on
+    // screen this is a lookup; otherwise it asks the plugins (suffix, then a
+    // content sniff that opens the file), so it also names files without an
+    // extension. Thread-safe.
+    static std::string formatOf(const std::string& filename);
+
+    // The formats of all loaded plugins.
+    static std::vector<std::string> formatNames();
 };
 
 // Bounded decode cache for $image cycling (giv's shift-Up/shift-Down):
