@@ -167,8 +167,8 @@ QImage rasterizeSvgThumbnail(const QString& path)
     {
         if (!(shape->flags & NSVG_FLAGS_VISIBLE)) continue;
         if (!have) { x0 = shape->bounds[0]; y0 = shape->bounds[1]; x1 = shape->bounds[2]; y1 = shape->bounds[3]; have = true; continue; }
-        x0 = std::min(x0, shape->bounds[0]); y0 = std::min(y0, shape->bounds[1]);
-        x1 = std::max(x1, shape->bounds[2]); y1 = std::max(y1, shape->bounds[3]);
+        x0 = (std::min)(x0, shape->bounds[0]); y0 = (std::min)(y0, shape->bounds[1]);
+        x1 = (std::max)(x1, shape->bounds[2]); y1 = (std::max)(y1, shape->bounds[3]);
     }
     const float bw = std::max(x1 - x0, 1e-3f);
     const float bh = std::max(y1 - y0, 1e-3f);
