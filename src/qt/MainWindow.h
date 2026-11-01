@@ -15,6 +15,7 @@
 
 #include "ExifReader.h"
 
+#include "MouseSettings.h"
 #include "PrefetchPool.h"
 #include <QElapsedTimer>
 #include <initializer_list>
@@ -210,6 +211,8 @@ private:
     // directoryFiles_; with no sibling files, fall back to the current
     // scene's own $image references (PgUp/PgDown always page those).
     void goNextImage();
+    // Preferences > "When switching images": sets Auto Fit / Remember View.
+    void applyNavigationView(NavigationView v);
     void goFirstImage();
     void goLastImage();
     void goPreviousImage();

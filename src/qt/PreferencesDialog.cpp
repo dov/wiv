@@ -2,6 +2,7 @@
 
 #include <QAction>
 #include <QColorDialog>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -12,6 +13,8 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
+
+#include <algorithm>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QVBoxLayout>
@@ -28,6 +31,31 @@ QColor PreferencesDialog::loadBackgroundColor()
 {
     auto s = settings();
     return s.value("backgroundColor", QColor(Qt::white)).value<QColor>();
+}
+
+MouseSettings PreferencesDialog::loadMouseSettings()
+{
+    auto s = settings();
+    MouseSettings m;
+    m.wheel = s.value("mouse/wheel", 0).toInt() == 1 ? MouseSettings::Wheel::Navigate : MouseSettings::Wheel::Zoom;
+    const int sb = std::clamp(s.value("mouse/sideButtons", 0).toInt(), 0, 2);
+    m.sideButtons = static_cast<MouseSettings::SideButtons>(sb);
+    m.swapSideButtons = s.value("mouse/swapSideButtons", false).toBool();
+    m.tiltNavigates = s.value("mouse/tiltNavigates", true).toBool();
+    m.doubleClickToggles = s.value("mouse/doubleClickToggles", true).toBool();
+    return m;
+}
+
+NavigationView PreferencesDialog::loadNavigationView()
+{
+    auto s = settings();
+    return static_cast<NavigationView>(std::clamp(s.value("view/navigation", 0).toInt(), 0, 2));
+}
+
+void PreferencesDialog::saveNavigationView(NavigationView v)
+{
+    auto s = settings();
+    s.setValue("view/navigation", static_cast<int>(v));
 }
 
 int PreferencesDialog::loadMsaaSamples()
@@ -103,6 +131,13 @@ PreferencesDialog::PreferencesDialog(const QList<QAction*>& bindable, QWidget* p
     form->addRow("Background color:", colorButton_);
     form->addRow("Antialiasing (restart required):", msaaCombo_);
 
+    navViewCombo_ = new QComboBox(this);
+    navViewCombo_->addItem("Fit every image to the window", static_cast<int>(NavigationView::Fit));
+    navViewCombo_->addItem("Remember zoom and pan per file", static_cast<int>(NavigationView::PerFile));
+    navViewCombo_->addItem("Keep the current zoom and pan", static_cast<int>(NavigationView::Keep));
+    navViewCombo_->setCurrentIndex(navViewCombo_->findData(static_cast<int>(loadNavigationView())));
+    form->addRow("When switching images:", navViewCombo_);
+
     auto buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(buttons, &QDialogButtonBox::accepted, this, [this]() {
         if (!saveShortcuts()) return; // conflicting keys: stay open
@@ -119,6 +154,7 @@ PreferencesDialog::PreferencesDialog(const QList<QAction*>& bindable, QWidget* p
 
     auto tabs = new QTabWidget(this);
     tabs->addTab(general, "General");
+    tabs->addTab(buildMouseTab(), "Mouse");
     tabs->addTab(buildKeyboardTab(), "Keyboard");
 
     auto layout = new QVBoxLayout(this);
@@ -126,6 +162,45 @@ PreferencesDialog::PreferencesDialog(const QList<QAction*>& bindable, QWidget* p
     layout->addWidget(buttons);
     resize(560, 520);
     setLayout(layout);
+}
+
+QWidget* PreferencesDialog::buildMouseTab()
+{
+    const MouseSettings m = loadMouseSettings();
+    auto page = new QWidget(this);
+    auto form = new QFormLayout();
+
+    wheelCombo_ = new QComboBox(page);
+    wheelCombo_->addItem("Zoom (Ctrl+wheel always zooms)", static_cast<int>(MouseSettings::Wheel::Zoom));
+    wheelCombo_->addItem("Next / previous image", static_cast<int>(MouseSettings::Wheel::Navigate));
+    wheelCombo_->setCurrentIndex(wheelCombo_->findData(static_cast<int>(m.wheel)));
+    form->addRow("Mouse wheel:", wheelCombo_);
+
+    sideButtonsCombo_ = new QComboBox(page);
+    sideButtonsCombo_->addItem("Next / previous image", static_cast<int>(MouseSettings::SideButtons::Navigate));
+    sideButtonsCombo_->addItem("Step zoom in / out", static_cast<int>(MouseSettings::SideButtons::StepZoom));
+    sideButtonsCombo_->addItem("Nothing", static_cast<int>(MouseSettings::SideButtons::Nothing));
+    sideButtonsCombo_->setCurrentIndex(sideButtonsCombo_->findData(static_cast<int>(m.sideButtons)));
+    form->addRow("Back / forward buttons:", sideButtonsCombo_);
+
+    swapSideCheck_ = new QCheckBox("Swap back and forward buttons", page);
+    swapSideCheck_->setChecked(m.swapSideButtons);
+    form->addRow("", swapSideCheck_);
+
+    tiltCheck_ = new QCheckBox("Tilt wheel left / right navigates images", page);
+    tiltCheck_->setChecked(m.tiltNavigates);
+    form->addRow("", tiltCheck_);
+
+    dblClickCheck_ = new QCheckBox("Double-click toggles actual size and fit", page);
+    dblClickCheck_->setChecked(m.doubleClickToggles);
+    form->addRow("", dblClickCheck_);
+
+    auto layout = new QVBoxLayout(page);
+    layout->addLayout(form);
+    layout->addWidget(new QLabel("Middle-drag pans, right-drag zooms, Shift+wheel zooms faster and Alt+wheel "
+                                 "scales quivers, as in giv."));
+    layout->addStretch();
+    return page;
 }
 
 QWidget* PreferencesDialog::buildKeyboardTab()
@@ -247,6 +322,14 @@ void PreferencesDialog::save()
     auto s = settings();
     s.setValue("backgroundColor", backgroundColor_);
     s.setValue("msaaSamples", msaaSamples());
+    s.setValue("view/navigation", navViewCombo_->currentData().toInt());
+    s.setValue("mouse/wheel", wheelCombo_->currentData().toInt());
+    s.setValue("mouse/sideButtons", sideButtonsCombo_->currentData().toInt());
+    s.setValue("mouse/swapSideButtons", swapSideCheck_->isChecked());
+    s.setValue("mouse/tiltNavigates", tiltCheck_->isChecked());
+    s.setValue("mouse/doubleClickToggles", dblClickCheck_->isChecked());
+    emit mouseSettingsChanged(loadMouseSettings());
+    emit navigationViewChanged(loadNavigationView());
 }
 
 } // namespace givqt

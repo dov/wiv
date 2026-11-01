@@ -1025,20 +1025,63 @@ bool VulkanViewport::eventFilter(QObject* watched, QEvent* event)
                 return true;
             }
             if (handleSwipe(we)) return true;
+            const QPoint d = we->angleDelta();
+            // A tilt wheel reports horizontal steps; touchpads were handled above.
+            if (mouse_.tiltNavigates && d.x() != 0 && d.y() == 0)
+            {
+                tiltAccum_ += d.x();
+                while (std::abs(tiltAccum_) >= 120)
+                {
+                    emit swipeNavigate(tiltAccum_ > 0 ? -1 : 1);
+                    tiltAccum_ -= tiltAccum_ > 0 ? 120 : -120;
+                }
+                return true;
+            }
+            // Wheel set to navigate: Ctrl+wheel still zooms (falls through to vsg).
+            if (mouse_.wheel == MouseSettings::Wheel::Navigate && !(we->modifiers() & Qt::ControlModifier) &&
+                d.y() != 0)
+            {
+                wheelNavAccum_ += d.y();
+                while (std::abs(wheelNavAccum_) >= 120)
+                {
+                    emit swipeNavigate(wheelNavAccum_ > 0 ? -1 : 1);
+                    wheelNavAccum_ -= wheelNavAccum_ > 0 ? 120 : -120;
+                }
+                return true;
+            }
             break;
+        }
+        case QEvent::MouseButtonPress:
+        case QEvent::MouseButtonRelease: {
+            auto* me = static_cast<QMouseEvent*>(event);
+            if (me->button() != Qt::BackButton && me->button() != Qt::ForwardButton) break;
+            // Swallowed (press and release) so PanZoomHandler::onClick never sees them.
+            if (event->type() == QEvent::MouseButtonPress && hasScene_)
+            {
+                bool forward = me->button() == Qt::ForwardButton;
+                if (mouse_.swapSideButtons) forward = !forward;
+                switch (mouse_.sideButtons)
+                {
+                case MouseSettings::SideButtons::Navigate: emit swipeNavigate(forward ? 1 : -1); break;
+                case MouseSettings::SideButtons::StepZoom: forward ? stepZoomIn() : stepZoomOut(); break;
+                case MouseSettings::SideButtons::Nothing: break;
+                }
+            }
+            return true;
         }
         case QEvent::MouseButtonDblClick: {
             // Left double-click toggles 1:1 / fit. Swallowed so vsgQt doesn't
             // turn it into a second press; not while measuring, where the
             // left button belongs to the caliper.
             auto* me = static_cast<QMouseEvent*>(event);
-            if (me->button() == Qt::MiddleButton && me->modifiers() == Qt::NoModifier && hasScene_)
+            if (me->button() == Qt::MiddleButton && me->modifiers() == Qt::NoModifier && hasScene_ && mouse_.doubleClickToggles)
             {
                 // Middle double-click toggles the same way (a middle drag pans).
                 toggleActualFit(me->position() * window_->devicePixelRatio());
                 return true;
             }
-            if (me->button() == Qt::LeftButton && me->modifiers() == Qt::NoModifier && hasScene_ && !measureEnabled_)
+            if (me->button() == Qt::LeftButton && me->modifiers() == Qt::NoModifier && hasScene_ && !measureEnabled_ &&
+                mouse_.doubleClickToggles)
             {
                 toggleActualFit(me->position() * window_->devicePixelRatio());
                 return true;

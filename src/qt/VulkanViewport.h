@@ -14,6 +14,7 @@
 #include "GivViewer.h"
 #include "ImagePluginHost.h"
 #include "LabelPicker.h"
+#include "MouseSettings.h"
 #include "PanZoomHandler.h"
 #include "ViewFlip.h"
 #include "SceneBuilder.h"
@@ -102,6 +103,8 @@ public:
     void setRememberViewPerFile(bool enable);
     bool rememberViewPerFile() const { return rememberView_; }
 
+    void setMouseSettings(const MouseSettings& m) { mouse_ = m; }
+
     // Spins the Qt event loop (bounded - never blocks indefinitely) until
     // window_->windowAdapter->extent2D() reflects this widget's actual
     // current size, or gives up. See its definition for why this is needed
@@ -169,8 +172,8 @@ public:
     // fitContentToWindow()) to each new image on next/previousImage(); off
     // preserves whatever zoom/pan the view was already at instead.
     void setAutoFit(bool enable);
-    void toggleAutoFit() { setAutoFit(!autoFit_); }
     bool autoFit() const { return autoFit_; }
+    void toggleAutoFit() { setAutoFit(!autoFit_); }
 
     const giv::SceneData& sceneData() const { return scene_; }
     bool hasScene() const { return hasScene_; }
@@ -566,6 +569,9 @@ private:
 
     // Horizontal touchpad swipe -> swipeNavigate(); see handleSwipe().
     bool handleSwipe(QWheelEvent* we);
+    MouseSettings mouse_;
+    int wheelNavAccum_ = 0; // angleDelta accumulated toward one 120-unit notch
+    int tiltAccum_ = 0;
     double swipeAccum_ = 0.0;
     bool swipeFired_ = false;
     QElapsedTimer swipeClock_;
