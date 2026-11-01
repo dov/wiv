@@ -55,7 +55,7 @@ public:
     // $image references with next/previousImage() - see ImageCache. Small on
     // purpose: wiv only ever displays one at a time, this just avoids
     // re-decoding on every step back and forth.
-    static constexpr size_t kImageCacheCapacity = 4;
+    static constexpr size_t kImageCacheCapacity = 8;
 
     explicit VulkanViewport(QWidget* parent = nullptr);
     ~VulkanViewport() override;
@@ -110,6 +110,11 @@ public:
     // $image cycling (giv's shift-Up/shift-Down). No-ops if there are fewer
     // than 2 successfully-loaded images.
     void nextImage();
+
+    // Hands the decode cache an image decoded off-thread (see
+    // MainWindow::prefetchNeighbours()) so showing it later skips the decode.
+    void cachePrefetchedImage(const std::string& path, giv::LoadedImage image);
+    bool isImageCached(const std::string& path) const { return imageCache_.contains(path); }
     // Jump to the first / last of the file's own images.
     void firstImage();
     void lastImage();

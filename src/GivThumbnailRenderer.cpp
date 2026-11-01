@@ -2,6 +2,8 @@
 
 #include "GivParser.h"
 #include "GivScene.h"
+#include "ImagePluginHost.h"
+#include "PathUtils.h"
 
 #include <QBrush>
 #include <QColor>
@@ -15,6 +17,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <vector>
 
 namespace giv
@@ -412,29 +415,46 @@ void renderDataset(QPainter& painter, const Dataset& ds, const RenderContext& ct
 
 } // namespace
 
-QImage renderGivThumbnail(const SceneData& scene, int maxSize)
+QImage renderGivThumbnail(const SceneData& scene, int maxSize, const QImage& background)
 {
-    if (!scene.hasBounds() || maxSize <= 0) return QImage();
+    if (maxSize <= 0) return QImage();
+    if (!scene.hasBounds() && background.isNull()) return QImage();
 
-    double bboxW = scene.maxX - scene.minX;
-    double bboxH = scene.maxY - scene.minY;
+    // Bounds of the vector content, grown to include the $image, which sits
+    // top-left at the origin with one image pixel per world unit.
+    double minX = 0, minY = 0, maxX = 0, maxY = 0;
+    bool have = false;
+    auto grow = [&](double x0, double y0, double x1, double y1) {
+        if (!have) { minX = x0; minY = y0; maxX = x1; maxY = y1; have = true; return; }
+        minX = std::min(minX, x0); minY = std::min(minY, y0);
+        maxX = std::max(maxX, x1); maxY = std::max(maxY, y1);
+    };
+    if (scene.hasBounds()) grow(scene.minX, scene.minY, scene.maxX, scene.maxY);
+    if (!background.isNull()) grow(0, 0, background.width(), background.height());
+
+    double bboxW = maxX - minX;
+    double bboxH = maxY - minY;
     if (bboxW < 1e-6) bboxW = 1.0;
     if (bboxH < 1e-6) bboxH = 1.0;
 
-    const double paddingPx = std::max(4.0, maxSize * 0.06);
+    // A $image thumbnail should fill its frame like a plain image would.
+    const double paddingPx = background.isNull() ? std::max(4.0, maxSize * 0.06) : 0.0;
     const double avail = std::max(1.0, maxSize - 2.0 * paddingPx);
     const double scale = avail / std::max(bboxW, bboxH);
 
     RenderContext ctx;
     ctx.scale = scale;
-    ctx.offsetX = (maxSize - bboxW * scale) / 2.0 - scene.minX * scale;
-    ctx.offsetY = (maxSize - bboxH * scale) / 2.0 - scene.minY * scale;
+    ctx.offsetX = (maxSize - bboxW * scale) / 2.0 - minX * scale;
+    ctx.offsetY = (maxSize - bboxH * scale) / 2.0 - minY * scale;
 
     QImage image(maxSize, maxSize, QImage::Format_ARGB32_Premultiplied);
     image.fill(Qt::transparent);
 
     QPainter painter(&image);
     painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    if (!background.isNull())
+        painter.drawImage(QRectF(ctx.toPixel(0, 0), ctx.toPixel(background.width(), background.height())), background);
     for (const Dataset& ds : scene.datasets) renderDataset(painter, ds, ctx);
     painter.end();
 
@@ -447,7 +467,24 @@ QImage renderGivFileThumbnail(const std::string& filename, int maxSize)
     std::string error;
     GivParser parser;
     if (!parser.parseFile(filename, scene, error)) return QImage();
-    return renderGivThumbnail(scene, maxSize);
+
+    // The first $image, resolved like the viewer does: as given, else
+    // relative to the .giv file's directory. Decoded at full size, which
+    // costs a little for big images but this runs on a worker thread and the
+    // result is disk-cached by the caller.
+    QImage background;
+    if (!scene.images.empty())
+    {
+        std::filesystem::path ref = utf8ToPath(scene.images.front());
+        if (!std::filesystem::exists(ref)) ref = utf8ToPath(filename).parent_path() / ref;
+        if (std::filesystem::exists(ref) && ImagePluginHost::isSupported(pathToUtf8(ref)))
+        {
+            if (auto loaded = ImagePluginHost::load(pathToUtf8(ref)); loaded && !loaded->rgba.empty())
+                background = QImage(loaded->rgba.data(), loaded->width, loaded->height, loaded->width * 4,
+                                    QImage::Format_RGBA8888).copy();
+        }
+    }
+    return renderGivThumbnail(scene, maxSize, background);
 }
 
 } // namespace giv

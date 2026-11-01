@@ -19,11 +19,13 @@ namespace giv
 
 struct SceneData;
 
+// `background` (optional) is drawn first, top-left at the origin with one
+// pixel per world unit, like a $image reference; the fit then includes it.
 // Rasterizes `scene` fit into a `maxSize` x `maxSize` transparent canvas
 // (aspect-preserved, centered, with a small margin). Returns a null QImage
 // if the scene has no bounds (nothing drawable - e.g. a file that only
-// references a whole-view $image, which this renderer does not decode).
-QImage renderGivThumbnail(const SceneData& scene, int maxSize);
+// references an image and none was passed in).
+QImage renderGivThumbnail(const SceneData& scene, int maxSize, const QImage& background = QImage());
 
 // Convenience: parses `filename` (.giv or .svg, via GivParser::parseFile)
 // and renders its thumbnail directly. Returns a null QImage on parse

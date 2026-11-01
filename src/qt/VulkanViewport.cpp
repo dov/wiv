@@ -1208,6 +1208,11 @@ void VulkanViewport::previousSlice()
     emit sliceChanged(currentSlice_, count);
 }
 
+void VulkanViewport::cachePrefetchedImage(const std::string& path, giv::LoadedImage image)
+{
+    imageCache_.put(path, 0, std::move(image));
+}
+
 bool VulkanViewport::decodeImageAt(int index, int page)
 {
     if (index < 0 || index >= static_cast<int>(loadedImageNames_.size())) return false;

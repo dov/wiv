@@ -130,6 +130,7 @@ add_executable(wiv
   src/qt/MarkTreeView.cpp
   src/qt/OpenFileDialog.cpp
   src/qt/RpcServer.cpp
+  src/qt/ThumbnailStrip.cpp
   resources/wiv.qrc
 )
 if(WIN32)
