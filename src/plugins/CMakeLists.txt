@@ -88,6 +88,17 @@ else()
   message(STATUS "libheif not found - building without the HEIC/HEIF/AVIF plugin")
 endif()
 
+# JPEG XL (libjxl) is optional too.
+if(PkgConfig_FOUND)
+  pkg_check_modules(LIBJXL IMPORTED_TARGET libjxl libjxl_threads)
+endif()
+if(LIBJXL_FOUND)
+  wiv_add_plugin(jxl jxl/jxl_plugin.cpp)
+  target_link_libraries(wiv_plugin_jxl PRIVATE PkgConfig::LIBJXL)
+else()
+  message(STATUS "libjxl not found - building without the JPEG XL plugin")
+endif()
+
 if(PkgConfig_FOUND)
   pkg_check_modules(LIBRAW IMPORTED_TARGET libraw)
 endif()
