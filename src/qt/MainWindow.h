@@ -5,6 +5,9 @@
 // aims to match giv's own look/behavior, which has neither.
 //
 #include <QMainWindow>
+#include <QSlider>
+#include <QToolButton>
+#include <QLabel>
 #include <QDateTime>
 #include <QList>
 #include <QSet>
@@ -217,6 +220,13 @@ private:
     ThumbnailStrip* thumbnailStrip_ = nullptr;
     QWidget* bottomBar_ = nullptr;      // navigation buttons + thumbnail strip
     QHBoxLayout* navButtonRow_ = nullptr;
+    // Rewind / play-pause / stop buttons, scrubber and frame label next to the
+    // navigation buttons; visible only for an animated image.
+    QWidget* animBar_ = nullptr;
+    QToolButton* animPlayButton_ = nullptr;
+    QSlider* animSlider_ = nullptr;
+    QLabel* animFrameLabel_ = nullptr;
+    QIcon playIcon_, pauseIcon_;
     void buildNavigationBar();
     QAction* thumbnailStripAction_ = nullptr;
     PrefetchPool* prefetchPool_ = nullptr; // persistent decode workers

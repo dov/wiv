@@ -1573,6 +1573,21 @@ void VulkanViewport::stopAnimation()
     emitAnimationChanged();
 }
 
+void VulkanViewport::rewindAnimation()
+{
+    if (!anim_) return;
+    animPlaysDone_ = 0;
+    showAnimationFrame(0);
+    if (animPlaying_)
+    {
+        // Keep playing, with the first frame's full delay ahead of it.
+        animTimer_->stop();
+        animDueMs_ = animClock_.elapsed();
+        scheduleNextAnimationFrame();
+    }
+    emitAnimationChanged();
+}
+
 void VulkanViewport::restartAnimation()
 {
     if (!anim_) return;
@@ -1582,6 +1597,15 @@ void VulkanViewport::restartAnimation()
     animPlaying_ = true;
     animDueMs_ = animClock_.elapsed();
     scheduleNextAnimationFrame();
+    emitAnimationChanged();
+}
+
+void VulkanViewport::seekAnimationFrame(int frame)
+{
+    if (!anim_ || frame == animFrame_) return;
+    animPlaying_ = false;
+    animTimer_->stop();
+    showAnimationFrame(std::clamp(frame, 0, animationFrameCount() - 1));
     emitAnimationChanged();
 }
 

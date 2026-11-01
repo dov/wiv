@@ -293,7 +293,9 @@ public:
     bool animationLooping() const { return animLoop_; }
     void toggleAnimationPlay();       // play <-> pause (at the end of a non-looping run: play again from the start)
     void stopAnimation();             // pause and go back to the first frame
+    void rewindAnimation();           // go to the first frame, keeping the play/pause state
     void restartAnimation();          // go to the first frame and play
+    void seekAnimationFrame(int frame); // scrubber: pauses and shows `frame`
     void stepAnimationFrame(int dir); // pauses, then shows the next/previous frame (wraps)
     void setAnimationSpeed(double speed);
     void scaleAnimationSpeed(double factor) { setAnimationSpeed(animSpeed_ * factor); }
