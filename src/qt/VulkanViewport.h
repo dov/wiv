@@ -647,6 +647,7 @@ private:
     // whenever loadedImages_ changes (decodeImageAt()) or the contrast/
     // colormap settings change. Does not itself rebuild the scene graph.
     void recomputeDisplayImage();
+    bool applyDisplayImage(QString* error);
 
     // nextImage()/previousImage()'s shared tail: decodes `index`, rebuilds
     // the scene graph so its texture actually replaces whatever was
