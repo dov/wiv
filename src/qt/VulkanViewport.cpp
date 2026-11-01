@@ -1763,7 +1763,8 @@ void VulkanViewport::stepAnimationFrame(int dir)
     animPlaying_ = false;
     animTimer_->stop();
     const int n = animationFrameCount();
-    showAnimationFrame(((animFrame_ + dir) % n + n) % n);
+    // One frame wraps around; a bigger jump stops at the first/last frame.
+    showAnimationFrame(std::abs(dir) == 1 ? ((animFrame_ + dir) % n + n) % n : std::clamp(animFrame_ + dir, 0, n - 1));
     emitAnimationChanged();
 }
 

@@ -501,6 +501,8 @@ void MainWindow::buildMenus()
     addAnimAction("Restart Animation", "Shift+X", &VulkanViewport::restartAnimation);
     addAnimAction("Next Frame", ".", [this]() { viewport_->stepAnimationFrame(+1); });
     addAnimAction("Previous Frame", ",", [this]() { viewport_->stepAnimationFrame(-1); });
+    addAnimAction("Forward 10 Frames", ">", [this]() { viewport_->stepAnimationFrame(+10); });
+    addAnimAction("Back 10 Frames", "<", [this]() { viewport_->stepAnimationFrame(-10); });
     addAnimAction("Faster Animation", "]", [this]() { viewport_->scaleAnimationSpeed(1.25); });
     addAnimAction("Slower Animation", "[", [this]() { viewport_->scaleAnimationSpeed(0.8); });
     addAnimAction("Normal Animation Speed", "\\", [this]() { viewport_->setAnimationSpeed(1.0); });
@@ -980,7 +982,9 @@ void MainWindow::buildNavigationBar()
     playIcon_ = icon(fa::fa_play);
     pauseIcon_ = icon(fa::fa_pause);
     auto* rewind = makeAnimButton(icon(fa::fa_backward_step), "Rewind to the first frame");
+    auto* stepBack = makeAnimButton(icon(fa::fa_caret_left), "Previous frame (Shift: 10 frames back)");
     animPlayButton_ = makeAnimButton(playIcon_, "Play / pause");
+    auto* stepFwd = makeAnimButton(icon(fa::fa_caret_right), "Next frame (Shift: 10 frames forward)");
     auto* stop = makeAnimButton(icon(fa::fa_stop), "Stop (back to the first frame)");
     // A click on the groove jumps there (like a video scrubber) instead of paging by one step.
     struct JumpStyle : QProxyStyle
@@ -1006,6 +1010,11 @@ void MainWindow::buildNavigationBar()
     animBar_->hide();
     connect(rewind, &QToolButton::clicked, viewport_, &VulkanViewport::rewindAnimation);
     connect(animPlayButton_, &QToolButton::clicked, viewport_, &VulkanViewport::toggleAnimationPlay);
+    auto stepBy = [this](int dir) {
+        viewport_->stepAnimationFrame(QGuiApplication::keyboardModifiers() & Qt::ShiftModifier ? dir * 10 : dir);
+    };
+    connect(stepBack, &QToolButton::clicked, this, [stepBy]() { stepBy(-1); });
+    connect(stepFwd, &QToolButton::clicked, this, [stepBy]() { stepBy(+1); });
     connect(stop, &QToolButton::clicked, viewport_, &VulkanViewport::stopAnimation);
     // Dragging pauses and shows that frame; programmatic updates (playback)
     // use a signal blocker so they don't count as a seek.
