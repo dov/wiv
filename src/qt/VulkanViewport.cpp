@@ -328,6 +328,29 @@ void VulkanViewport::resizeEvent(QResizeEvent* event)
     handleViewportResize();
 }
 
+void VulkanViewport::preserveViewOnNextResize(bool entering)
+{
+    if (!projection_ || lastWidth_ <= 0) return;
+    preserveHalfW_ = (projection_->right - projection_->left) * 0.5;
+    preserveHalfH_ = (projection_->top - projection_->bottom) * 0.5;
+    preserveView_ = preserveHalfW_ > 0.0 && preserveHalfH_ > 0.0;
+    if (!preserveView_) return;
+    const double current = lastWidth_ / (2.0 * preserveHalfW_);
+    preserveTarget_ = 0.0;
+    if (entering)
+        restoreScale_ = current;
+    else if (restoreScale_ > 0.0 && appliedScale_ > 0.0 && std::abs(current - appliedScale_) < 1e-3 * appliedScale_)
+        preserveTarget_ = restoreScale_; // view untouched while large: go back to exactly the old one
+    if (!entering) restoreScale_ = 0.0;
+    spdlog::info("preserveView: begin entering={} lastWH={}x{} half={:.3f}x{:.3f} current={:.6f} applied={:.6f} target={:.6f}",
+                 entering, lastWidth_, lastHeight_, preserveHalfW_, preserveHalfH_, current, appliedScale_,
+                 preserveTarget_);
+    const int gen = ++preserveGen_;
+    QTimer::singleShot(1500, this, [this, gen]() {
+        if (gen == preserveGen_) preserveView_ = false;
+    });
+}
+
 void VulkanViewport::handleViewportResize()
 {
     if (!camera_ || !projection_ || !window_ || !window_->windowAdapter) return;
@@ -379,6 +402,9 @@ void VulkanViewport::handleViewportResize()
 // once with no later resizeEvent to fix it up).
 void VulkanViewport::applyExtent(VkExtent2D extent)
 {
+    spdlog::info("applyExtent: extent={}x{} last={}x{} preserve={} target={:.6f} projHalf={:.3f}x{:.3f}", extent.width,
+                 extent.height, lastWidth_, lastHeight_, preserveView_, preserveTarget_,
+                 (projection_->right - projection_->left) * 0.5, (projection_->top - projection_->bottom) * 0.5);
     cancelViewAnimation(); // its targets were computed for the old extent
     syncRenderExtent(extent);
 
@@ -388,8 +414,16 @@ void VulkanViewport::applyExtent(VkExtent2D extent)
     if (lastWidth_ > 0 && lastHeight_ > 0 && oldHalfW > 0.0)
     {
         double scale = lastWidth_ / (2.0 * oldHalfW); // pixels per world unit
+        if (preserveView_)
+        {
+            scale = preserveTarget_ > 0.0
+                        ? preserveTarget_
+                        : std::min(extent.width / (2.0 * preserveHalfW_), extent.height / (2.0 * preserveHalfH_));
+            appliedScale_ = scale;
+        }
         double newHalfW = static_cast<double>(extent.width) / (2.0 * scale);
         double newHalfH = static_cast<double>(extent.height) / (2.0 * scale);
+        spdlog::info("applyExtent: scale={:.6f} newHalf={:.3f}x{:.3f}", scale, newHalfW, newHalfH);
         projection_->left = -newHalfW;
         projection_->right = newHalfW;
         projection_->bottom = -newHalfH;

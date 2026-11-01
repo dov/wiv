@@ -200,6 +200,15 @@ private:
     // image (see VulkanViewport::canStepPart()).
     void updatePageActionsEnabled();
 
+    // File menu operations on the currently displayed file:
+    // all are no-ops when nothing is loaded.
+    QString currentFilePath() const;
+    void copyCurrentFile();
+    void deleteCurrentFile();
+    void renameCurrentFile();
+    void openFileLocation();
+    void showFileProperties();
+
     void buildMarkBrowserDock();
 
     void buildContrastDock();
