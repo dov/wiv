@@ -195,6 +195,9 @@ int main(int argc, char** argv)
         window.loadFiles(paths);
     }
 
+    else
+        window.startWithoutFile();
+
     spdlog::info("Main window shown, entering event loop");
     int rc = app.exec();
     spdlog::info("Application exiting with code {}", rc);

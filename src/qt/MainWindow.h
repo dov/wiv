@@ -63,6 +63,9 @@ public:
     // line at startup).
     void loadFiles(const std::vector<std::string>& paths);
 
+    // Run when wiv starts without a file: does what Preferences > General >
+    // "On start without a file" says (nothing / reopen the last file / Open dialog).
+    void startWithoutFile();
 
     // Starts the json-rpc remote-control server (see RpcServer.h) on
     // 127.0.0.1:port. Not started unless explicitly requested (--rpc-port),
