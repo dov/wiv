@@ -12,6 +12,9 @@
 #include <QIcon>
 #include <QKeyEvent>
 #include <QCommandLineParser>
+#include <QDir>
+#include <QFileInfo>
+#include <QStringList>
 
 #include <spdlog/spdlog.h>
 
@@ -42,6 +45,40 @@ public:
         return false;
     }
 };
+
+// cmd.exe and PowerShell don't expand wildcards (unlike a POSIX shell), so
+// expand '*' / '?' patterns in the file name part ourselves. Arguments that
+// exist as-is or contain no wildcard pass through unchanged; a pattern that
+// matches nothing is also kept so the normal "can't open" error is shown.
+QStringList expandWildcards(const QStringList& args)
+{
+    QStringList out;
+    for (const QString& arg : args)
+    {
+        const QFileInfo info(arg);
+        const QString name = info.fileName();
+        if (!name.contains('*') && !name.contains('?') && !name.contains('['))
+        {
+            out << arg;
+            continue;
+        }
+        if (info.exists())
+        {
+            out << arg;
+            continue;
+        }
+        QDir dir = info.dir();
+        const QStringList matches =
+            dir.entryList({name}, QDir::Files | QDir::NoDotAndDotDot, QDir::Name | QDir::LocaleAware);
+        if (matches.isEmpty())
+        {
+            out << arg;
+            continue;
+        }
+        for (const QString& m : matches) out << dir.filePath(m);
+    }
+    return out;
+}
 } // namespace
 
 int main(int argc, char** argv)
@@ -151,7 +188,7 @@ int main(int argc, char** argv)
     if (!files.isEmpty())
     {
         std::vector<std::string> paths;
-        for (const auto& f : files) paths.push_back(f.toStdString());
+        for (const auto& f : expandWildcards(files)) paths.push_back(f.toStdString());
         spdlog::info("Opening {} file(s) from command line: {}", paths.size(), files.join(", ").toStdString());
         window.loadFiles(paths);
     }
