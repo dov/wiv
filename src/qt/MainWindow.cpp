@@ -274,6 +274,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         updatePageActionsEnabled();
         infoLabel_->setText(statusLineText());
         refreshInfoPanel();
+        // A page can differ from the last in kind (colour vs raw samples),
+        // slice count and value range, so the contrast tools follow it.
+        updateContrastToolsEnabled();
+        if (contrastDock_->isVisible()) contrastPanel_->refreshForImage();
+        if (colorTableDock_->isVisible()) colorTablePanel_->refreshForImage();
     });
     connect(viewport_, &VulkanViewport::imageChanged, this, [this](int index, int count, QString filename) {
         updateNavigationActionsEnabled();

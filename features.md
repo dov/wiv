@@ -37,6 +37,7 @@ in Edit > Preferences > Keyboard.
 | OpenEXR | `.exr` | `exr` (OpenEXR, optional) | single-part RGBA/Y, clamped + sRGB-encoded for display |
 | DDS | `.dds` | `dds` | BC1–BC5, BC7, uncompressed (vendored bcdec) |
 | ICO/CUR | `.ico .cur` | `ico` | PNG and DIB entries |
+| HDF5 | `.h5 .hdf5 .he5` | `hdf5` (libhdf5, optional) | every numeric 2D/3D dataset is a page (PgUp/PgDn); 2D = gray (raw u8/u16/float samples), 3D = colour (last axis 3/4, first axis 3/4, or Image-spec `INTERLACE_MODE`) or slices (heuristic); content-sniffed |
 | FITS | `.fits .fit` | `fits` | float/int samples; NAXIS=3 cubes as slices |
 | DICOM | `.dcm` | `dicom` | multi-frame as slices |
 | NumPy | `.npy` | `npy` | 2D and 3D arrays (3D = slices) |
