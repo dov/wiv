@@ -7,6 +7,8 @@
 // packaged as loadFiles() so it can be re-run from File > Open as well as
 // at startup.
 //
+#include "ImageStateStore.h"
+#include <memory>
 #include "BalloonController.h"
 #include "CaliperTool.h"
 #include "Colormaps.h"
@@ -603,9 +605,21 @@ private:
         double scaleX, scaleY; // device pixels per world unit, so a resized window keeps the zoom
     };
     std::map<std::string, SavedView> savedViews_;
+    // Per-image contrast/colormap/view kept between runs (state.db next to the
+    // settings file); created on first use.
+    std::unique_ptr<giv::ImageStateStore> stateStore_;
+    giv::ImageStateStore* stateStore();
+    void rememberSlice();
+    std::vector<std::string> scenePaths_; // the files the scene was loaded from
     std::string viewKeyFallback_; // first loaded path, for scenes with no image of their own
     std::string viewKey() const;
     void saveCurrentView();
+
+public:
+    // Writes the displayed file's remembered view out; for shutdown.
+    void saveViewState() { saveCurrentView(); }
+
+private:
     bool tryRestoreView();
 
     // Horizontal touchpad swipe -> swipeNavigate(); see handleSwipe().

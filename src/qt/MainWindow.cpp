@@ -303,7 +303,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         setWindowTitle(QString("wiv: %1").arg(label));
         lastCursorText_.clear();
         lastMeasureText_.clear();
-        infoLabel_->setText(QString("Loading %1").arg(label));
+        // The page/slice the new image opens on (sliceChanged/pageChanged
+        // fire first), so it is visible at once rather than after the next
+        // mouse move.
+        const QString where = statusLineText();
+        infoLabel_->setText(QString("Loading %1").arg(label) + (where.isEmpty() ? QString() : "  " + where));
+        QString changed = count > 1 ? QString("Image changed to %1 (%2/%3)").arg(baseName).arg(index + 1).arg(count)
+                                    : QString("Image changed to %1").arg(baseName);
+        if (!lastPageText_.isEmpty()) changed += "  " + lastPageText_;
+        if (!lastSliceText_.isEmpty()) changed += "  " + lastSliceText_;
+        statusBar()->showMessage(changed, 3000);
     });
 }
 
@@ -509,13 +518,54 @@ void MainWindow::buildMenus()
     rememberViewAction_ = viewMenu->addAction("Remember View Per File", viewport_, &VulkanViewport::setRememberViewPerFile);
     rememberViewAction_->setCheckable(true);
 
-    autoContrastAction_ = viewMenu->addAction("Auto Contrast", viewport_, &VulkanViewport::setAutoContrast);
+    autoContrastAction_ = viewMenu->addAction("Auto Contrast", this, [this](bool enable) {
+        viewport_->setAutoContrast(enable);
+        QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+        settings.setValue("autoContrast", enable);
+    });
     autoContrastAction_->setCheckable(true);
-    autoContrastAction_->setChecked(true);
+    {
+        QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+        const bool enable = settings.value("autoContrast", true).toBool();
+        autoContrastAction_->setChecked(enable);
+        viewport_->setAutoContrast(enable);
+    }
 
     // giv's do_auto_reload: poll the loaded file(s) and reload on change.
     autoReloadAction_ = viewMenu->addAction("Auto Reload", this, &MainWindow::setAutoReload);
     autoReloadAction_->setCheckable(true);
+
+    // Auto Fit / Remember View Per File are one preference (View > Navigation
+    // in Preferences): saving the pair keeps a menu toggle across runs.
+    auto saveNavigationView = [this]() {
+        PreferencesDialog::saveNavigationView(rememberViewAction_->isChecked() ? NavigationView::PerFile
+                                              : autoFitAction_->isChecked()    ? NavigationView::Fit
+                                                                               : NavigationView::Keep);
+    };
+    connect(autoFitAction_, &QAction::triggered, this, saveNavigationView);
+    connect(rememberViewAction_, &QAction::triggered, this, saveNavigationView);
+
+    // The other checkable View items remember their state too: saved when the
+    // user toggles them, re-applied (through trigger(), so each item's own
+    // handler runs) at startup.
+    {
+        const std::pair<QAction*, const char*> sticky[] = {
+            {forceOpaqueAction_, "forceOpaque"},       {pixelGridAction_, "pixelGrid"},
+            {subPixelAction_, "subPixelCoordinates"},  {horizontalFlipAction_, "horizontalFlip"},
+            {verticalFlipAction_, "verticalFlip"},     {verticalZoomLockAction_, "verticalZoomLock"},
+            {colorMapBarAction_, "colorMapBar"},       {showMarksAction_, "showMarks"},
+        };
+        QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+        for (const auto& [action, key] : sticky)
+        {
+            const QString path = QString("view/%1").arg(key);
+            connect(action, &QAction::triggered, this, [path](bool on) {
+                QSettings s(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+                s.setValue(path, on);
+            });
+            if (settings.contains(path) && settings.value(path).toBool() != action->isChecked()) action->trigger();
+        }
+    }
 
     viewMenu->addSeparator();
     nextImageAction_ = viewMenu->addAction("Next Image", this, &MainWindow::goNextImage);
@@ -752,6 +802,7 @@ void MainWindow::buildMarkBrowserDock()
 
 void MainWindow::closeEvent(QCloseEvent* event)
 {
+    viewport_->saveViewState();
     QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
     settings.setValue("windowState", saveState());
     QMainWindow::closeEvent(event);

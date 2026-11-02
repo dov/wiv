@@ -23,6 +23,7 @@
     "libraw",
     "spdlog",
     "cfitsio",
+    "sqlite3",
     {
       "name": "qtbase",
       "platform": "windows"

@@ -30,6 +30,8 @@ find_package(vsg CONFIG REQUIRED)
 find_package(vsgXchange CONFIG REQUIRED)
 # (before Qt6, whose cross config rewrites the find root path)
 find_package(spdlog CONFIG REQUIRED)
+# System sqlite3 on Linux, the vcpkg port on Windows.
+find_package(SQLite3 REQUIRED)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Concurrent Network)
 if(MINGW AND MINGW_DEPS_PREFIX)
   # Qt6's cross config replaced CMAKE_FIND_ROOT_PATH; put our prefix back so the
@@ -122,6 +124,7 @@ add_executable(wiv
   src/ImagePluginHost.cpp
   src/Colormaps.cpp
   src/ExifReader.cpp
+  src/ImageStateStore.cpp
   src/DisplayImage.cpp
   src/qt/GivViewer.cpp
   src/qt/VulkanViewport.cpp
@@ -157,7 +160,7 @@ endif()
 add_dependencies(wiv wiv_shaders)
 
 target_include_directories(wiv PRIVATE src ${CMAKE_SOURCE_DIR}/third_party)
-target_link_libraries(wiv PRIVATE vsg::vsg vsgXchange::vsgXchange vsgQt::vsgQt Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent Qt6::Network QtAwesome spdlog::spdlog)
+target_link_libraries(wiv PRIVATE vsg::vsg vsgXchange::vsgXchange vsgQt::vsgQt Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent Qt6::Network QtAwesome spdlog::spdlog SQLite::SQLite3)
 
 # X11 only: the render window's bit gravity (see VulkanViewport::keepContentsInPlaceOnResize()).
 if(UNIX AND NOT APPLE)
