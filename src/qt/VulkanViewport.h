@@ -588,12 +588,27 @@ private:
         bool active = false;
         FitView from{}, to{};
         double duration = 0.0;
+        bool refit = true;    // end with an exact fit (else: end exactly at `to`)
+        double rotFrom = 0.0; // animated rotation: extra angle at the start, eased to 0
         QElapsedTimer clock;
     } viewAnim_;
     QTimer* viewAnimTimer_ = nullptr;
-    void startViewAnimation(const FitView& to);
+    void startViewAnimation(const FitView& to, double rotFrom = 0.0, bool refit = true);
     void tickViewAnimation();
     void cancelViewAnimation();
+
+    // Keyboard pan glides: the pixel offset still to travel is applied in
+    // eased steps from a timer, through the same pan() a mouse drag uses.
+    struct PanAnimation
+    {
+        bool active = false;
+        double totalX = 0.0, totalY = 0.0; // offset to cover, in drag pixels
+        int appliedX = 0, appliedY = 0;
+        double duration = 0.0;
+        QElapsedTimer clock;
+    } panAnim_;
+    QTimer* panAnimTimer_ = nullptr;
+    void tickPanAnimation();
 
     // True once the user (not a fit or a window resize) has changed the view
     // since the last fit; only such views are worth remembering.

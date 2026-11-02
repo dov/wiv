@@ -6,6 +6,8 @@
 #include <chrono>
 #include <filesystem>
 
+#include "PathUtils.h"
+
 namespace giv
 {
 
@@ -34,7 +36,7 @@ int64_t nowMs()
 ImageStateStore::ImageStateStore(const std::string& dbPath)
 {
     std::error_code ec;
-    std::filesystem::create_directories(std::filesystem::u8path(dbPath).parent_path(), ec);
+    std::filesystem::create_directories(giv::utf8ToPath(dbPath).parent_path(), ec);
     if (sqlite3_open(dbPath.c_str(), &db_) != SQLITE_OK)
     {
         spdlog::warn("image state: cannot open {}: {}", dbPath, sqlite3_errmsg(db_));
@@ -104,14 +106,14 @@ std::string ImageStateStore::canonicalPath(const std::string& imagePath)
 {
     if (imagePath.empty()) return imagePath;
     std::error_code ec;
-    auto p = std::filesystem::weakly_canonical(std::filesystem::u8path(imagePath), ec);
+    auto p = std::filesystem::weakly_canonical(giv::utf8ToPath(imagePath), ec);
     return ec ? imagePath : p.generic_string();
 }
 
 bool ImageStateStore::fileId(const std::string& imagePath, FileId& out)
 {
     std::error_code ec;
-    const auto p = std::filesystem::u8path(imagePath);
+    const auto p = giv::utf8ToPath(imagePath);
     const auto size = std::filesystem::file_size(p, ec);
     if (ec) return false;
     const auto mtime = std::filesystem::last_write_time(p, ec);

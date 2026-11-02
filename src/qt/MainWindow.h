@@ -18,6 +18,7 @@
 #include "MouseSettings.h"
 #include "PrefetchPool.h"
 #include <QElapsedTimer>
+#include <functional>
 #include <initializer_list>
 #include <memory>
 #include <string>
@@ -78,6 +79,7 @@ protected:
     void showEvent(QShowEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
     bool eventFilter(QObject* watched, QEvent* event) override;
+    void changeEvent(QEvent* event) override;
 
 private:
     VulkanViewport* viewport_ = nullptr;
@@ -242,6 +244,9 @@ private:
     QSlider* animSlider_ = nullptr;
     QLabel* animFrameLabel_ = nullptr;
     QIcon playIcon_, pauseIcon_;
+    // Re-tints the navigation-bar icons (they are drawn in the palette's button
+    // text colour); run when the palette changes, e.g. on a light/dark switch.
+    std::vector<std::function<void()>> iconRefreshers_;
     void buildNavigationBar();
     QAction* thumbnailStripAction_ = nullptr;
     QAction* thumbLargerAction_ = nullptr;

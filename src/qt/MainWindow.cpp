@@ -1124,11 +1124,19 @@ void MainWindow::buildNavigationBar()
 {
     auto* awesome = new fa::QtAwesome(this);
     awesome->initFontAwesome();
-    QVariantMap opts;
-    const QColor color = palette().color(QPalette::ButtonText);
-    opts.insert("color", color);
-    opts.insert("color-active", color);
-    opts.insert("color-disabled", color.darker(250));
+    // Icons are drawn in the palette's button text colour; track() records how
+    // to redraw one so a palette change (light/dark switch) can re-tint it.
+    auto makeIcon = [this, awesome](int glyph) {
+        QVariantMap opts;
+        const QColor color = palette().color(QPalette::ButtonText);
+        opts.insert("color", color);
+        opts.insert("color-active", color);
+        opts.insert("color-disabled", color.darker(250));
+        return awesome->icon(fa::fa_solid, glyph, opts);
+    };
+    auto track = [this, makeIcon](QAbstractButton* b, int glyph) {
+        iconRefreshers_.push_back([b, glyph, makeIcon]() { b->setIcon(makeIcon(glyph)); });
+    };
 
     auto makeButton = [&](const QIcon& icon, const QString& text, const QString& tip) {
         auto* b = new QToolButton(bottomBar_);
@@ -1140,14 +1148,18 @@ void MainWindow::buildNavigationBar()
         navButtonRow_->addWidget(b);
         return b;
     };
-    auto icon = [&](int glyph) { return awesome->icon(fa::fa_solid, glyph, opts); };
+    auto icon = makeIcon;
 
     navButtonRow_->addStretch(1);
     auto* prev = makeButton(icon(fa::fa_chevron_left), {}, "Previous image");
+    track(prev, fa::fa_chevron_left);
     auto* fit = makeButton(icon(fa::fa_expand), {}, "Fit to window");
+    track(fit, fa::fa_expand);
     auto* next = makeButton(icon(fa::fa_chevron_right), {}, "Next image");
+    track(next, fa::fa_chevron_right);
     navButtonRow_->addSpacing(14);
     auto* full = makeButton(icon(fa::fa_up_right_and_down_left_from_center), {}, "Full screen");
+    track(full, fa::fa_up_right_and_down_left_from_center);
     auto* actual = makeButton(QIcon(), "1:1", "Actual pixels");
 
     // Thumbnail size: magnifier buttons in a column right of the strip,
@@ -1157,6 +1169,7 @@ void MainWindow::buildNavigationBar()
         b->setAutoRaise(true);
         b->setFocusPolicy(Qt::NoFocus);
         b->setIcon(icon(glyph));
+        track(b, glyph);
         // The action's shortcut is rebindable, so read it rather than hardcode it.
         auto updateTip = [b, tip, action]() {
             const QString key = action->shortcut().toString(QKeySequence::NativeText);
@@ -1202,10 +1215,19 @@ void MainWindow::buildNavigationBar()
     playIcon_ = icon(fa::fa_play);
     pauseIcon_ = icon(fa::fa_pause);
     auto* rewind = makeAnimButton(icon(fa::fa_backward_step), "Rewind to the first frame");
+    track(rewind, fa::fa_backward_step);
     auto* stepBack = makeAnimButton(icon(fa::fa_caret_left), "Previous frame (Shift: 10 frames back)");
+    track(stepBack, fa::fa_caret_left);
     animPlayButton_ = makeAnimButton(playIcon_, "Play / pause");
+    iconRefreshers_.push_back([this, makeIcon]() {
+        playIcon_ = makeIcon(fa::fa_play);
+        pauseIcon_ = makeIcon(fa::fa_pause);
+        animPlayButton_->setIcon(viewport_->animationPlaying() ? pauseIcon_ : playIcon_);
+    });
     auto* stepFwd = makeAnimButton(icon(fa::fa_caret_right), "Next frame (Shift: 10 frames forward)");
+    track(stepFwd, fa::fa_caret_right);
     auto* stop = makeAnimButton(icon(fa::fa_stop), "Stop (back to the first frame)");
+    track(stop, fa::fa_stop);
     // A click on the groove jumps there (like a video scrubber) instead of paging by one step.
     struct JumpStyle : QProxyStyle
     {
@@ -1388,6 +1410,13 @@ void MainWindow::onPrefetchReady(const QString& path, bool preview, const std::s
 // Qt hands us the window system's timestamp of the event; the largest
 // (timestamp - steady clock) seen is the clock offset at zero queueing delay,
 // so anything above it is time the event spent waiting in the queue.
+void MainWindow::changeEvent(QEvent* event)
+{
+    QMainWindow::changeEvent(event);
+    if (event->type() == QEvent::PaletteChange)
+        for (const auto& refresh : iconRefreshers_) refresh();
+}
+
 bool MainWindow::eventFilter(QObject* watched, QEvent* event)
 {
     if (event->type() == QEvent::ShortcutOverride)
