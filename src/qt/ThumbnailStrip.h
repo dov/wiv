@@ -6,6 +6,7 @@
 // Open dialog's disk cache (see decodeFileThumbnail()).
 //
 #include <QColor>
+#include <QImage>
 #include <QListWidget>
 #include <QSet>
 #include <QStringList>
@@ -36,7 +37,11 @@ public:
     // Height of exactly one row of thumbnails (the pane's minimum).
     int rowHeight() const;
 
+    // Shows `image` as row's thumbnail (it is stored in the disk cache by the caller).
+    void setThumbnail(int row, const QImage& image);
+
 signals:
+    void updateFromViewRequested(int row); // context menu on the open image's thumbnail
     void fileClicked(int index);
     void stepRequested(int direction); // wheel over the strip: +1 next, -1 previous
     void thumbSizeChanged(int size);   // Ctrl+wheel zoom

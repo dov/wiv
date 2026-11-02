@@ -48,6 +48,8 @@ namespace givqt
 // can't be decoded. Safe to call from a worker thread. `regenerate` discards
 // the cached thumbnail first, e.g. after the decoder for the format changed.
 QImage decodeFileThumbnail(const QString& path, bool regenerate = false);
+// Replaces `path`'s disk-cached thumbnail with `image` (e.g. rendered from the current view).
+void storeFileThumbnail(const QString& path, const QImage& image);
 
 enum class ThumbnailState { Queued, Ready, Failed };
 

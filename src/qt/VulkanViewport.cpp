@@ -1959,6 +1959,24 @@ void VulkanViewport::recomputeDisplayImage()
     displayImages_ = {std::move(display)};
 }
 
+QImage VulkanViewport::currentViewImage(int maxSize)
+{
+    if (loadedImages_.empty()) return QImage();
+    const giv::LoadedImage& src = loadedImages_.front();
+    if (src.isPreview() || src.width <= 0 || src.height <= 0) return QImage();
+
+    giv::PixelBuffer rgba;
+    if (src.sampleType != WIV_SAMPLE_NONE)
+    {
+        const ContrastState state = currentContrastState();
+        giv::renderDisplayRgba(src, state.min, state.max, state.colormapId, state.colormapEnabled, rgba, currentSlice_);
+    }
+    else
+        rgba = src.rgba;
+    QImage full(rgba.data(), src.width, src.height, src.width * 4, QImage::Format_RGBA8888);
+    return full.scaled(maxSize, maxSize, Qt::KeepAspectRatio, Qt::SmoothTransformation).copy();
+}
+
 VulkanViewport::ContrastState VulkanViewport::currentContrastState()
 {
     static const ContrastState kEmpty{};
