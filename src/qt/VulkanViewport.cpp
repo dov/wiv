@@ -2538,6 +2538,26 @@ void VulkanViewport::updateScrollBars()
     double scaleX = extent.width / (2.0 * halfW);
     double scaleY = extent.height / (2.0 * halfH);
 
+    // Zoomed out past "fill", an axis whose content is smaller than the
+    // window stays centered instead of drifting wherever the zoom left it.
+    if (!viewAnim_.active)
+    {
+        const double contentCenterX = (minXyd + maxXyd) * 0.5;
+        const double contentCenterY = -(minYyd + maxYyd) * 0.5;
+        bool centered = false;
+        if ((maxXyd - minXyd) * scaleX < extent.width - 0.5 && lookAt->center.x != contentCenterX)
+        {
+            lookAt->eye.x = lookAt->center.x = contentCenterX;
+            centered = true;
+        }
+        if ((maxYyd - minYyd) * scaleY < extent.height - 0.5 && lookAt->center.y != contentCenterY)
+        {
+            lookAt->eye.y = lookAt->center.y = contentCenterY;
+            centered = true;
+        }
+        if (centered) viewer_->request();
+    }
+
     double contentWidthPx = (maxXyd - minXyd) * scaleX;
     double viewLeftPx = flipHorizontal_ ? (maxXyd - (lookAt->center.x + halfW)) * scaleX
                                         : (lookAt->center.x - halfW - minXyd) * scaleX;
@@ -2684,6 +2704,8 @@ void VulkanViewport::toggleActualFit(QPointF devicePos)
 
 giv::ImageStateStore* VulkanViewport::stateStore()
 {
+    // With Remember View Per File off the database is neither opened, read nor written.
+    if (!rememberView_) return nullptr;
     if (!stateStore_)
     {
         const QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
