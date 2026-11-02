@@ -22,6 +22,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QApplication>
 #include <QSettings>
 
 #include <algorithm>
@@ -72,12 +73,51 @@ int PreferencesDialog::loadTheme()
 
 void PreferencesDialog::applyTheme()
 {
-#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
     const int t = loadTheme();
-    QGuiApplication::styleHints()->setColorScheme(t == 1 ? Qt::ColorScheme::Light
-                                                  : t == 2 ? Qt::ColorScheme::Dark
-                                                           : Qt::ColorScheme::Unknown);
+    // Ask the platform first: with a theme that supports it (Windows, macOS,
+    // GNOME/KDE integration) the whole UI follows natively.
+    bool native = t == 0;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+    const Qt::ColorScheme want = t == 1 ? Qt::ColorScheme::Light : t == 2 ? Qt::ColorScheme::Dark : Qt::ColorScheme::Unknown;
+    QGuiApplication::styleHints()->setColorScheme(want);
+    if (t != 0) native = QGuiApplication::styleHints()->colorScheme() == want;
 #endif
+    // Otherwise (plain X11 without a desktop theme, Qt < 6.8) the request is
+    // silently ignored, so apply a Fusion palette ourselves.
+    static bool customPalette = false;
+    if (native)
+    {
+        if (customPalette)
+        {
+            QApplication::setPalette(QApplication::style()->standardPalette());
+            customPalette = false;
+        }
+        return;
+    }
+    QApplication::setStyle("Fusion");
+    QPalette pal = QApplication::style()->standardPalette();
+    if (t == 2)
+    {
+        const QColor window(53, 53, 53), base(35, 35, 35), text(Qt::white), disabled(127, 127, 127);
+        pal.setColor(QPalette::Window, window);
+        pal.setColor(QPalette::WindowText, text);
+        pal.setColor(QPalette::Base, base);
+        pal.setColor(QPalette::AlternateBase, window);
+        pal.setColor(QPalette::ToolTipBase, base);
+        pal.setColor(QPalette::ToolTipText, text);
+        pal.setColor(QPalette::Text, text);
+        pal.setColor(QPalette::Button, window);
+        pal.setColor(QPalette::ButtonText, text);
+        pal.setColor(QPalette::BrightText, Qt::red);
+        pal.setColor(QPalette::Link, QColor(80, 160, 255));
+        pal.setColor(QPalette::Highlight, QColor(42, 130, 218));
+        pal.setColor(QPalette::HighlightedText, Qt::white);
+        pal.setColor(QPalette::PlaceholderText, disabled);
+        for (auto role : {QPalette::WindowText, QPalette::Text, QPalette::ButtonText})
+            pal.setColor(QPalette::Disabled, role, disabled);
+    }
+    QApplication::setPalette(pal);
+    customPalette = true;
 }
 
 NavigationView PreferencesDialog::loadNavigationView()
@@ -207,9 +247,6 @@ PreferencesDialog::PreferencesDialog(const QList<QAction*>& bindable, QWidget* p
     themeCombo_->addItem("Light", 1);
     themeCombo_->addItem("Dark", 2);
     themeCombo_->setCurrentIndex(loadTheme());
-#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
-    themeCombo_->setEnabled(false);
-#endif
     form->addRow("Theme:", themeCombo_);
 
     startupCombo_ = new QComboBox(this);

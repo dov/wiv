@@ -1449,15 +1449,64 @@ void VulkanViewport::panByFraction(double fx, double fy)
     if (!panZoom_ || !hasScene_ || !window_ || !window_->windowAdapter) return;
     const auto extent = viewportExtent();
     if (extent.width == 0 || extent.height == 0) return;
-    cancelViewAnimation();
-    panZoom_->cancelZoom();
     // pan() takes the drag a mouse would make: the content follows it, so
     // moving the view right is a drag to the left.
-    panZoom_->panByPixels(static_cast<int32_t>(std::lround(-fx * extent.width)),
-                          static_cast<int32_t>(std::lround(-fy * extent.height)), extent);
-    viewDirty_ = true;
-    viewer_->request();
-    updateScrollBars();
+    double dx = -fx * extent.width, dy = -fy * extent.height;
+    // A key repeat while a glide is under way extends it by what is left.
+    if (panAnim_.active)
+    {
+        dx += panAnim_.totalX - panAnim_.appliedX;
+        dy += panAnim_.totalY - panAnim_.appliedY;
+    }
+    cancelViewAnimation();
+    panZoom_->cancelZoom();
+    const double duration = panZoom_->zoomDuration() * 0.6;
+    if (duration <= 0.0)
+    {
+        panZoom_->panByPixels(static_cast<int32_t>(std::lround(dx)), static_cast<int32_t>(std::lround(dy)), extent);
+        viewDirty_ = true;
+        viewer_->request();
+        updateScrollBars();
+        return;
+    }
+    panAnim_.totalX = dx;
+    panAnim_.totalY = dy;
+    panAnim_.appliedX = panAnim_.appliedY = 0;
+    panAnim_.duration = duration;
+    panAnim_.clock.start();
+    panAnim_.active = true;
+    if (!panAnimTimer_)
+    {
+        panAnimTimer_ = new QTimer(this);
+        panAnimTimer_->setInterval(8);
+        connect(panAnimTimer_, &QTimer::timeout, this, &VulkanViewport::tickPanAnimation);
+    }
+    panAnimTimer_->start();
+    tickPanAnimation();
+}
+
+void VulkanViewport::tickPanAnimation()
+{
+    if (!panAnim_.active || !panZoom_ || !window_ || !window_->windowAdapter)
+    {
+        cancelViewAnimation();
+        return;
+    }
+    const double u = std::min(panAnim_.clock.elapsed() / 1000.0 / panAnim_.duration, 1.0);
+    const double e = 1.0 - (1.0 - u) * (1.0 - u) * (1.0 - u); // ease-out: responsive to a keypress
+    const int tx = static_cast<int>(std::lround(panAnim_.totalX * e));
+    const int ty = static_cast<int>(std::lround(panAnim_.totalY * e));
+    const int dx = tx - panAnim_.appliedX, dy = ty - panAnim_.appliedY;
+    panAnim_.appliedX = tx;
+    panAnim_.appliedY = ty;
+    if (dx || dy)
+    {
+        panZoom_->panByPixels(dx, dy, viewportExtent());
+        viewDirty_ = true;
+        viewer_->request();
+        updateScrollBars();
+    }
+    if (u >= 1.0) cancelViewAnimation();
 }
 
 // Shows page `page` of the current file. The view is left alone when the new
@@ -2343,13 +2392,14 @@ void VulkanViewport::fitToWindowAnimated()
 // that stays fixed on screen is the one a wheel zoom to the same scale would
 // keep fixed - the move then reads as one zoom, not a zoom plus a slide.
 // Ends by snapping to the exact fit, which also clears viewDirty_.
-void VulkanViewport::startViewAnimation(const FitView& to)
+void VulkanViewport::startViewAnimation(const FitView& to, double rotFrom, bool refit)
 {
     auto lookAt = camera_ ? camera_->viewMatrix.cast<vsg::LookAt>() : vsg::ref_ptr<vsg::LookAt>();
     const double duration = panZoom_ ? panZoom_->zoomDuration() * 1.5 : 0.0;
     if (!lookAt || !projection_ || duration <= 0.0)
     {
-        fitContentToWindow();
+        if (refit) fitContentToWindow();
+        else viewer_->request();
         return;
     }
     cancelViewAnimation();
@@ -2357,6 +2407,9 @@ void VulkanViewport::startViewAnimation(const FitView& to)
     viewAnim_.from = {lookAt->center.x, lookAt->center.y, (projection_->right - projection_->left) * 0.5,
                       (projection_->top - projection_->bottom) * 0.5};
     viewAnim_.to = to;
+    viewAnim_.refit = refit;
+    viewAnim_.rotFrom = rotFrom;
+    if (flipProjection_) flipProjection_->extraAngle = rotFrom;
     viewAnim_.duration = duration;
     viewAnim_.clock.start();
     viewAnim_.active = true;
@@ -2380,11 +2433,13 @@ void VulkanViewport::tickViewAnimation()
     const double u = std::min(viewAnim_.clock.elapsed() / 1000.0 / viewAnim_.duration, 1.0);
     if (u >= 1.0)
     {
-        cancelViewAnimation();
-        fitContentToWindow();
+        const bool refit = viewAnim_.refit;
+        cancelViewAnimation(); // also drops any leftover rotation
+        if (refit) fitContentToWindow();
         return;
     }
     const double e = u * u * (3.0 - 2.0 * u); // smoothstep: eases in and out
+    if (flipProjection_) flipProjection_->extraAngle = viewAnim_.rotFrom * (1.0 - e);
     const FitView &a = viewAnim_.from, &b = viewAnim_.to;
     const double halfW = a.halfW * std::pow(b.halfW / a.halfW, e);
     const double halfH = a.halfH * std::pow(b.halfH / a.halfH, e);
@@ -2404,8 +2459,17 @@ void VulkanViewport::tickViewAnimation()
 
 void VulkanViewport::cancelViewAnimation()
 {
+    const bool wasRotating = flipProjection_ && flipProjection_->extraAngle != 0.0;
     viewAnim_.active = false;
+    viewAnim_.rotFrom = 0.0;
+    panAnim_.active = false;
     if (viewAnimTimer_) viewAnimTimer_->stop();
+    if (panAnimTimer_) panAnimTimer_->stop();
+    if (wasRotating)
+    {
+        flipProjection_->extraAngle = 0.0; // a cut-short turn snaps to its final orientation
+        if (viewer_) viewer_->request();
+    }
 }
 
 // window_->resize() (called from resizeEvent() to keep the embedded native
@@ -2932,16 +2996,32 @@ void VulkanViewport::rotatedSize(double& w, double& h) const
 
 void VulkanViewport::rotateView(int quarters)
 {
+    cancelViewAnimation();
     quarterTurns_ = (quarterTurns_ + quarters) & 3;
     spdlog::info("Rotate view: {} degrees", quarterTurns_ * 90);
     if (flipProjection_) flipProjection_->quarterTurns = quarterTurns_;
     if (!hasScene_) return;
-    // The fit changes with the orientation; a view the user has dialed in
-    // just turns about its centre.
+
+    // The turn glides: the projection starts at the old orientation (extra
+    // angle) and eases to the new one. A fit follows along unless the user
+    // has dialed in a view of their own, which just turns about its centre.
+    const int signedQuarters = quarters == 3 ? -1 : quarters;
+    double rotFrom = 0.0;
+    if (flipProjection_)
+        rotFrom = -(flipProjection_->flipX != flipProjection_->flipY ? -1.0 : 1.0) * signedQuarters * (vsg::PI * 0.5);
+
+    FitView target;
+    auto lookAt = camera_ ? camera_->viewMatrix.cast<vsg::LookAt>() : vsg::ref_ptr<vsg::LookAt>();
     if (!viewDirty_)
-        fitContentToWindow();
-    else
     {
+        if (computeFitView(target)) startViewAnimation(target, rotFrom, /*refit=*/true);
+        else fitContentToWindow();
+    }
+    else if (lookAt && projection_)
+    {
+        target = {lookAt->center.x, lookAt->center.y, (projection_->right - projection_->left) * 0.5,
+                  (projection_->top - projection_->bottom) * 0.5};
+        startViewAnimation(target, rotFrom, /*refit=*/false);
         viewer_->request();
         updateScrollBars();
     }

@@ -25,6 +25,9 @@ public:
     // about the view centre before the (screen-aligned) ortho scaling, so
     // left/right/bottom/top stay in screen axes.
     int quarterTurns = 0;
+    // Extra angle (radians) on top of the quarter turns: an animated turn
+    // starts at the old orientation and eases this back to zero.
+    double extraAngle = 0.0;
 
     // The rotation angle in radians that makes the view turn counter-
     // clockwise on screen even when it is also mirrored (a mirror reverses
@@ -32,7 +35,7 @@ public:
     double angle() const
     {
         const double a = quarterTurns * (vsg::PI * 0.5);
-        return flipX != flipY ? -a : a;
+        return (flipX != flipY ? -a : a) + extraAngle;
     }
 
     vsg::dmat4 transform() const override
