@@ -196,6 +196,33 @@ QImage decodeRasterThumbnail(const QString& path)
     auto loaded = giv::ImagePluginHost::load(path.toStdString());
     if (!loaded) return QImage();
 
+    // Raw-sample images (FITS, 16-bit, float...) are shown by the viewer through
+    // a contrast window that starts at sampleMin..sampleMax; the plugin's RGBA8
+    // preview is only a clamped placeholder, so window the samples the same way.
+    if (loaded->sampleType != WIV_SAMPLE_NONE && loaded->samples.data() && loaded->sampleMax > loaded->sampleMin)
+    {
+        const size_t n = static_cast<size_t>(loaded->width) * loaded->height; // slice 0
+        const double lo = loaded->sampleMin, scale = 255.0 / (static_cast<double>(loaded->sampleMax) - lo);
+        const void* src = loaded->samples.data();
+        std::vector<unsigned char> windowed(n * 4);
+        for (size_t i = 0; i < n; ++i)
+        {
+            double v;
+            switch (loaded->sampleType)
+            {
+                case WIV_SAMPLE_U8: v = static_cast<const unsigned char*>(src)[i]; break;
+                case WIV_SAMPLE_U16: v = static_cast<const unsigned short*>(src)[i]; break;
+                default: v = static_cast<const float*>(src)[i]; break;
+            }
+            const double g = std::clamp((v - lo) * scale, 0.0, 255.0);
+            unsigned char* px = windowed.data() + i * 4;
+            px[0] = px[1] = px[2] = static_cast<unsigned char>(g + 0.5);
+            px[3] = 255;
+        }
+        QImage full(windowed.data(), loaded->width, loaded->height, loaded->width * 4, QImage::Format_RGBA8888);
+        return full.scaled(kThumbnailDecodeSize, kThumbnailDecodeSize, Qt::KeepAspectRatio, Qt::SmoothTransformation).copy();
+    }
+
     QImage full(loaded->rgba.data(), loaded->width, loaded->height, loaded->width * 4, QImage::Format_RGBA8888);
     return full.scaled(kThumbnailDecodeSize, kThumbnailDecodeSize, Qt::KeepAspectRatio, Qt::SmoothTransformation).copy();
 }
@@ -223,7 +250,7 @@ QString thumbnailCacheDir(const QString& path)
 
 QString thumbnailCachePath(const QString& path)
 {
-    return thumbnailCacheDir(path) + QLatin1Char('/') + QFileInfo(path).fileName() + QStringLiteral(".v3.png") /* v2: .giv thumbnails include the $image; v3: .svg thumbnails fit the drawn content, not the page */;
+    return thumbnailCacheDir(path) + QLatin1Char('/') + QFileInfo(path).fileName() + QStringLiteral(".v4.png") /* v4: raw-sample images use the viewer's min..max window; v2: .giv thumbnails include the $image; v3: .svg thumbnails fit the drawn content, not the page */;
 }
 
 QImage loadCachedThumbnail(const QString& path)
@@ -256,6 +283,11 @@ QImage decodeThumbnail(const QString& path)
 }
 
 } // namespace
+
+void storeFileThumbnail(const QString& path, const QImage& image)
+{
+    if (!image.isNull()) saveCachedThumbnail(path, image);
+}
 
 QImage decodeFileThumbnail(const QString& path, bool regenerate)
 {

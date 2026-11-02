@@ -250,16 +250,35 @@ void ThumbnailStrip::regenerate(const QList<int>& rows)
     loadVisibleThumbnails(); // the rest follow as they scroll into view
 }
 
+void ThumbnailStrip::setThumbnail(int row, const QImage& image)
+{
+    if (row < 0 || row >= count() || image.isNull()) return;
+    QListWidgetItem* it = item(row);
+    it->setData(kSerialRole, it->data(kSerialRole).toInt() + 1); // drop any decode still in flight
+    it->setData(kImageRole, image);
+    it->setData(kThumbRole, makeSquareThumbnail(image, thumbSize_, devicePixelRatioF(), background_));
+    requested_.insert(row);
+    viewport()->update();
+}
+
 void ThumbnailStrip::contextMenuEvent(QContextMenuEvent* event)
 {
     QListWidgetItem* under = itemAt(event->pos());
     QMenu menu(this);
+    // Only the open image has a current view; .giv/.svg are scenes, not images with a contrast window.
+    const bool isOpenImage = under && row(under) == currentRow() && !files_[row(under)].endsWith(".giv", Qt::CaseInsensitive) &&
+                             !files_[row(under)].endsWith(".svg", Qt::CaseInsensitive);
+    QAction* fromView = isOpenImage ? menu.addAction(tr("Update Thumbnail from Current View")) : nullptr;
     QAction* one = menu.addAction(tr("Regenerate Thumbnail"));
     one->setEnabled(under != nullptr);
     QAction* all = menu.addAction(tr("Regenerate All Thumbnails"));
     all->setEnabled(count() > 0);
     QAction* chosen = menu.exec(event->globalPos());
-    if (chosen == one && under)
+    if (fromView && chosen == fromView)
+    {
+        emit updateFromViewRequested(row(under));
+    }
+    else if (chosen == one && under)
     {
         regenerate({row(under)});
     }

@@ -23,6 +23,7 @@
 #include <vsgQt/Window.h>
 
 #include <QColor>
+#include <QImage>
 #include <QResizeEvent>
 #include <QSize>
 #include <QTimer>
@@ -271,6 +272,10 @@ public:
     {
         return loadedImages_.empty() || loadedImages_.front().isPreview() ? nullptr : &loadedImages_.front();
     }
+
+    // The image as currently shown (slice, contrast window and colour table
+    // applied), scaled to fit maxSize; null if no full image is displayed.
+    QImage currentViewImage(int maxSize);
 
     // True while the displayed image is a quick low-resolution preview
     // standing in for a full decode that has not finished yet; the owner

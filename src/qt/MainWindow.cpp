@@ -158,6 +158,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         });
     }
     connect(thumbnailStrip_, &ThumbnailStrip::fileClicked, this, &MainWindow::goToDirectoryIndex);
+    connect(thumbnailStrip_, &ThumbnailStrip::updateFromViewRequested, this, [this](int row) {
+        if (row < 0 || row >= directoryFiles_.size()) return;
+        const QImage image = viewport_->currentViewImage(ThumbnailStrip::kMaxThumbSize);
+        if (image.isNull()) return;
+        storeFileThumbnail(directoryFiles_[row], image);
+        thumbnailStrip_->setThumbnail(row, image);
+    });
     connect(thumbnailStrip_, &ThumbnailStrip::stepRequested, this, [this](int dir) {
         if (dir > 0) goNextImage(); else goPreviousImage();
     });
