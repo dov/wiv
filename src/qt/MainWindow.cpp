@@ -1932,7 +1932,7 @@ QString MainWindow::buildInfoText() const
         }
         row("Decoded memory", humanBytes(mem));
 
-        // ---- EXIF (JPEG/TIFF/PNG/WebP that carry it) ----
+        // ---- EXIF (JPEG/TIFF/PNG/WebP) and float-format headers (HDR/PFM/EXR) ----
         if (fi.exists() && (path != exifPath_ || fi.lastModified() != exifMtime_))
         {
             exifPath_ = path;
@@ -1941,7 +1941,7 @@ QString MainWindow::buildInfoText() const
         }
         if (fi.exists() && !exifEntries_.empty())
         {
-            section("EXIF");
+            section("Metadata");
             for (const auto& e : exifEntries_)
                 row(QString::fromStdString(e.name), QString::fromStdString(e.value));
         }
