@@ -41,6 +41,12 @@ public:
     // (the owner says no while the left button belongs to another tool).
     std::function<bool()> leftDragPans;
 
+    // The extent, in device pixels, the camera's projection actually spans
+    // (smaller than the window's when part of it is clipped, e.g. under a
+    // scrollbar). Pixel<->world math must use it, or the point grabbed by a
+    // drag slides away from the cursor. Defaults to the window's extent.
+    std::function<VkExtent2D()> viewportExtent;
+
     // Called (if set) when a wheel step starts or retargets a zoom motion, so
     // the owner can call advance() every frame until it returns false.
     std::function<void()> onZoomStarted;
@@ -108,6 +114,7 @@ private:
     void pan(int32_t dxPix, int32_t dyPix, const VkExtent2D& extent);
     void zoom(double factor, int32_t screenX, int32_t screenY, const VkExtent2D& extent);
     static bool shiftHeld();
+    VkExtent2D extentOf(const vsg::ref_ptr<vsg::Window>& window) const;
 
     // Shared with apply(MoveEvent&)'s cursor-readout math: screen pixel ->
     // world-space (x,y), y-flipped to match the rest of the app's convention.

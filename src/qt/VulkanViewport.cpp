@@ -1,6 +1,8 @@
 #include "VulkanViewport.h"
 #include "ToggleCapture.h"
 
+#include <QFileInfo>
+#include <QSettings>
 #include <QMouseEvent>
 #include <QNativeGestureEvent>
 #include <QWheelEvent>
@@ -763,10 +765,19 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     hasScene_ = true;
     animFrame_ = 0; // the build below then shows $frame 0 (see startMarkAnimation())
     currentImageIndex_ = 0;
+    viewKeyFallback_ = paths.empty() ? std::string() : paths.front();
+    scenePaths_ = paths;
+    // With Remember View Per File, a multi-image scene reopens on the image it was left on.
+    if (rememberView_ && loadedImageNames_.size() > 1 && !scenePaths_.empty())
+        if (auto* store = stateStore())
+            if (auto saved = store->loadImageIndex(scenePaths_); saved && *saved >= 0 && *saved < static_cast<int>(loadedImageNames_.size()))
+            {
+                currentImageIndex_ = *saved;
+                spdlog::info("Restored remembered image {}/{}", currentImageIndex_ + 1, loadedImageNames_.size());
+            }
     decodeCurrentImage();
 
     auto buildStart = std::chrono::steady_clock::now();
-    viewKeyFallback_ = paths.empty() ? std::string() : paths.front();
     if (!rebuildSceneGraph(error, /*isInitialLoad=*/true)) return false;
     tryRestoreView();
     double buildMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - buildStart).count();
@@ -945,6 +956,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     {
         panZoom_ = giv::PanZoomHandler::create(camera_);
         panZoom_->leftDragPans = [this]() { return mouse_.leftDragPans && !measureEnabled_; };
+        panZoom_->viewportExtent = [this]() { return viewportExtent(); };
         panZoom_->onCursorMove = [this](double x, double y) { emit cursorWorldPosition(x, y); };
         panZoom_->onViewChanged = [this]() {
             cancelViewAnimation(); // user input takes over
@@ -1490,11 +1502,18 @@ void VulkanViewport::stepPart(int dir)
         dir > 0 ? nextImage() : previousImage();
 }
 
+void VulkanViewport::rememberSlice()
+{
+    if (!rememberView_) return;
+    if (auto* store = stateStore()) store->saveSlice(currentImageName(), currentSlice_);
+}
+
 void VulkanViewport::nextSlice()
 {
     const int count = sliceCount();
     if (count < 2) return;
     currentSlice_ = (currentSlice_ + 1) % count;
+    rememberSlice();
     recomputeDisplayImage();
     QString error;
     if (!applySlice(&error))
@@ -1507,6 +1526,7 @@ void VulkanViewport::previousSlice()
     const int count = sliceCount();
     if (count < 2) return;
     currentSlice_ = (currentSlice_ - 1 + count) % count;
+    rememberSlice();
     recomputeDisplayImage();
     QString error;
     if (!applySlice(&error))
@@ -1590,7 +1610,15 @@ bool VulkanViewport::decodeImageAt(int index, int page, bool allowPreview)
     const double perfGet = perfMs();
     currentImageIndex_ = index;
     currentPage_ = page;
+    // A volume reopens on the slice it was left on (with Remember View Per File).
     currentSlice_ = 0;
+    if (rememberView_ && img->depth > 1 && page == 0)
+        if (auto* store = stateStore())
+            if (auto saved = store->loadSlice(name); saved && *saved >= 0 && *saved < img->depth)
+            {
+                currentSlice_ = *saved;
+                spdlog::info("Restored remembered slice {}/{}", currentSlice_ + 1, img->depth);
+            }
     loadedImages_ = {*img};
     currentImageSize_ = std::make_pair(static_cast<double>(img->width), static_cast<double>(img->height));
     // "$image f.gif frame=N": show frame N of the multi-frame file.
@@ -1983,7 +2011,7 @@ VulkanViewport::ContrastState VulkanViewport::currentContrastState()
     if (loadedImages_.empty()) return kEmpty;
 
     const giv::LoadedImage& src = loadedImages_.front();
-    const std::string path = currentImageName();
+    const std::string path = giv::ImageStateStore::canonicalPath(currentImageName());
     auto it = contrastState_.find(path);
     if (it == contrastState_.end())
     {
@@ -1994,6 +2022,22 @@ VulkanViewport::ContrastState VulkanViewport::currentContrastState()
         defaultState.max = (!autoContrast_ && hasLastContrast_) ? lastContrastMax_ : src.sampleMax;
         defaultState.colormapId = lastColormapId_;
         defaultState.colormapEnabled = lastColormapEnabled_;
+        // What the user set for this file in an earlier run. The contrast
+        // window only comes back with Auto Contrast off, as within a run.
+        if (auto* store = stateStore())
+            if (auto saved = store->loadContrast(path))
+            {
+                if (saved->colormapId >= 0 && saved->colormapId < static_cast<int>(giv::colormaps::Id::Count))
+                {
+                    defaultState.colormapId = static_cast<giv::colormaps::Id>(saved->colormapId);
+                    defaultState.colormapEnabled = saved->colormapEnabled;
+                }
+                if (!autoContrast_ && saved->max > saved->min)
+                {
+                    defaultState.min = saved->min;
+                    defaultState.max = saved->max;
+                }
+            }
         it = contrastState_.emplace(path, defaultState).first;
     }
     return it->second;
@@ -2034,7 +2078,9 @@ void VulkanViewport::setContrast(float min, float max)
     ContrastState state = currentContrastState();
     state.min = min;
     state.max = max;
-    contrastState_[currentImageName()] = state;
+    contrastState_[giv::ImageStateStore::canonicalPath(currentImageName())] = state;
+    if (auto* store = stateStore())
+        store->saveContrast(currentImageName(), {state.min, state.max, static_cast<int>(state.colormapId), state.colormapEnabled});
     lastContrastMin_ = min;
     lastContrastMax_ = max;
     hasLastContrast_ = true;
@@ -2059,7 +2105,9 @@ void VulkanViewport::setColormap(giv::colormaps::Id id, bool enabled)
     ContrastState state = currentContrastState();
     state.colormapId = id;
     state.colormapEnabled = enabled;
-    contrastState_[currentImageName()] = state;
+    contrastState_[giv::ImageStateStore::canonicalPath(currentImageName())] = state;
+    if (auto* store = stateStore())
+        store->saveContrast(currentImageName(), {state.min, state.max, static_cast<int>(state.colormapId), state.colormapEnabled});
     lastColormapId_ = id;
     lastColormapEnabled_ = enabled;
 
@@ -2139,6 +2187,8 @@ void VulkanViewport::switchToImage(int index)
         return;
     }
     spdlog::info("Switched to image {}/{}: {}", index + 1, loadedImageNames_.size(), loadedImageNames_[static_cast<size_t>(index)]);
+    if (rememberView_ && !scenePaths_.empty())
+        if (auto* store = stateStore()) store->saveImageIndex(scenePaths_, index);
     QString error;
     deferScrollBarUpdate_ = autoFit_;
     bool rebuilt = rebuildSceneGraph(&error, /*isInitialLoad=*/false);
@@ -2632,6 +2682,17 @@ void VulkanViewport::toggleActualFit(QPointF devicePos)
                         viewportExtent(), /*animate=*/true, /*replaceMotion=*/true);
 }
 
+giv::ImageStateStore* VulkanViewport::stateStore()
+{
+    if (!stateStore_)
+    {
+        const QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+        const QString dir = QFileInfo(settings.fileName()).absolutePath();
+        stateStore_ = std::make_unique<giv::ImageStateStore>((dir + "/state.db").toStdString());
+    }
+    return stateStore_->isOpen() ? stateStore_.get() : nullptr;
+}
+
 void VulkanViewport::setRememberViewPerFile(bool enable)
 {
     rememberView_ = enable;
@@ -2642,7 +2703,7 @@ void VulkanViewport::setRememberViewPerFile(bool enable)
 std::string VulkanViewport::viewKey() const
 {
     std::string name = currentImageName();
-    return name.empty() ? viewKeyFallback_ : name;
+    return giv::ImageStateStore::canonicalPath(name.empty() ? viewKeyFallback_ : name);
 }
 
 // Remembers the displayed file's view if the user changed it (a fit view is
@@ -2659,9 +2720,12 @@ void VulkanViewport::saveCurrentView()
     if (!viewDirty_ || !lookAt || extent.width == 0 || extent.height == 0 || width <= 0.0 || height <= 0.0)
     {
         savedViews_.erase(key);
+        if (auto* store = stateStore()) store->clearView(key);
         return;
     }
-    savedViews_[key] = {lookAt->center.x, lookAt->center.y, extent.width / width, extent.height / height};
+    const SavedView view{lookAt->center.x, lookAt->center.y, extent.width / width, extent.height / height};
+    savedViews_[key] = view;
+    if (auto* store = stateStore()) store->saveView(key, {view.centerX, view.centerY, view.scaleX, view.scaleY});
 }
 
 // Puts back the view remembered for the file now displayed, if any. The
@@ -2671,7 +2735,14 @@ bool VulkanViewport::tryRestoreView()
 {
     if (!rememberView_ || !camera_ || !projection_ || !window_ || !window_->windowAdapter) return false;
     auto it = savedViews_.find(viewKey());
-    if (it == savedViews_.end()) return false;
+    if (it == savedViews_.end())
+    {
+        // Not seen this run: maybe in an earlier one.
+        auto* store = stateStore();
+        auto saved = store ? store->loadView(viewKey()) : std::nullopt;
+        if (!saved) return false;
+        it = savedViews_.emplace(viewKey(), SavedView{saved->centerX, saved->centerY, saved->scaleX, saved->scaleY}).first;
+    }
     auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
     const auto extent = viewportExtent();
     if (!lookAt || extent.width == 0 || extent.height == 0) return false;

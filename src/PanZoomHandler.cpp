@@ -89,7 +89,7 @@ void PanZoomHandler::apply(vsg::MoveEvent& event)
             double speed = shiftHeld() ? 5.0 : 1.0;
             double amount = -static_cast<double>(zoomDy) * 0.01 * speed;
             double factor = std::pow(0.9, amount);
-            zoom(factor, zoomAnchorX_, zoomAnchorY_, window->extent2D());
+            zoom(factor, zoomAnchorX_, zoomAnchorY_, extentOf(window));
             if (onViewChanged) onViewChanged();
         }
     }
@@ -97,7 +97,7 @@ void PanZoomHandler::apply(vsg::MoveEvent& event)
     if (!dragging_) return;
 
     if (dx == 0 && dy == 0) return;
-    pan(dx, dy, window->extent2D());
+    pan(dx, dy, extentOf(window));
     if (onViewChanged) onViewChanged();
 }
 
@@ -117,7 +117,7 @@ void PanZoomHandler::apply(vsg::ScrollWheelEvent& event)
     // lastX_/lastY_, which apply(MoveEvent&) keeps current on every hover
     // move (not just while dragging); (0,0) only if a scroll arrives before
     // any move has ever been reported, which zooms around the top-left.
-    zoomAbout(factor, lastX_, lastY_, window->extent2D());
+    zoomAbout(factor, lastX_, lastY_, extentOf(window));
 }
 
 void PanZoomHandler::zoomAbout(double factor, int32_t x, int32_t y, const VkExtent2D& extent, bool animate,
@@ -170,7 +170,7 @@ bool PanZoomHandler::advance()
 bool PanZoomHandler::screenToWorld(int32_t screenX, int32_t screenY, const vsg::ref_ptr<vsg::Window>& window,
                                     double& outX, double& outY) const
 {
-    auto extent = window->extent2D();
+    auto extent = extentOf(window);
     auto ortho = camera_->projectionMatrix.cast<vsg::Orthographic>();
     auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
     if (!ortho || !lookAt || extent.width == 0 || extent.height == 0) return false;
@@ -182,6 +182,11 @@ bool PanZoomHandler::screenToWorld(int32_t screenX, int32_t screenY, const vsg::
     outX = lookAt->center.x + o.x;
     outY = -(lookAt->center.y + o.y);
     return true;
+}
+
+VkExtent2D PanZoomHandler::extentOf(const vsg::ref_ptr<vsg::Window>& window) const
+{
+    return viewportExtent ? viewportExtent() : window->extent2D();
 }
 
 bool PanZoomHandler::shiftHeld()
