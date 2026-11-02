@@ -163,6 +163,11 @@ int ThumbnailStrip::rowHeight() const
     return thumbSize_ + 12 + horizontalScrollBar()->sizeHint().height() + 4;
 }
 
+void ThumbnailStrip::stepThumbSize(int direction)
+{
+    setThumbSize(thumbSize_ + (direction > 0 ? 1 : -1) * std::max(4, thumbSize_ / 8));
+}
+
 void ThumbnailStrip::setThumbSize(int size)
 {
     size = std::clamp(size, kMinThumbSize, kMaxThumbSize);
@@ -272,7 +277,7 @@ void ThumbnailStrip::wheelEvent(QWheelEvent* event)
     if (event->modifiers() & Qt::ControlModifier)
     {
         const int dy = event->angleDelta().y();
-        if (dy != 0) setThumbSize(thumbSize_ + (dy > 0 ? 1 : -1) * std::max(4, thumbSize_ / 8));
+        if (dy != 0) stepThumbSize(dy > 0 ? 1 : -1);
         event->accept();
         return;
     }

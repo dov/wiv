@@ -24,6 +24,7 @@
 #include <vector>
 
 class QHBoxLayout;
+class QVBoxLayout;
 class QLabel;
 class QAction;
 class QMenu;
@@ -61,6 +62,7 @@ public:
     // Loads `paths` into the viewport (used for files given on the command
     // line at startup).
     void loadFiles(const std::vector<std::string>& paths);
+
 
     // Starts the json-rpc remote-control server (see RpcServer.h) on
     // 127.0.0.1:port. Not started unless explicitly requested (--rpc-port),
@@ -229,6 +231,7 @@ private:
     ThumbnailStrip* thumbnailStrip_ = nullptr;
     QWidget* bottomBar_ = nullptr;      // navigation buttons + thumbnail strip
     QHBoxLayout* navButtonRow_ = nullptr;
+    QVBoxLayout* thumbZoomColumn_ = nullptr; // magnifier buttons right of the strip
     // Rewind / play-pause / stop buttons, scrubber and frame label next to the
     // navigation buttons; visible only for an animated image.
     QWidget* animBar_ = nullptr;
@@ -238,6 +241,8 @@ private:
     QIcon playIcon_, pauseIcon_;
     void buildNavigationBar();
     QAction* thumbnailStripAction_ = nullptr;
+    QAction* thumbLargerAction_ = nullptr;
+    QAction* thumbSmallerAction_ = nullptr;
     PrefetchPool* prefetchPool_ = nullptr; // persistent decode workers
     int lastNavigationStep_ = 1; // +1/-1: which side to prefetch further on
     void goToDirectoryIndex(int index);

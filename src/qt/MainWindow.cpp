@@ -132,7 +132,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     navButtonRow_->setSpacing(4);
     bottomLayout->addLayout(navButtonRow_);
     thumbnailStrip_ = new ThumbnailStrip(bottomBar_);
-    bottomLayout->addWidget(thumbnailStrip_);
+    auto* stripRow = new QHBoxLayout;
+    stripRow->setSpacing(2);
+    stripRow->addWidget(thumbnailStrip_, 1);
+    thumbZoomColumn_ = new QVBoxLayout;
+    thumbZoomColumn_->setContentsMargins(0, 0, 2, 0);
+    stripRow->addLayout(thumbZoomColumn_);
+    bottomLayout->addLayout(stripRow);
     bottomBar_->hide();
     splitter->addWidget(canvasPane);
     splitter->addWidget(bottomBar_);
@@ -401,6 +407,13 @@ void MainWindow::buildMenus()
     stepZoomInAction->setShortcut(QKeySequence("Ctrl+PgUp"));
     auto stepZoomOutAction = viewMenu->addAction("Step Zoom Out", viewport_, &VulkanViewport::stepZoomOut);
     stepZoomOutAction->setShortcut(QKeySequence("Ctrl+PgDown"));
+
+    auto thumbLargerAction = viewMenu->addAction("Larger Thumbnails", this, [this]() { thumbnailStrip_->stepThumbSize(+1); });
+    thumbLargerAction->setShortcut(QKeySequence("Ctrl+Shift+PgUp"));
+    auto thumbSmallerAction = viewMenu->addAction("Smaller Thumbnails", this, [this]() { thumbnailStrip_->stepThumbSize(-1); });
+    thumbSmallerAction->setShortcut(QKeySequence("Ctrl+Shift+PgDown"));
+    thumbLargerAction_ = thumbLargerAction;
+    thumbSmallerAction_ = thumbSmallerAction;
 
     auto applyThumbnailStrip = [this](bool show) {
         if (toggleCaptureEnabled()) spdlog::info("[trace] strip setVisible({})", show);
@@ -1055,6 +1068,37 @@ void MainWindow::buildNavigationBar()
     navButtonRow_->addSpacing(14);
     auto* full = makeButton(icon(fa::fa_up_right_and_down_left_from_center), {}, "Full screen");
     auto* actual = makeButton(QIcon(), "1:1", "Actual pixels");
+
+    // Thumbnail size: magnifier buttons in a column right of the strip,
+    // disabled at the size limits.
+    auto addZoomButton = [&](int glyph, const QString& tip, QAction* action) {
+        auto* b = new QToolButton(bottomBar_);
+        b->setAutoRaise(true);
+        b->setFocusPolicy(Qt::NoFocus);
+        b->setIcon(icon(glyph));
+        // The action's shortcut is rebindable, so read it rather than hardcode it.
+        auto updateTip = [b, tip, action]() {
+            const QString key = action->shortcut().toString(QKeySequence::NativeText);
+            b->setToolTip(tip + (key.isEmpty() ? QString() : " (" + key + ")") +
+                          "\nCtrl+wheel over the thumbnails does the same");
+        };
+        updateTip();
+        connect(action, &QAction::changed, b, updateTip);
+        thumbZoomColumn_->addWidget(b);
+        connect(b, &QToolButton::clicked, action, &QAction::trigger);
+        return b;
+    };
+    auto* thumbLarger = addZoomButton(fa::fa_magnifying_glass_plus, "Larger thumbnails", thumbLargerAction_);
+    auto* thumbSmaller = addZoomButton(fa::fa_magnifying_glass_minus, "Smaller thumbnails", thumbSmallerAction_);
+    thumbZoomColumn_->addStretch(1);
+    auto updateThumbZoom = [this, thumbLarger, thumbSmaller](int size) {
+        thumbLarger->setEnabled(size < ThumbnailStrip::kMaxThumbSize);
+        thumbSmaller->setEnabled(size > ThumbnailStrip::kMinThumbSize);
+        thumbLargerAction_->setEnabled(size < ThumbnailStrip::kMaxThumbSize);
+        thumbSmallerAction_->setEnabled(size > ThumbnailStrip::kMinThumbSize);
+    };
+    connect(thumbnailStrip_, &ThumbnailStrip::thumbSizeChanged, this, updateThumbZoom);
+    updateThumbZoom(thumbnailStrip_->thumbSize());
 
     // Animation controls: shown only while the current file is an animation.
     animBar_ = new QWidget(bottomBar_);

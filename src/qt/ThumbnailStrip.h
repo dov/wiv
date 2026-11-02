@@ -30,6 +30,8 @@ public:
     void setFiles(const QStringList& files, int current);
     // Thumbnail edge in device-independent pixels; clamped, and persisted by the caller.
     void setThumbSize(int size);
+    // One zoom step, as a Ctrl+wheel notch: +1 larger, -1 smaller.
+    void stepThumbSize(int direction);
     int thumbSize() const { return thumbSize_; }
     // Height of exactly one row of thumbnails (the pane's minimum).
     int rowHeight() const;
