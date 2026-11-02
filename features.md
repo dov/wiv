@@ -30,7 +30,7 @@ in Edit > Preferences > Keyboard.
 | TIFF | `.tif .tiff` | `tiff` (libtiff) | multi-page; orientation-aware; raw sample data |
 | WebP | `.webp` | `webp` | animated WebP |
 | HEIC/HEIF/AVIF | `.heic .heif .hif .avif .avifs` | `heif` (libheif, optional) | AVIF sequences need libheif 1.20+ |
-| JPEG XL | `.jxl` | `jxl` (libjxl, optional) | first frame of an animation only |
+| JPEG XL | `.jxl` | `jxl` (libjxl, optional) | animated JXL plays (frames coalesced; rotated animations show first frame only) |
 | Camera RAW | `.3fr .arw .cr2 .cr3 .crw .dcr .dng .erf .fff .gpr .iiq .kdc .mef .mos .mrw .nef .nrw .orf .pef .raf .raw .rw2 .rwl .sr2 .srf .srw .x3f` | `raw` (LibRaw, optional) | |
 | PGM/PPM | `.pgm .ppm` | `pgm` | binary; 8/16-bit grayscale keeps raw samples |
 | Radiance HDR, PFM | `.hdr .pfm` | `hdr` (own RGBE/PFM parsers) | all Radiance axis orientations; float data clamped + sRGB-encoded for display; grayscale PFM keeps float samples |
@@ -101,7 +101,7 @@ in Edit > Preferences > Keyboard.
 
 ## Animation
 
-- GIF, APNG, animated WebP, AVIF sequences play automatically, honouring
+- GIF, APNG, animated WebP, animated JPEG XL, AVIF sequences play automatically, honouring
   per-frame delays and loop count; 768 MiB frame budget (larger animations
   show first frame only).
 - Controls: play/pause (`K`/`Space`), stop (`X`), restart (`Shift+X`),
@@ -236,7 +236,7 @@ proven; re-check before relying on an item.
 
 - No image editing (crop, resize, adjust colour, annotate), saving or export.
 - No slideshow mode, no print support, no ICC colour management.
-- No video playback; no JPEG XL animation (first frame only).
+- No video playback.
 - No EXIF editing; EXIF only for JPEG/TIFF/PNG/WebP.
 - No remote/network file loading beyond local paths.
 - No concave-polygon earcut, no multi-value dash patterns in `.giv`.
