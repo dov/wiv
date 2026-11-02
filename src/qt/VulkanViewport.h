@@ -19,6 +19,7 @@
 #include "ViewFlip.h"
 #include "SceneBuilder.h"
 
+#include <functional>
 #include <vsgQt/Window.h>
 
 #include <QColor>
@@ -383,6 +384,18 @@ private:
     vsg::ref_ptr<vsg::WindowTraits> traits_;
     vsg::ref_ptr<GivViewer> viewer_;
     vsgQt::Window* window_ = nullptr; // owned by Qt (child of the container widget)
+    // clip_ is the cell in the layout; container_ (the native render window) is a
+    // child of it kept at a fixed, screen-sized height and masked down to clip_'s
+    // size. Growing or shrinking clip_ (thumbnail strip, splitter drags) then
+    // never resizes the native window or its swapchain, which is what left a
+    // black, unpresented area behind. See layoutRenderWindow().
+    QWidget* clip_ = nullptr;
+    bool maskShrinkPending_ = false;
+    bool layoutSettled_ = false; // false while the window is first being shown, see layoutRenderWindow()
+    bool layoutSettleTimerStarted_ = false;
+    int maskW_ = 0, maskH_ = 0; // size of the mask currently applied
+    int visW_ = 0, visH_ = 0;   // visible size the camera works in (see applyMask())
+    void applyMask();
     QWidget* container_ = nullptr;
     vsg::ref_ptr<vsg::Options> options_;
     std::string shaderDir_;
@@ -616,6 +629,13 @@ private:
     // renderArea from a stale baseline instead of snapping to the real
     // extent, which is what was causing the non-isotropic stretch).
     void syncRenderExtent(VkExtent2D extent);
+
+    // The part of the (taller) native window that is actually shown: what the
+    // camera, projection and mouse mapping work in. Equals extent2D() whenever
+    // the window is not taller than clip_.
+    VkExtent2D viewportExtent() const;
+    // Sizes container_ and masks the native window to clip_'s area.
+    void layoutRenderWindow();
 
     // syncRenderExtent() plus rescaling the projection's visible extents to
     // `extent` at the current zoom - see its definition for why it is also
