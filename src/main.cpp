@@ -9,6 +9,7 @@
 #include "qt/MainWindow.h"
 
 #include <QApplication>
+#include "qt/PreferencesDialog.h"
 #include <QIcon>
 #include <QKeyEvent>
 #include <QCommandLineParser>
@@ -111,6 +112,7 @@ int main(int argc, char** argv)
     QApplication::setOrganizationName("wiv");
     QApplication::setApplicationName("wiv");
     QApplication::setWindowIcon(QIcon(":/wiv-app-icon.png"));
+    givqt::PreferencesDialog::applyTheme();
 
     // Diagnostic: WIV_LOG_KEYS=1 logs every key press with the modifiers Qt
     // sees and the native virtual key / scan code (e.g. to debug key

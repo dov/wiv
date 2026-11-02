@@ -14,7 +14,12 @@ struct MouseSettings
     // Back / forward mouse buttons.
     enum class SideButtons { Navigate, StepZoom, Nothing };
 
+    // Click of the wheel (middle button, without dragging).
+    enum class MiddleClick { Nothing, FullScreen };
+
     Wheel wheel = Wheel::Zoom;
+    MiddleClick middleClick = MiddleClick::Nothing;
+    bool leftDragPans = false;       // left-drag pans too (not while measuring)
     SideButtons sideButtons = SideButtons::Navigate;
     bool swapSideButtons = false;    // back = next image / step zoom in
     bool tiltNavigates = true;       // horizontal wheel tilt pages through images

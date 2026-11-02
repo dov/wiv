@@ -1,5 +1,8 @@
 #include "PreferencesDialog.h"
 
+#include <QGuiApplication>
+#include <QStyleHints>
+
 #include "ExternalApps.h"
 #include "ImagePluginHost.h"
 #include "InstalledApps.h"
@@ -48,10 +51,28 @@ MouseSettings PreferencesDialog::loadMouseSettings()
     m.wheel = s.value("mouse/wheel", 0).toInt() == 1 ? MouseSettings::Wheel::Navigate : MouseSettings::Wheel::Zoom;
     const int sb = std::clamp(s.value("mouse/sideButtons", 0).toInt(), 0, 2);
     m.sideButtons = static_cast<MouseSettings::SideButtons>(sb);
+    m.middleClick = s.value("mouse/middleClick", 0).toInt() == 1 ? MouseSettings::MiddleClick::FullScreen
+                                                                 : MouseSettings::MiddleClick::Nothing;
+    m.leftDragPans = s.value("mouse/leftDragPans", false).toBool();
     m.swapSideButtons = s.value("mouse/swapSideButtons", false).toBool();
     m.tiltNavigates = s.value("mouse/tiltNavigates", true).toBool();
     m.doubleClickToggles = s.value("mouse/doubleClickToggles", true).toBool();
     return m;
+}
+
+int PreferencesDialog::loadTheme()
+{
+    return std::clamp(settings().value("view/theme", 0).toInt(), 0, 2);
+}
+
+void PreferencesDialog::applyTheme()
+{
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+    const int t = loadTheme();
+    QGuiApplication::styleHints()->setColorScheme(t == 1 ? Qt::ColorScheme::Light
+                                                  : t == 2 ? Qt::ColorScheme::Dark
+                                                           : Qt::ColorScheme::Unknown);
+#endif
 }
 
 NavigationView PreferencesDialog::loadNavigationView()
@@ -176,6 +197,16 @@ PreferencesDialog::PreferencesDialog(const QList<QAction*>& bindable, QWidget* p
     navViewCombo_->setCurrentIndex(navViewCombo_->findData(static_cast<int>(loadNavigationView())));
     form->addRow("When switching images:", navViewCombo_);
 
+    themeCombo_ = new QComboBox(this);
+    themeCombo_->addItem("Follow the system", 0);
+    themeCombo_->addItem("Light", 1);
+    themeCombo_->addItem("Dark", 2);
+    themeCombo_->setCurrentIndex(loadTheme());
+#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
+    themeCombo_->setEnabled(false);
+#endif
+    form->addRow("Theme:", themeCombo_);
+
     auto buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(buttons, &QDialogButtonBox::accepted, this, [this]() {
         if (!saveShortcuts()) return; // conflicting keys: stay open
@@ -215,6 +246,16 @@ QWidget* PreferencesDialog::buildMouseTab()
     wheelCombo_->setCurrentIndex(wheelCombo_->findData(static_cast<int>(m.wheel)));
     form->addRow("Mouse wheel:", wheelCombo_);
 
+    middleClickCombo_ = new QComboBox(page);
+    middleClickCombo_->addItem("Nothing", static_cast<int>(MouseSettings::MiddleClick::Nothing));
+    middleClickCombo_->addItem("Toggle full screen", static_cast<int>(MouseSettings::MiddleClick::FullScreen));
+    middleClickCombo_->setCurrentIndex(middleClickCombo_->findData(static_cast<int>(m.middleClick)));
+    form->addRow("Wheel click:", middleClickCombo_);
+
+    leftDragCheck_ = new QCheckBox("Left-drag pans the image (not while measuring)", page);
+    leftDragCheck_->setChecked(m.leftDragPans);
+    form->addRow("", leftDragCheck_);
+
     sideButtonsCombo_ = new QComboBox(page);
     sideButtonsCombo_->addItem("Next / previous image", static_cast<int>(MouseSettings::SideButtons::Navigate));
     sideButtonsCombo_->addItem("Step zoom in / out", static_cast<int>(MouseSettings::SideButtons::StepZoom));
@@ -236,7 +277,7 @@ QWidget* PreferencesDialog::buildMouseTab()
 
     auto layout = new QVBoxLayout(page);
     layout->addLayout(form);
-    layout->addWidget(new QLabel("Middle-drag pans, right-drag zooms, Shift+wheel zooms faster and Alt+wheel "
+    layout->addWidget(new QLabel("Middle-drag pans (left-drag too, if enabled), right-drag zooms, Shift+wheel zooms faster and Alt+wheel "
                                  "scales quivers, as in giv."));
     layout->addStretch();
     return page;
@@ -505,9 +546,12 @@ void PreferencesDialog::save()
     auto s = settings();
     s.setValue("backgroundColor", backgroundColor_);
     s.setValue("msaaSamples", msaaSamples());
+    s.setValue("view/theme", themeCombo_->currentData().toInt());
     s.setValue("view/navigation", navViewCombo_->currentData().toInt());
     s.setValue("mouse/wheel", wheelCombo_->currentData().toInt());
     s.setValue("mouse/sideButtons", sideButtonsCombo_->currentData().toInt());
+    s.setValue("mouse/middleClick", middleClickCombo_->currentData().toInt());
+    s.setValue("mouse/leftDragPans", leftDragCheck_->isChecked());
     s.setValue("mouse/swapSideButtons", swapSideCheck_->isChecked());
     s.setValue("mouse/tiltNavigates", tiltCheck_->isChecked());
     s.setValue("mouse/doubleClickToggles", dblClickCheck_->isChecked());
@@ -527,6 +571,7 @@ void PreferencesDialog::save()
         if (!ext.isEmpty()) apps.rules.append({ext, extRuleTable_->item(row, 1)->text().trimmed()});
     }
     ExternalApps::save(apps);
+    applyTheme();
     emit mouseSettingsChanged(loadMouseSettings());
     emit navigationViewChanged(loadNavigationView());
 }

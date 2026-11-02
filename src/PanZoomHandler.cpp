@@ -16,9 +16,10 @@ void PanZoomHandler::apply(vsg::ButtonPressEvent& event)
     // giv uses middle-mouse-button-drag to pan (standard image-viewer
     // convention); button 2 is the middle button in vsg's raw button
     // numbering (1=left, 2=middle, 3=right), matching vsg::BUTTON_MASK_2.
-    if (event.button == 2)
+    if (event.button == 2 || (event.button == 1 && leftDragPans && leftDragPans()))
     {
         dragging_ = true;
+        dragButton_ = event.button;
         lastX_ = event.x;
         lastY_ = event.y;
     }
@@ -43,7 +44,7 @@ void PanZoomHandler::apply(vsg::ButtonPressEvent& event)
 
 void PanZoomHandler::apply(vsg::ButtonReleaseEvent& event)
 {
-    if (event.button == 2) dragging_ = false;
+    if (event.button == dragButton_) dragging_ = false;
     if (event.button == 3) zoomDragging_ = false;
 }
 
@@ -66,7 +67,7 @@ void PanZoomHandler::apply(vsg::MoveEvent& event)
     // (not just deliberate drags) into an unwanted pan/zoom. event.mask
     // reports which buttons are *actually* still down on every move, so
     // resync against it rather than trusting the flags alone.
-    if (dragging_ && !(event.mask & vsg::BUTTON_MASK_2)) dragging_ = false;
+    if (dragging_ && !(event.mask & (dragButton_ == 1 ? vsg::BUTTON_MASK_1 : vsg::BUTTON_MASK_2))) dragging_ = false;
     if (zoomDragging_ && !(event.mask & vsg::BUTTON_MASK_3)) zoomDragging_ = false;
 
     int32_t dx = event.x - lastX_;

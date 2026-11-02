@@ -41,6 +41,11 @@ public:
     static int loadMsaaSamples();
     static MouseSettings loadMouseSettings();
     static NavigationView loadNavigationView();
+
+    // Colour theme: 0 = follow the system, 1 = light, 2 = dark. Applies the
+    // saved choice to the application (Qt 6.8+; a no-op before that).
+    static int loadTheme();
+    static void applyTheme();
     static void saveNavigationView(NavigationView v);
 
     // Overrides `action`'s shortcuts with the user's saved ones, if any
@@ -59,6 +64,9 @@ private:
     QComboBox* msaaCombo_ = nullptr;
     QComboBox* navViewCombo_ = nullptr;
     QComboBox* wheelCombo_ = nullptr;
+    QComboBox* middleClickCombo_ = nullptr;
+    QCheckBox* leftDragCheck_ = nullptr;
+    QComboBox* themeCombo_ = nullptr;
     QComboBox* sideButtonsCombo_ = nullptr;
     QCheckBox* swapSideCheck_ = nullptr;
     QCheckBox* tiltCheck_ = nullptr;

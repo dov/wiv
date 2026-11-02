@@ -174,6 +174,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     buildNavigationBar();
     buildStatusBar();
 
+    connect(viewport_, &VulkanViewport::toggleFullScreenRequested, this, &MainWindow::toggleFullScreen);
+
     // A horizontal two-finger touchpad swipe pages through the sibling files.
     connect(viewport_, &VulkanViewport::swipeNavigate, this, [this](int direction) {
         if (direction > 0 && nextImageAction_->isEnabled())

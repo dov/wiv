@@ -37,6 +37,10 @@ public:
     // keyboard-modifiers bitmask - feeds the json-rpc pick_coordinate command.
     std::function<void(double, double, int, int)> onClick;
 
+    // Asked on a left-button press: whether a left drag should pan the view
+    // (the owner says no while the left button belongs to another tool).
+    std::function<bool()> leftDragPans;
+
     // Called (if set) when a wheel step starts or retargets a zoom motion, so
     // the owner can call advance() every frame until it returns false.
     std::function<void()> onZoomStarted;
@@ -74,6 +78,7 @@ public:
 private:
     vsg::ref_ptr<vsg::Camera> camera_;
     bool dragging_ = false;
+    int dragButton_ = 2; // vsg button that started the pan drag
     int32_t lastX_ = 0;
     int32_t lastY_ = 0;
 

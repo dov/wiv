@@ -944,6 +944,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     if (!panZoom_)
     {
         panZoom_ = giv::PanZoomHandler::create(camera_);
+        panZoom_->leftDragPans = [this]() { return mouse_.leftDragPans && !measureEnabled_; };
         panZoom_->onCursorMove = [this](double x, double y) { emit cursorWorldPosition(x, y); };
         panZoom_->onViewChanged = [this]() {
             cancelViewAnimation(); // user input takes over
@@ -1203,6 +1204,16 @@ bool VulkanViewport::eventFilter(QObject* watched, QEvent* event)
         case QEvent::MouseButtonPress:
         case QEvent::MouseButtonRelease: {
             auto* me = static_cast<QMouseEvent*>(event);
+            if (me->button() == Qt::MiddleButton)
+            {
+                // A wheel click without a drag; the drag itself pans (handled by vsg).
+                if (event->type() == QEvent::MouseButtonPress)
+                    middlePressPos_ = me->position();
+                else if (mouse_.middleClick == MouseSettings::MiddleClick::FullScreen && hasScene_ &&
+                         (me->position() - middlePressPos_).manhattanLength() < 4)
+                    emit toggleFullScreenRequested();
+                break;
+            }
             if (me->button() != Qt::BackButton && me->button() != Qt::ForwardButton) break;
             // Swallowed (press and release) so PanZoomHandler::onClick never sees them.
             if (event->type() == QEvent::MouseButtonPress && hasScene_)
@@ -1223,7 +1234,8 @@ bool VulkanViewport::eventFilter(QObject* watched, QEvent* event)
             // turn it into a second press; not while measuring, where the
             // left button belongs to the caliper.
             auto* me = static_cast<QMouseEvent*>(event);
-            if (me->button() == Qt::MiddleButton && me->modifiers() == Qt::NoModifier && hasScene_ && mouse_.doubleClickToggles)
+            if (me->button() == Qt::MiddleButton && me->modifiers() == Qt::NoModifier && hasScene_ && mouse_.doubleClickToggles &&
+                mouse_.middleClick == MouseSettings::MiddleClick::Nothing)
             {
                 // Middle double-click toggles the same way (a middle drag pans).
                 toggleActualFit(me->position() * window_->devicePixelRatio());

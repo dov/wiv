@@ -380,6 +380,9 @@ signals:
     // -1 for previous.
     void swipeNavigate(int direction);
 
+    // A wheel click (Preferences > Mouse > Wheel click: toggle full screen).
+    void toggleFullScreenRequested();
+
 private:
     vsg::ref_ptr<vsg::WindowTraits> traits_;
     vsg::ref_ptr<GivViewer> viewer_;
@@ -603,6 +606,7 @@ private:
     // Horizontal touchpad swipe -> swipeNavigate(); see handleSwipe().
     bool handleSwipe(QWheelEvent* we);
     MouseSettings mouse_;
+    QPointF middlePressPos_;
     int wheelNavAccum_ = 0; // angleDelta accumulated toward one 120-unit notch
     int tiltAccum_ = 0;
     double swipeAccum_ = 0.0;
