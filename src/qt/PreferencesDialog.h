@@ -44,6 +44,9 @@ public:
 
     // Colour theme: 0 = follow the system, 1 = light, 2 = dark. Applies the
     // saved choice to the application (Qt 6.8+; a no-op before that).
+    enum class StartupAction { Nothing, OpenLast, OpenDialog };
+    static StartupAction loadStartupAction();
+
     static int loadTheme();
     static void applyTheme();
     static void saveNavigationView(NavigationView v);
@@ -67,6 +70,7 @@ private:
     QComboBox* middleClickCombo_ = nullptr;
     QCheckBox* leftDragCheck_ = nullptr;
     QComboBox* themeCombo_ = nullptr;
+    QComboBox* startupCombo_ = nullptr;
     QComboBox* sideButtonsCombo_ = nullptr;
     QCheckBox* swapSideCheck_ = nullptr;
     QCheckBox* tiltCheck_ = nullptr;

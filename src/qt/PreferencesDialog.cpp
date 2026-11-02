@@ -60,6 +60,11 @@ MouseSettings PreferencesDialog::loadMouseSettings()
     return m;
 }
 
+PreferencesDialog::StartupAction PreferencesDialog::loadStartupAction()
+{
+    return static_cast<StartupAction>(std::clamp(settings().value("startup/action", 0).toInt(), 0, 2));
+}
+
 int PreferencesDialog::loadTheme()
 {
     return std::clamp(settings().value("view/theme", 0).toInt(), 0, 2);
@@ -206,6 +211,13 @@ PreferencesDialog::PreferencesDialog(const QList<QAction*>& bindable, QWidget* p
     themeCombo_->setEnabled(false);
 #endif
     form->addRow("Theme:", themeCombo_);
+
+    startupCombo_ = new QComboBox(this);
+    startupCombo_->addItem("Empty window", static_cast<int>(StartupAction::Nothing));
+    startupCombo_->addItem("Reopen the last file", static_cast<int>(StartupAction::OpenLast));
+    startupCombo_->addItem("Show the Open dialog", static_cast<int>(StartupAction::OpenDialog));
+    startupCombo_->setCurrentIndex(static_cast<int>(loadStartupAction()));
+    form->addRow("On start without a file:", startupCombo_);
 
     auto buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(buttons, &QDialogButtonBox::accepted, this, [this]() {
@@ -546,6 +558,7 @@ void PreferencesDialog::save()
     auto s = settings();
     s.setValue("backgroundColor", backgroundColor_);
     s.setValue("msaaSamples", msaaSamples());
+    s.setValue("startup/action", startupCombo_->currentData().toInt());
     s.setValue("view/theme", themeCombo_->currentData().toInt());
     s.setValue("view/navigation", navViewCombo_->currentData().toInt());
     s.setValue("mouse/wheel", wheelCombo_->currentData().toInt());

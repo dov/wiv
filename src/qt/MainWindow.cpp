@@ -872,6 +872,29 @@ void MainWindow::openFiles()
     for (const auto& f : files) addRecentFile(f);
 }
 
+void MainWindow::startWithoutFile()
+{
+    switch (PreferencesDialog::loadStartupAction())
+    {
+    case PreferencesDialog::StartupAction::OpenLast: {
+        QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+        const QStringList recent = settings.value("recentFiles").toStringList();
+        // A last file that is gone (moved, drive not mounted) leaves an empty window.
+        if (!recent.isEmpty() && QFileInfo::exists(recent.first()))
+        {
+            spdlog::info("Reopening the last file: {}", recent.first().toStdString());
+            loadFiles({recent.first().toStdString()});
+        }
+        break;
+    }
+    case PreferencesDialog::StartupAction::OpenDialog:
+        QTimer::singleShot(0, this, &MainWindow::openFiles);
+        break;
+    case PreferencesDialog::StartupAction::Nothing:
+        break;
+    }
+}
+
 void MainWindow::loadFiles(const std::vector<std::string>& paths)
 {
     // Directories expand to their giv-compatible files (sorted). More than
