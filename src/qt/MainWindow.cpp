@@ -1287,7 +1287,22 @@ void MainWindow::updateThumbnailStrip()
 void MainWindow::loadNavigationStep(const std::vector<std::string>& paths)
 {
     navigationStep_ = true;
+    statusBar()->clearMessage();
     loadFilesInternal(paths);
+    // A scene that holds several images announces its own image change while
+    // loading (see the imageChanged handler); a file with none of its own -
+    // an SVG or .giv, or a plain raster stepped to in the folder - doesn't,
+    // so say which one is now showing, with its place in the folder.
+    if (lastPaths_ == paths && statusBar()->currentMessage().isEmpty() && !paths.empty())
+    {
+        const QString name = QFileInfo(QString::fromStdString(paths.front())).fileName();
+        QString msg = directoryFiles_.size() > 1 && directoryFileIndex_ >= 0
+                          ? QString("Image changed to %1 (%2/%3)").arg(name).arg(directoryFileIndex_ + 1).arg(directoryFiles_.size())
+                          : QString("Image changed to %1").arg(name);
+        if (!lastPageText_.isEmpty()) msg += "  " + lastPageText_;
+        if (!lastSliceText_.isEmpty()) msg += "  " + lastSliceText_;
+        statusBar()->showMessage(msg, 3000);
+    }
 }
 
 void MainWindow::goToDirectoryIndex(int index)
