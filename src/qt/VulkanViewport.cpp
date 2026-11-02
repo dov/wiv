@@ -2054,13 +2054,22 @@ QImage VulkanViewport::currentViewImage(int maxSize)
     return full.scaled(maxSize, maxSize, Qt::KeepAspectRatio, Qt::SmoothTransformation).copy();
 }
 
+// Contrast state is per image - and per page of a multi-page file (TIFF, HDF5
+// datasets), whose pages can have entirely different value ranges.
+std::string VulkanViewport::contrastKey() const
+{
+    std::string key = giv::ImageStateStore::canonicalPath(currentImageName());
+    if (currentPage_ > 0) key += "#page" + std::to_string(currentPage_);
+    return key;
+}
+
 VulkanViewport::ContrastState VulkanViewport::currentContrastState()
 {
     static const ContrastState kEmpty{};
     if (loadedImages_.empty()) return kEmpty;
 
     const giv::LoadedImage& src = loadedImages_.front();
-    const std::string path = giv::ImageStateStore::canonicalPath(currentImageName());
+    const std::string path = contrastKey();
     auto it = contrastState_.find(path);
     if (it == contrastState_.end())
     {
@@ -2073,7 +2082,7 @@ VulkanViewport::ContrastState VulkanViewport::currentContrastState()
         defaultState.colormapEnabled = lastColormapEnabled_;
         // What the user set for this file in an earlier run. The contrast
         // window only comes back with Auto Contrast off, as within a run.
-        if (auto* store = stateStore())
+        if (auto* store = currentPage_ == 0 ? stateStore() : nullptr) // later pages are remembered within the run only
             if (auto saved = store->loadContrast(path))
             {
                 if (saved->colormapId >= 0 && saved->colormapId < static_cast<int>(giv::colormaps::Id::Count))
@@ -2127,8 +2136,8 @@ void VulkanViewport::setContrast(float min, float max)
     ContrastState state = currentContrastState();
     state.min = min;
     state.max = max;
-    contrastState_[giv::ImageStateStore::canonicalPath(currentImageName())] = state;
-    if (auto* store = stateStore())
+    contrastState_[contrastKey()] = state;
+    if (auto* store = currentPage_ == 0 ? stateStore() : nullptr)
         store->saveContrast(currentImageName(), {state.min, state.max, static_cast<int>(state.colormapId), state.colormapEnabled});
     lastContrastMin_ = min;
     lastContrastMax_ = max;
@@ -2154,8 +2163,8 @@ void VulkanViewport::setColormap(giv::colormaps::Id id, bool enabled)
     ContrastState state = currentContrastState();
     state.colormapId = id;
     state.colormapEnabled = enabled;
-    contrastState_[giv::ImageStateStore::canonicalPath(currentImageName())] = state;
-    if (auto* store = stateStore())
+    contrastState_[contrastKey()] = state;
+    if (auto* store = currentPage_ == 0 ? stateStore() : nullptr)
         store->saveContrast(currentImageName(), {state.min, state.max, static_cast<int>(state.colormapId), state.colormapEnabled});
     lastColormapId_ = id;
     lastColormapEnabled_ = enabled;

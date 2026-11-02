@@ -424,6 +424,7 @@ private:
     bool everBuiltSceneGraph_ = false;
     std::vector<giv::LoadedImage> loadedImages_; // 0 or 1 entries: only the currently-displayed image is ever decoded/resident (see decodeCurrentImage())
     std::vector<giv::LoadedImage> displayImages_; // parallel to loadedImages_, but .rgba is the contrast/colormap-stretched buffer actually uploaded (see recomputeDisplayImage())
+    std::string contrastKey() const;
     std::unordered_map<std::string, ContrastState> contrastState_; // keyed by resolved image path, see currentContrastState()
     // The colormap selection last chosen via setColormap(), carried forward
     // as the default for any image path not yet in contrastState_ - so

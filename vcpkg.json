@@ -22,6 +22,7 @@
     "libjxl",
     "libraw",
     "openexr",
+    "hdf5",
     "spdlog",
     "cfitsio",
     "sqlite3",
