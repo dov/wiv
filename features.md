@@ -153,13 +153,13 @@ Stored in `state.db` (SQLite, WAL mode) next to `wiv.ini` (e.g.
 
 ## Metadata and file operations
 
-- Image Info dock (`I`): file/image properties plus EXIF (JPEG, TIFF/DNG,
+- Image Info dock (`I` or `Alt+Enter`): file/image properties plus EXIF (JPEG, TIFF/DNG,
   PNG eXIf, WebP): camera, exposure, GPS; header attributes of Radiance HDR
   (EXPOSURE, comments, ...), PFM (byte order, scale) and OpenEXR (channels,
   compression, windows, chromaticities, string/float attributes).
 - File menu: Open (`Ctrl+O`), Reload (`Enter`), Copy (`Ctrl+C`), Rename
-  (`F2`), Delete (`Del`), Open File Location (`W`), Properties
-  (`Alt+Enter`), Quit (`Q`).
+  (`F2`), Delete (`Del`), Open File Location (`W`),
+  Quit (`Q`).
 - Auto Reload: polls file and reloads when it changes (500 ms).
 - Open in External App (`E`) / Open With submenu: configurable apps
   (`Ctrl+1..9`), system default, choose application, per-extension rules;

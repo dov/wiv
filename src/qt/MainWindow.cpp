@@ -369,8 +369,6 @@ void MainWindow::buildMenus()
     deleteAction->setShortcut(QKeySequence("Del"));
     auto locationAction = fileMenu->addAction("Open File &Location", this, &MainWindow::openFileLocation);
     locationAction->setShortcut(QKeySequence("W"));
-    auto propertiesAction = fileMenu->addAction("&Properties...", this, &MainWindow::showFileProperties);
-    propertiesAction->setShortcut(QKeySequence("Alt+Return"));
     auto externalAppAction = fileMenu->addAction("Open in &External App", this, &MainWindow::openInExternalApp);
     externalAppAction->setShortcut(QKeySequence("E"));
     auto* openWithMenu = openWithMenu_ = fileMenu->addMenu("Open &With");
@@ -501,7 +499,8 @@ void MainWindow::buildMenus()
 
     viewMenu->addSeparator();
     // The dock's own checkable toggle: stays in sync with the panel's visibility.
-    infoDock_->toggleViewAction()->setShortcut(QKeySequence("I"));
+    // Alt+Enter (the usual "Properties" key) toggles it too.
+    infoDock_->toggleViewAction()->setShortcuts({QKeySequence("I"), QKeySequence("Alt+Return")});
     viewMenu->addAction(infoDock_->toggleViewAction());
 
     viewMenu->addSeparator();
@@ -1821,20 +1820,6 @@ void MainWindow::updateOpenWithMenu()
         a->setVisible(used);
         a->setEnabled(used);
     }
-}
-
-void MainWindow::showFileProperties()
-{
-    const QString path = currentFilePath();
-    if (path.isEmpty()) return;
-    const QFileInfo info(path);
-    QString text = QString("<b>%1</b><br>%2<br><br>Size: %3 bytes<br>Modified: %4")
-                       .arg(info.fileName().toHtmlEscaped(), info.absolutePath().toHtmlEscaped())
-                       .arg(info.size())
-                       .arg(info.lastModified().toString(Qt::ISODate));
-    if (auto size = viewport_->currentImageSize())
-        text += QString("<br>Dimensions: %1 x %2").arg(int(size->first)).arg(int(size->second));
-    QMessageBox::information(this, "Properties", text);
 }
 
 void MainWindow::updateRecentFilesMenu()

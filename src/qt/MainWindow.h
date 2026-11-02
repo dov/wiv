@@ -297,7 +297,6 @@ private:
     void updateOpenWithMenu();
     void rebuildDetectedOpenWith();
     void rememberApplication(const QString& command);
-    void showFileProperties();
 
     void buildMarkBrowserDock();
 
