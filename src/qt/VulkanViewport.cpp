@@ -1,4 +1,5 @@
 #include "VulkanViewport.h"
+#include "ToggleCapture.h"
 
 #include <QMouseEvent>
 #include <QNativeGestureEvent>
@@ -29,6 +30,7 @@
 #include <QUrl>
 #include <QGridLayout>
 #include <QLabel>
+#include <QScreen>
 #include <QScrollBar>
 #include <QSignalBlocker>
 #include <QThread>
@@ -166,7 +168,7 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
 
     viewer_->worldPerPixel = [this]() -> float {
         if (!projection_ || !window_ || !window_->windowAdapter) return 1.0f;
-        auto extent = window_->windowAdapter->extent2D();
+        auto extent = viewportExtent();
         if (extent.width == 0) return 1.0f;
         return static_cast<float>((projection_->right - projection_->left) / static_cast<double>(extent.width));
     };
@@ -218,8 +220,12 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
     auto layout = new QGridLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
-    container_ = QWidget::createWindowContainer(window_, this);
-    layout->addWidget(container_, 0, 0);
+    clip_ = new QWidget(this);
+    clip_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    clip_->setMinimumSize(1, 1);
+    container_ = QWidget::createWindowContainer(window_, clip_);
+    layout->addWidget(clip_, 0, 0);
+    clip_->installEventFilter(this);
     // The container (not this widget) is what actually sizes the native window
     // - scrollbars appearing/disappearing resize it without resizing us - so
     // its Resize events drive the camera too; see handleViewportResize().
@@ -249,7 +255,7 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
     connect(hScrollBar_, &QScrollBar::valueChanged, this, [this](int value) {
         if (!camera_ || !projection_ || !window_ || !window_->windowAdapter) return;
         auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
-        auto extent = window_->windowAdapter->extent2D();
+        auto extent = viewportExtent();
         if (!lookAt || extent.width == 0) return;
         double halfW = (projection_->right - projection_->left) * 0.5;
         double scaleX = extent.width / (2.0 * halfW);
@@ -266,7 +272,7 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
     connect(vScrollBar_, &QScrollBar::valueChanged, this, [this](int value) {
         if (!camera_ || !projection_ || !window_ || !window_->windowAdapter) return;
         auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
-        auto extent = window_->windowAdapter->extent2D();
+        auto extent = viewportExtent();
         if (!lookAt || extent.height == 0) return;
         double halfH = (projection_->top - projection_->bottom) * 0.5;
         double scaleY = extent.height / (2.0 * halfH);
@@ -424,7 +430,109 @@ void VulkanViewport::handleViewportResize()
         pendingResizeExtent_ = QSize(wantW, wantH);
     }
 
-    applyExtent(extent);
+    applyExtent(viewportExtent());
+}
+
+VkExtent2D VulkanViewport::viewportExtent() const
+{
+    VkExtent2D full = window_->windowAdapter->extent2D();
+    if (!clip_) return full;
+    const double dpr = devicePixelRatioF();
+    // The size of the mask actually applied (not the live widget size), so the
+    // camera changes together with what is visible; see applyMask().
+    const int logicalW = visW_ > 0 ? visW_ : clip_->width();
+    const int logicalH = visH_ > 0 ? visH_ : clip_->height();
+    const auto visW = static_cast<uint32_t>(std::max(0L, std::lround(logicalW * dpr)));
+    const auto visH = static_cast<uint32_t>(std::max(0L, std::lround(logicalH * dpr)));
+    if (visW > 0 && visW < full.width) full.width = visW;
+    if (visH > 0 && visH < full.height) full.height = visH;
+    return full;
+}
+
+// Keeps the native render window at a fixed, screen-sized height (and the
+// widget's width) so that changes of the visible height never resize it - a
+// resize makes Windows show the new area black until the swapchain has been
+// rebuilt and a frame presented - and masks it down to the visible area.
+void VulkanViewport::layoutRenderWindow()
+{
+    if (!clip_ || !container_ || !window_) return;
+    if (toggleCaptureEnabled()) spdlog::info("[trace] layout clip {}x{} mask {}x{} settled={}", clip_->width(), clip_->height(), maskW_, maskH_, layoutSettled_);
+    // Fixed-size native window, at least as big as the biggest screen in both
+    // directions, so neither layout changes nor resizing the application window
+    // resize it (see clip_'s doc comment).
+    int screenW = 0, screenH = 0;
+    for (const QScreen* s : QGuiApplication::screens())
+    {
+        screenW = std::max(screenW, s->geometry().width());
+        screenH = std::max(screenH, s->geometry().height());
+    }
+    const int w = clip_->width();
+    const int h = clip_->height();
+    const QRect want(0, 0, std::max(w, screenW), std::max(h, screenH));
+    if (container_->geometry() != want) container_->setGeometry(want); // resizes the window only if the size changed
+
+    // While the window is first being shown it is laid out several times in a
+    // row; forcing a repaint and a synchronous frame for each of those would be
+    // visible as flicker. Until it has settled just follow the layout.
+    if (!layoutSettled_)
+    {
+        if (isVisible() && !layoutSettleTimerStarted_)
+        {
+            layoutSettleTimerStarted_ = true;
+            QTimer::singleShot(500, this, [this]() { layoutSettled_ = true; });
+        }
+        visW_ = w;
+        visH_ = h;
+        maskW_ = w;
+        maskH_ = h;
+        window_->setMask(QRegion(0, 0, w, h));
+        handleViewportResize();
+        return;
+    }
+    if (w < maskW_ || h < maskH_)
+    {
+        // Shrinking: what gets uncovered (e.g. the thumbnail strip) is drawn by
+        // Qt, which paints it a little later than this resize. Paint it first,
+        // underneath the render window, and only then shrink the mask, so it is
+        // revealed complete instead of after a blank gap.
+        if (!maskShrinkPending_)
+        {
+            maskShrinkPending_ = true;
+            QTimer::singleShot(0, this, [this]() {
+                maskShrinkPending_ = false;
+                if (QWidget* top = window()) top->repaint();
+                applyMask(); // also refits the camera, so it never precedes the strip
+            });
+        }
+        return;
+    }
+    applyMask();
+}
+
+void VulkanViewport::applyMask()
+{
+    if (!clip_ || !window_) return;
+    const int w = clip_->width();
+    const int h = clip_->height();
+    // The order matters for the result to look like one step: first bring the
+    // camera to the new visible size and present a frame at it - into the part
+    // of the window that is still masked, or that stays visible - and only then
+    // change the mask, so what is revealed (or kept) already holds the final
+    // image instead of the previous frame followed by a jump.
+    visW_ = w;
+    visH_ = h;
+    if (toggleCaptureEnabled()) spdlog::info("[trace] applyMask {}x{}: camera refit", w, h);
+    handleViewportResize();
+    if (isVisible())
+    {
+        viewer_->request();
+        viewer_->render();
+        if (toggleCaptureEnabled()) spdlog::info("[trace] applyMask: frame rendered+presented");
+    }
+    maskW_ = w;
+    maskH_ = h;
+    window_->setMask(QRegion(0, 0, w, h));
+    if (toggleCaptureEnabled()) spdlog::info("[trace] applyMask: mask set {}x{}", w, h);
 }
 
 // Brings the camera/render graph and the projection in line with `extent`,
@@ -514,7 +622,7 @@ bool VulkanViewport::checkResizeSettling()
         resizeSettling_ = false;
         settleTicks_ = 0;
         // resizeEvent() may have synced the camera to the pre-resize extent.
-        applyExtent(window_->windowAdapter->extent2D());
+        applyExtent(viewportExtent());
         return false;
     }
 
@@ -529,7 +637,7 @@ bool VulkanViewport::checkResizeSettling()
     {
         resizeSettling_ = false;
         settleTicks_ = 0;
-        applyExtent(window_->windowAdapter->extent2D());
+        applyExtent(viewportExtent());
         return false;
     }
     return true;
@@ -811,7 +919,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
         flipProjection_->flipY = flipVertical_;
         flipProjection_->quarterTurns = quarterTurns_;
         projection_ = flipProjection_;
-        camera_ = vsg::Camera::create(projection_, lookAt, vsg::ViewportState::create(window_->windowAdapter->extent2D()));
+        camera_ = vsg::Camera::create(projection_, lookAt, vsg::ViewportState::create(viewportExtent()));
     }
 
     if (isInitialLoad && (needsNewCamera || autoFit_))
@@ -1051,6 +1159,7 @@ void VulkanViewport::setDatasetsVisible(const std::vector<size_t>& indices, bool
 bool VulkanViewport::eventFilter(QObject* watched, QEvent* event)
 {
     if (watched == container_ && event->type() == QEvent::Resize) handleViewportResize();
+    if (watched == clip_ && event->type() == QEvent::Resize) layoutRenderWindow();
     if (watched == window_)
     {
         switch (event->type())
@@ -1141,7 +1250,7 @@ bool VulkanViewport::eventFilter(QObject* watched, QEvent* event)
                 const double factor = std::clamp(1.0 / (1.0 + ge->value()), 0.5, 2.0);
                 const QPointF p = ge->position() * window_->devicePixelRatio();
                 panZoom_->zoomAbout(factor, static_cast<int32_t>(p.x()), static_cast<int32_t>(p.y()),
-                                    window_->windowAdapter->extent2D(), /*animate=*/false);
+                                    viewportExtent(), /*animate=*/false);
                 viewer_->request();
                 return true;
             }
@@ -1314,7 +1423,7 @@ void VulkanViewport::lastImage()
 void VulkanViewport::panByFraction(double fx, double fy)
 {
     if (!panZoom_ || !hasScene_ || !window_ || !window_->windowAdapter) return;
-    const auto extent = window_->windowAdapter->extent2D();
+    const auto extent = viewportExtent();
     if (extent.width == 0 || extent.height == 0) return;
     cancelViewAnimation();
     panZoom_->cancelZoom();
@@ -1634,6 +1743,23 @@ void VulkanViewport::showAnimationFrame(int frame)
 // Called by GivViewer at the start of each rendered frame.
 bool VulkanViewport::onAnimationFrameHook()
 {
+    if (renderGraph_ && window_ && window_->windowAdapter)
+    {
+        // The render area must always cover the whole (fixed-size) window, not
+        // just its visible part, so the rest is cleared to the background colour
+        // rather than left black: a render graph created from the camera's
+        // viewport starts out with the visible size, and nothing widens it until
+        // the next layout change (seen with animated images, which start
+        // rendering before any such change).
+        const VkExtent2D full = window_->windowAdapter->extent2D();
+        auto& area = renderGraph_->renderArea;
+        if (area.offset.x != 0 || area.offset.y != 0 || area.extent.width != full.width || area.extent.height != full.height)
+        {
+            area.offset = {0, 0};
+            area.extent = full;
+            renderGraph_->previous_extent = full;
+        }
+    }
     if (animTextureDirty_ <= 0 || !(animTexture_ || sampleParams_ || sampleTexture_)) return false;
     if (animTexture_) animTexture_->dirty();
     if (sampleParams_) sampleParams_->dirty();
@@ -2011,7 +2137,11 @@ void VulkanViewport::switchToImage(int index)
 void VulkanViewport::syncRenderExtent(VkExtent2D extent)
 {
     if (camera_ && camera_->viewportState) camera_->viewportState->set(0, 0, extent.width, extent.height);
-    if (!renderGraph_) return;
+    if (!renderGraph_)
+    {
+        if (toggleCaptureEnabled()) spdlog::info("[trace] syncRenderExtent: NO renderGraph_");
+        return;
+    }
 
     // vsg::RenderGraph::accept() compares getExtent() (the window's *actual
     // current* extent, read fresh every frame) against previous_extent (a
@@ -2025,9 +2155,14 @@ void VulkanViewport::syncRenderExtent(VkExtent2D extent)
     // from - is what actually keeps the render area's aspect ratio correct;
     // this is the mechanism that was producing a non-isotropic stretch no
     // amount of camera-side fixing could touch.
+    // `extent` is the visible part of the window, which may be smaller than the
+    // window itself (see viewportExtent()): draw into that part only, but clear
+    // the whole surface so that area uncovered by growing the visible region
+    // already shows the background colour.
+    const VkExtent2D full = window_->windowAdapter->extent2D();
     renderGraph_->renderArea.offset = {0, 0};
-    renderGraph_->renderArea.extent = extent;
-    renderGraph_->previous_extent = extent;
+    renderGraph_->renderArea.extent = full;
+    renderGraph_->previous_extent = full;
     renderGraph_->viewportState->set(0, 0, extent.width, extent.height);
 }
 
@@ -2055,7 +2190,7 @@ void VulkanViewport::fitToBounds(double minX, double minY, double maxX, double m
     double dataW = std::max(maxX - minX, 2e-3);
     double dataH = std::max(maxY - minY, 2e-3);
     rotatedSize(dataW, dataH);
-    auto extent = window_->windowAdapter->extent2D();
+    auto extent = viewportExtent();
     double canvasW = static_cast<double>(extent.width);
     double canvasH = static_cast<double>(extent.height);
 
@@ -2102,7 +2237,7 @@ bool VulkanViewport::computeFitView(FitView& out) const
     currentFitBoundsYDown(minX, minY, maxX, maxY);
     // fitToBounds()'s arguments: (minX, -maxY, maxX, -minY).
     const double bMinY = -maxY, bMaxY = -minY;
-    const auto extent = window_->windowAdapter->extent2D();
+    const auto extent = viewportExtent();
     if (extent.width == 0 || extent.height == 0) return false;
     double dataW = std::max(maxX - minX, 2e-3), dataH = std::max(bMaxY - bMinY, 2e-3);
     rotatedSize(dataW, dataH);
@@ -2196,7 +2331,7 @@ void VulkanViewport::cancelViewAnimation()
 // window_->resize() (called from resizeEvent() to keep the embedded native
 // window in sync with its container) only *posts* that resize: the platform
 // plugin round-trips it (an X11 ConfigureRequest/ConfigureNotify exchange)
-// before window_->windowAdapter->extent2D() actually reflects it - observed
+// before viewportExtent() actually reflects it - observed
 // to still read the old, larger, default-traits size for a little while
 // after resizeEvent() has already returned. Calling fitToWindow() at the
 // wrong moment doesn't just under/over-size the fit (which self-corrects
@@ -2254,7 +2389,7 @@ void VulkanViewport::currentFitBoundsYDown(double& minX, double& minY, double& m
     {
         // Text labels are pixel-sized, so their world extent depends on the
         // zoom, which in turn depends on the bounds: iterate to a fixed point.
-        const auto extent = window_->windowAdapter->extent2D();
+        const auto extent = viewportExtent();
         if (extent.width > 0 && extent.height > 0)
         {
             const double bMinX = minX, bMaxX = maxX, bMinY = minY, bMaxY = maxY;
@@ -2309,7 +2444,7 @@ void VulkanViewport::updateScrollBars()
         return;
     }
     auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
-    auto extent = window_->windowAdapter->extent2D();
+    auto extent = viewportExtent();
     if (!lookAt || extent.width == 0 || extent.height == 0) return;
 
     double minXyd, minYyd, maxXyd, maxYyd;
@@ -2377,7 +2512,7 @@ void VulkanViewport::zoomActualPixels()
     viewDirty_ = true;
     spdlog::info("Zoom 1:1");
     if (!projection_ || !window_ || !window_->windowAdapter) return;
-    auto extent = window_->windowAdapter->extent2D();
+    auto extent = viewportExtent();
     if (extent.width == 0 || extent.height == 0) return;
     // One world unit == one image pixel, so half the extent in device pixels.
     double halfW = extent.width * 0.5;
@@ -2394,7 +2529,7 @@ double VulkanViewport::viewScale() const
 {
     if (!projection_ || !window_ || !window_->windowAdapter) return 0.0;
     const double width = projection_->right - projection_->left;
-    return width > 0.0 ? window_->windowAdapter->extent2D().width / width : 0.0;
+    return width > 0.0 ? viewportExtent().width / width : 0.0;
 }
 
 double VulkanViewport::fitScale() const
@@ -2402,7 +2537,7 @@ double VulkanViewport::fitScale() const
     if (!window_ || !window_->windowAdapter) return 0.0;
     double minX, minY, maxX, maxY;
     currentFitBoundsYDown(minX, minY, maxX, maxY);
-    const auto extent = window_->windowAdapter->extent2D();
+    const auto extent = viewportExtent();
     double dataW = std::max(maxX - minX, 2e-3), dataH = std::max(maxY - minY, 2e-3);
     rotatedSize(dataW, dataH);
     return containScale(extent.width, extent.height, dataW, dataH);
@@ -2414,7 +2549,7 @@ void VulkanViewport::stepZoomOut() { stepZoom(false); }
 void VulkanViewport::stepZoom(bool in)
 {
     if (!hasScene_ || !panZoom_ || !window_ || !window_->windowAdapter) return;
-    const auto extent = window_->windowAdapter->extent2D();
+    const auto extent = viewportExtent();
     const double current = viewScale();
     const double fit = fitScale();
     if (extent.width == 0 || extent.height == 0 || current <= 0.0 || fit <= 0.0) return;
@@ -2464,7 +2599,7 @@ void VulkanViewport::toggleActualFit(QPointF devicePos)
     cancelViewAnimation();
     viewDirty_ = true;
     panZoom_->zoomAbout(current, static_cast<int32_t>(devicePos.x()), static_cast<int32_t>(devicePos.y()),
-                        window_->windowAdapter->extent2D(), /*animate=*/true, /*replaceMotion=*/true);
+                        viewportExtent(), /*animate=*/true, /*replaceMotion=*/true);
 }
 
 void VulkanViewport::setRememberViewPerFile(bool enable)
@@ -2488,7 +2623,7 @@ void VulkanViewport::saveCurrentView()
     const std::string key = viewKey();
     if (key.empty()) return;
     auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
-    const auto extent = window_->windowAdapter->extent2D();
+    const auto extent = viewportExtent();
     const double width = projection_->right - projection_->left;
     const double height = projection_->top - projection_->bottom;
     if (!viewDirty_ || !lookAt || extent.width == 0 || extent.height == 0 || width <= 0.0 || height <= 0.0)
@@ -2508,7 +2643,7 @@ bool VulkanViewport::tryRestoreView()
     auto it = savedViews_.find(viewKey());
     if (it == savedViews_.end()) return false;
     auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
-    const auto extent = window_->windowAdapter->extent2D();
+    const auto extent = viewportExtent();
     if (!lookAt || extent.width == 0 || extent.height == 0) return false;
     const SavedView& v = it->second;
 
@@ -2558,7 +2693,7 @@ void VulkanViewport::getTransformation(double& scaleX, double& scaleY, double& s
     if (!camera_ || !projection_ || !window_ || !window_->windowAdapter) return;
 
     auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
-    auto extent = window_->windowAdapter->extent2D();
+    auto extent = viewportExtent();
     if (!lookAt || extent.width == 0 || extent.height == 0) return;
 
     double halfW = (projection_->right - projection_->left) * 0.5;
@@ -2578,7 +2713,7 @@ void VulkanViewport::setTransformation(double scaleX, double scaleY, double shif
     if (scaleX <= 0.0 || scaleY <= 0.0) return;
 
     auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
-    auto extent = window_->windowAdapter->extent2D();
+    auto extent = viewportExtent();
     if (!lookAt || extent.width == 0 || extent.height == 0) return;
 
     double halfW = extent.width / (2.0 * scaleX);

@@ -18,6 +18,7 @@
 #include "RpcServer.h"
 #include "ThumbnailStrip.h"
 #include "VulkanViewport.h"
+#include "ToggleCapture.h"
 #ifdef _WIN32
 #include "WinDropTarget.h"
 #endif
@@ -399,11 +400,22 @@ void MainWindow::buildMenus()
     auto stepZoomOutAction = viewMenu->addAction("Step Zoom Out", viewport_, &VulkanViewport::stepZoomOut);
     stepZoomOutAction->setShortcut(QKeySequence("Ctrl+PgDown"));
 
-    thumbnailStripAction_ = viewMenu->addAction("Thumbnail Strip", this, [this](bool show) {
+    auto applyThumbnailStrip = [this](bool show) {
+        if (toggleCaptureEnabled()) spdlog::info("[trace] strip setVisible({})", show);
         bottomBar_->setVisible(show);
+        if (toggleCaptureEnabled()) spdlog::info("[trace] strip setVisible done");
         QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
         settings.setValue("thumbnailStrip", show);
         if (show) updateThumbnailStrip();
+    };
+    thumbnailStripAction_ = viewMenu->addAction("Thumbnail Strip", this, [this, applyThumbnailStrip](bool show) {
+        if (toggleCaptureEnabled())
+        {
+            static int toggleNo = 0;
+            spdlog::info("[trace] TOGGLE #{} show={}", ++toggleNo, show);
+            startToggleCapture(reinterpret_cast<void*>(winId()), QString("toggle%1_%2").arg(toggleNo).arg(show ? "show" : "hide"));
+        }
+        applyThumbnailStrip(show);
     });
     thumbnailStripAction_->setCheckable(true);
     thumbnailStripAction_->setShortcut(QKeySequence("T"));
@@ -893,6 +905,11 @@ void MainWindow::showEvent(QShowEvent* event)
     QMainWindow::showEvent(event);
     if (!firstShow_) return;
     firstShow_ = false;
+    if (toggleCaptureEnabled())
+    {
+        spdlog::info("[trace] first show");
+        startToggleCapture(reinterpret_cast<void*>(winId()), "startup", 1500);
+    }
 
 #ifdef _WIN32
     // Custom OLE drop target (no "Copy" label); see WinDropTarget.h.
