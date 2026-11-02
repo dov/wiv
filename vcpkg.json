@@ -21,6 +21,7 @@
     "libheif",
     "libjxl",
     "libraw",
+    "openexr",
     "spdlog",
     "cfitsio",
     "sqlite3",

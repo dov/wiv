@@ -2,6 +2,7 @@
 #include "PathUtils.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -312,6 +313,144 @@ std::vector<ExifEntry> decodeBlob(std::vector<uint8_t> blob)
     return decode(blobSource(blob), 0);
 }
 
+
+// ---- Header metadata of the float formats (no EXIF there) ----
+
+std::string trimmed(std::string s)
+{
+    while (!s.empty() && (s.back() == '\r' || s.back() == ' ' || s.back() == '\0')) s.pop_back();
+    size_t i = 0;
+    while (i < s.size() && s[i] == ' ') ++i;
+    return s.substr(i);
+}
+
+std::string fmtNum(double v)
+{
+    char buf[48];
+    std::snprintf(buf, sizeof(buf), "%.6g", v);
+    return buf;
+}
+
+// Radiance RGBE: "#?RADIANCE", KEY=value lines, '#' comments, blank line,
+// then the resolution line.
+std::vector<ExifEntry> readHdrHeader(std::ifstream& f)
+{
+    std::vector<ExifEntry> out;
+    f.clear();
+    f.seekg(0);
+    std::string line;
+    if (!std::getline(f, line) || line.compare(0, 2, "#?") != 0) return {};
+    out.push_back({"Format", "Radiance RGBE (" + trimmed(line.substr(2)) + ")"});
+    for (int guard = 0; guard < 1000 && std::getline(f, line); ++guard)
+    {
+        line = trimmed(line);
+        if (line.empty())
+        {
+            std::string res;
+            if (std::getline(f, res)) out.push_back({"Resolution / axes", trimmed(res)});
+            break;
+        }
+        if (line[0] == '#') { out.push_back({"Comment", trimmed(line.substr(1))}); continue; }
+        const size_t eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        out.push_back({line.substr(0, eq), trimmed(line.substr(eq + 1))});
+    }
+    return out;
+}
+
+std::vector<ExifEntry> readPfmHeader(std::ifstream& f)
+{
+    f.clear();
+    f.seekg(0);
+    std::string type;
+    double scale = 0;
+    int w = 0, h = 0;
+    if (!(f >> type >> w >> h >> scale) || (type != "PF" && type != "Pf")) return {};
+    return {{"Format", type == "PF" ? "Portable Float Map, RGB" : "Portable Float Map, grayscale"},
+            {"Byte order", scale < 0 ? "little-endian" : "big-endian"},
+            {"Scale", fmtNum(std::fabs(scale))}};
+}
+
+// OpenEXR: magic, version word, then (name, type, size, value) attributes
+// until an empty name. Only the first part's header is read.
+std::vector<ExifEntry> readExrHeader(std::ifstream& f, uint64_t size)
+{
+    std::vector<ExifEntry> out;
+    uint8_t h[8];
+    if (!readAt(f, 0, h, 8) || h[0] != 0x76 || h[1] != 0x2f || h[2] != 0x31 || h[3] != 1) return {};
+    const uint32_t flags = le32(h + 4);
+    out.push_back({"Format", std::string("OpenEXR") + ((flags & 0x200) ? ", tiled" : ", scanline") +
+                                 ((flags & 0x800) ? ", deep" : "") + ((flags & 0x1000) ? ", multipart" : "")});
+
+    uint64_t off = 8;
+    auto readStr = [&](std::string& s) {
+        s.clear();
+        for (int i = 0; i < 256; ++i)
+        {
+            uint8_t c;
+            if (!readAt(f, off++, &c, 1)) return false;
+            if (c == 0) return true;
+            s.push_back(char(c));
+        }
+        return false;
+    };
+    auto i32 = [](const uint8_t* p) { return int32_t(le32(p)); };
+    auto f32 = [](const uint8_t* p) { float v; uint32_t u = le32(p); std::memcpy(&v, &u, 4); return v; };
+    static const char* kCompression[] = {"none", "RLE", "ZIPS", "ZIP", "PIZ", "PXR24", "B44", "B44A", "DWAA", "DWAB"};
+    static const char* kPixelType[] = {"UINT", "HALF", "FLOAT"};
+
+    for (int guard = 0; guard < 512; ++guard)
+    {
+        std::string name, type;
+        if (!readStr(name) || name.empty()) break;
+        uint8_t sz[4];
+        if (!readStr(type) || !readAt(f, off, sz, 4)) break;
+        off += 4;
+        const uint32_t n = le32(sz);
+        if (n > (1u << 20) || off + n > size) break;
+        std::vector<uint8_t> v(n);
+        if (n && !readAt(f, off, v.data(), n)) break;
+        off += n;
+
+        std::string val;
+        if (type == "string") val.assign(v.begin(), v.end());
+        else if (type == "int" && n == 4) val = std::to_string(i32(v.data()));
+        else if (type == "float" && n == 4) val = fmtNum(f32(v.data()));
+        else if (type == "double" && n == 8) { double d; std::memcpy(&d, v.data(), 8); val = fmtNum(d); }
+        else if (type == "v2i" && n == 8) val = std::to_string(i32(v.data())) + ", " + std::to_string(i32(v.data() + 4));
+        else if (type == "v2f" && n == 8) val = fmtNum(f32(v.data())) + ", " + fmtNum(f32(v.data() + 4));
+        else if (type == "box2i" && n == 16)
+            val = "(" + std::to_string(i32(v.data())) + ", " + std::to_string(i32(v.data() + 4)) + ") - (" +
+                  std::to_string(i32(v.data() + 8)) + ", " + std::to_string(i32(v.data() + 12)) + ")";
+        else if (type == "compression" && n == 1) val = v[0] < 10 ? kCompression[v[0]] : std::to_string(v[0]);
+        else if (type == "lineOrder" && n == 1) val = v[0] == 0 ? "increasing Y" : v[0] == 1 ? "decreasing Y" : "random Y";
+        else if (type == "rational" && n == 8)
+            val = std::to_string(i32(v.data())) + "/" + std::to_string(le32(v.data() + 4));
+        else if (type == "chromaticities" && n == 32)
+        {
+            static const char* lbl[] = {"R", "G", "B", "W"};
+            for (int i = 0; i < 4; ++i)
+                val += std::string(i ? "  " : "") + lbl[i] + "(" + fmtNum(f32(v.data() + i * 8)) + ", " + fmtNum(f32(v.data() + i * 8 + 4)) + ")";
+        }
+        else if (type == "chlist")
+        {
+            size_t p = 0;
+            while (p < v.size() && v[p])
+            {
+                const size_t e = std::find(v.begin() + p, v.end(), uint8_t(0)) - v.begin();
+                if (e + 17 > v.size()) break;
+                const uint32_t pt = le32(v.data() + e + 1);
+                if (!val.empty()) val += ", ";
+                val += std::string(v.begin() + p, v.begin() + e) + " (" + (pt < 3 ? kPixelType[pt] : "?") + ")";
+                p = e + 17;
+            }
+        }
+        else continue; // opaque/unknown attribute types (tiles, previews, ...)
+        out.push_back({name, trimmed(val)});
+    }
+    return out;
+}
+
 } // namespace
 
 std::vector<ExifEntry> readExif(const std::string& path)
@@ -323,6 +462,11 @@ std::vector<ExifEntry> readExif(const std::string& path)
 
     uint8_t magic[12];
     if (!readAt(f, 0, magic, 12)) return {};
+
+    // ---- Float formats: header text rather than EXIF ----
+    if (magic[0] == '#' && magic[1] == '?') return readHdrHeader(f);
+    if (magic[0] == 'P' && (magic[1] == 'F' || magic[1] == 'f') && std::isspace(magic[2])) return readPfmHeader(f);
+    if (magic[0] == 0x76 && magic[1] == 0x2f && magic[2] == 0x31 && magic[3] == 1) return readExrHeader(f, size);
 
     // ---- TIFF ----
     if ((magic[0] == 'I' && magic[1] == 'I' && magic[2] == 42 && magic[3] == 0) ||

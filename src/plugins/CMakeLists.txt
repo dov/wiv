@@ -32,6 +32,9 @@ target_link_libraries(wiv_plugin_jpegturbo PRIVATE JPEG::JPEG)
 
 wiv_add_plugin(pgm pgm/pgm_plugin.cpp)
 
+# Radiance HDR and PFM (own parsers, no external deps).
+wiv_add_plugin(hdr hdr/hdr_plugin.cpp)
+
 find_package(TIFF REQUIRED)
 wiv_add_plugin(tiff tiff/tiff_plugin.cpp)
 target_link_libraries(wiv_plugin_tiff PRIVATE TIFF::TIFF)
@@ -107,4 +110,13 @@ if(LIBRAW_FOUND)
   target_link_libraries(wiv_plugin_raw PRIVATE PkgConfig::LIBRAW JPEG::JPEG)
 else()
   message(STATUS "LibRaw not found - building without the camera RAW plugin")
+endif()
+
+# OpenEXR is optional too.
+find_package(OpenEXR CONFIG QUIET)
+if(TARGET OpenEXR::OpenEXR)
+  wiv_add_plugin(exr exr/exr_plugin.cpp)
+  target_link_libraries(wiv_plugin_exr PRIVATE OpenEXR::OpenEXR)
+else()
+  message(STATUS "OpenEXR not found - building without the OpenEXR plugin")
 endif()
