@@ -347,6 +347,17 @@ bool layoutText(const TextRequest& req, TextOutline& out)
         const double s = req.sizePx / pf->upem;
         out.ascent = ext.ascender * s;
         out.descent = -ext.descender * s;
+        hb_font_t* hf = pf->font(req.weight);
+        hb_position_t pos = 0;
+        if (hb_ot_metrics_get_position(hf, HB_OT_METRICS_TAG_UNDERLINE_OFFSET, &pos)) out.underlinePos = -pos * s;
+        if (hb_ot_metrics_get_position(hf, HB_OT_METRICS_TAG_UNDERLINE_SIZE, &pos)) out.underlineThick = pos * s;
+        if (hb_ot_metrics_get_position(hf, HB_OT_METRICS_TAG_STRIKEOUT_OFFSET, &pos)) out.strikePos = pos * s;
+        if (hb_ot_metrics_get_position(hf, HB_OT_METRICS_TAG_STRIKEOUT_SIZE, &pos)) out.strikeThick = pos * s;
+        // Fonts that don't say: typical proportions.
+        if (out.underlineThick <= 0) out.underlineThick = 0.06 * req.sizePx;
+        if (out.underlinePos <= 0) out.underlinePos = 0.1 * req.sizePx;
+        if (out.strikeThick <= 0) out.strikeThick = out.underlineThick;
+        if (out.strikePos <= 0) out.strikePos = 0.3 * req.sizePx;
     }
 
     const std::vector<uint32_t> cps = decodeUtf8(req.text);
@@ -559,40 +570,96 @@ FontSpec parseFontSpec(const std::string& spec)
     }
     // "Sans, Serif": the first family; the rest is fontconfig's fallback job.
     if (size_t comma = family.find(','); comma != std::string::npos) family.resize(comma);
-    if (!family.empty()) fs.family = family;
+    if (!family.empty())
+    {
+        fs.family = family;
+        fs.hasFamily = true;
+    }
     return fs;
 }
 
 
-bool layoutLabel(const std::string& text, const FontSpec& font, double emPx, std::vector<TextOutline>& lines)
+bool layoutRichLabel(const std::string& text, const FontSpec& base, double baseEmPx, bool markup, RichLabel& out)
 {
-    lines.clear();
-    size_t start = 0;
-    while (true)
-    {
-        size_t nl = text.find('\n', start);
+    out = RichLabel();
+    std::vector<MarkupSpan> spans;
+    if (!markup || !parsePangoMarkup(text, spans)) spans = {MarkupSpan{text, MarkupStyle{}}};
+
+    out.lines.emplace_back();
+    auto request = [&](const MarkupStyle& st, const std::string& t) {
         TextRequest req;
-        req.text = text.substr(start, nl == std::string::npos ? std::string::npos : nl - start);
-        req.family = font.family;
-        req.weight = font.weight;
-        req.italic = font.italic;
-        req.sizePx = emPx;
-        TextOutline o;
-        if (!layoutText(req, o)) return false;
-        lines.push_back(std::move(o));
-        if (nl == std::string::npos) break;
-        start = nl + 1;
+        req.text = t;
+        req.family = st.family.value_or(base.family);
+        req.weight = st.weight.value_or(base.weight);
+        req.italic = st.italic.value_or(base.italic);
+        req.sizePx = (st.sizePt ? *st.sizePt * 96.0 / 72.0 : baseEmPx) * st.sizeScale;
+        req.letterSpacing = st.letterSpacingPx;
+        return req;
+    };
+    for (const MarkupSpan& span : spans)
+    {
+        size_t start = 0;
+        while (true)
+        {
+            size_t nl = span.text.find('\n', start);
+            std::string seg = span.text.substr(start, nl == std::string::npos ? std::string::npos : nl - start);
+            if (!seg.empty())
+            {
+                RichPiece piece;
+                const TextRequest req = request(span.style, seg);
+                if (!layoutText(req, piece.outline)) return false;
+                piece.emPx = req.sizePx;
+                piece.style = span.style;
+                RichLine& line = out.lines.back();
+                piece.x = line.width;
+                line.width += piece.outline.advance;
+                line.ascent = std::max(line.ascent, piece.outline.ascent + span.style.risePx);
+                line.descent = std::max(line.descent, piece.outline.descent - span.style.risePx);
+                line.pieces.push_back(std::move(piece));
+            }
+            if (nl == std::string::npos) break;
+            out.lines.emplace_back();
+            start = nl + 1;
+        }
     }
+    // Lines with no text (blank lines) are as tall as the base font; measured only if there is one.
+    TextOutline baseMetrics;
+    bool haveBaseMetrics = false;
+    auto baseLine = [&]() -> bool {
+        if (haveBaseMetrics) return true;
+        TextRequest req;
+        req.family = base.family;
+        req.weight = base.weight;
+        req.italic = base.italic;
+        req.sizePx = baseEmPx;
+        haveBaseMetrics = layoutText(req, baseMetrics);
+        return haveBaseMetrics;
+    };
+    double top = 0.0;
+    for (RichLine& line : out.lines)
+    {
+        if (line.pieces.empty())
+        {
+            if (!baseLine()) return false;
+            line.ascent = baseMetrics.ascent;
+            line.descent = baseMetrics.descent;
+        }
+        line.ascent = std::max(0.0, line.ascent);
+        line.descent = std::max(0.0, line.descent);
+        line.top = top;
+        top += line.ascent + line.descent;
+        out.width = std::max(out.width, line.width);
+    }
+    out.height = top;
     return true;
 }
 
-bool measureLabel(const std::string& text, const FontSpec& font, double emPx, double& width, double& height)
+bool measureLabel(const std::string& text, const FontSpec& font, double emPx, bool markup, double& width, double& height)
 {
-    std::vector<TextOutline> lines;
-    if (!layoutLabel(text, font, emPx, lines)) return false;
-    width = 0;
-    for (const TextOutline& o : lines) width = std::max(width, o.advance);
-    height = static_cast<double>(lines.size()) * (lines.front().ascent + lines.front().descent);
+    RichLabel label;
+    if (!layoutRichLabel(text, font, emPx, markup, label)) return false;
+    width = label.width;
+    height = label.height;
     return true;
 }
 

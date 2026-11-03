@@ -128,6 +128,7 @@ add_executable(wiv
   src/SvgDom.cpp
   src/SvgAnimation.cpp
   src/TextLayout.cpp
+  src/TextMarkup.cpp
   src/SceneBuilder.cpp
   src/CaliperTool.cpp
   src/PanZoomHandler.cpp

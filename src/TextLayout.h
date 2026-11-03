@@ -7,6 +7,7 @@
 // through the glyph atlas the .giv text marks use.
 
 #include "GivScene.h" // Op
+#include "TextMarkup.h"
 
 #include <string>
 #include <vector>
@@ -45,6 +46,10 @@ struct TextOutline
     double advance = 0.0; // total line width
     double ascent = 0.0;  // of the primary font, > 0
     double descent = 0.0; // of the primary font, > 0
+    // Decoration metrics of the primary font, in output units: where underline /
+    // strikethrough strokes go (distance below / above the baseline) and how thick.
+    double underlinePos = 0.0, underlineThick = 0.0;
+    double strikePos = 0.0, strikeThick = 0.0;
     bool empty() const { return op.empty(); }
 };
 
@@ -56,15 +61,39 @@ struct FontSpec
     int weight = 400;
     bool italic = false;
     double sizePt = -1.0;
+    bool hasFamily = false; // the description named a family (else `family` is the default)
 };
 FontSpec parseFontSpec(const std::string& spec);
 
-// Lays out a (possibly multi-line, '\n'-separated) label, one outline per line.
-bool layoutLabel(const std::string& text, const FontSpec& font, double emPx, std::vector<TextOutline>& lines);
+// A label laid out as lines of styled pieces (Pango markup gives several pieces
+// per line; plain text one). giv semantics: the logical box is the widest line
+// by the sum of the line heights, each line (ascent + descent of its tallest
+// piece, rise included) stacked from the top, left aligned.
+struct RichPiece
+{
+    TextOutline outline; // laid out at `emPx`; origin = the piece's start on its baseline
+    double x = 0.0;      // from the line's left edge
+    double emPx = 0.0;
+    MarkupStyle style;
+};
+struct RichLine
+{
+    std::vector<RichPiece> pieces;
+    double width = 0.0, ascent = 0.0, descent = 0.0;
+    double top = 0.0; // from the box top
+};
+struct RichLabel
+{
+    std::vector<RichLine> lines;
+    double width = 0.0, height = 0.0;
+};
 
-// Size of a label's logical box, as giv computes it (Pango): the widest line
-// by lines * (ascent + descent). False if no font was found.
-bool measureLabel(const std::string& text, const FontSpec& font, double emPx, double& width, double& height);
+// Lays out `text` ('\n' separates lines). With `markup` it is parsed as Pango
+// markup first (and shown literally if it is malformed).
+bool layoutRichLabel(const std::string& text, const FontSpec& base, double baseEmPx, bool markup, RichLabel& out);
+
+// Size of a label's logical box, as giv computes it (Pango). False if no font was found.
+bool measureLabel(const std::string& text, const FontSpec& font, double emPx, bool markup, double& width, double& height);
 
 // Lays out one line of text. Returns false if no font could be found at all.
 bool layoutText(const TextRequest& req, TextOutline& out);

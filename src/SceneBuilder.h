@@ -206,10 +206,25 @@ private:
     vsg::ref_ptr<vsg::Sampler> linearSampler_;
 };
 
-// Triangles of a text label as offsets (y up, in the units of `emPx`) from its
-// anchor, laid out with TextLayout and positioned the way giv does
-// (numeric-keypad alignment `align` 1-9, `angle` radians clockwise on screen).
-// Used for .giv text marks and the caliper tool's distance label.
+// One run of a text label's triangles, as offsets (y up, in the units of the
+// label's em) from its anchor: span backgrounds first, then each piece's glyphs
+// and underline/strikethrough strokes.
+struct LabelPart
+{
+    std::vector<vsg::vec2> tris;
+    bool hasColor = false;      // a colour set by markup; else the label's own
+    vsg::vec4 color;            // (rgba, when hasColor)
+    float alphaScale = 1.0f;    // markup alpha applied to the label's own colour
+    bool isBackground = false;  // a span background (not drawn in the drop shadow)
+};
+
+// A label laid out with TextLayout and positioned the way giv does: numeric-
+// keypad alignment `align` 1-9 of its logical box, `angle` radians clockwise on
+// screen, optional Pango markup. Used for .giv text marks.
+void buildLabelParts(const std::string& text, const FontSpec& font, double emPx, int align, double angle, bool markup,
+                     std::vector<LabelPart>& out);
+
+// Just the triangles of a plain label (for the caliper tool's distance readout).
 void buildLabelTriangles(const std::string& text, const FontSpec& font, double emPx, int align, double angle,
                          std::vector<vsg::vec2>& out);
 
