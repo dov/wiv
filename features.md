@@ -129,8 +129,14 @@ in Edit > Preferences > Keyboard.
   giv's 1-9 anchor rule, `\n` multi-line, `$text_angle` rotation, and Pango-style `$font`
   descriptions (family, Bold/Italic/Light..., size). Pixel-sized labels (the default) keep
   their size under zoom; `$scale_font` labels scale with the drawing. No glyph atlas, so a
-  new font costs nothing; the caliper label uses it too. `$text_style shadow` is parsed
-  but not drawn.
+  new font costs nothing; the caliper label uses it too.
+- `$pango_markup`: labels are parsed as Pango markup by a built-in parser - `<b> <i> <u>
+  <s> <big> <small> <sub> <sup> <tt>` and `<span>` with font/family/size (1024ths of a pt,
+  keywords, pt/px)/style/weight/foreground/background/alpha/underline (single, double,
+  low, colored)/strikethrough/rise/letter_spacing, plus entities. Malformed markup is
+  shown literally. Balloons are unaffected.
+- `$text_style shadow` with `$shadow_color` / `$shadow_offset`: the label is drawn once
+  more underneath, shifted by the offset (pixels; data units with `$scale_font`).
 
 ## Scientific / pixel-value tools
 
@@ -200,10 +206,10 @@ Stored in `state.db` (SQLite, WAL mode) next to `wiv.ini` (e.g.
 - Directives parsed: `$arrow $balloon $color $def_style $font $fps $frame
   $hide $image $line $line_cap $linedash $loop $lw $marks $mark_size $name
   $noline $nomark $outline_color $pango_markup $path $polygon $quiver_color
-  $quiver_head $quiver_scale $scale_font $scale_marks $style $text_angle
-  $text_size $text_style $title $vlock`, plus ellipses and beziers.
+  $quiver_head $quiver_scale $scale_font $scale_marks $shadow_color $shadow_offset
+  $style $text_angle $text_size $text_style $title $vlock`, plus ellipses and beziers.
 - Parsed but ignored: `$svg $svgmarks $marks_file $low_contrast $hflip/$vflip`
-  (and `no*`), `$pixelsize`, `$shadow_*`.
+  (and `no*`), `$pixelsize`.
 - Marks: circle, filled circle, square, filled square (+ others per parser).
 - Lines: width, dash patterns (first on/off pair only), caps, arrows.
 - Polygons (fan-triangulated; concave polygons may fill wrongly), holes.

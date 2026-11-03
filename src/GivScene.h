@@ -82,6 +82,14 @@ struct Dataset
     bool doScaleFonts = false;
     std::string fontName;
     TextStyle textStyle = TextStyle::Normal;
+    // $text_style shadow: the label is drawn a second time under itself, offset by
+    // (shadowOffsetX, shadowOffsetY) - pixels for pixel-sized text, data units
+    // for $scale_font text - in shadowColor (giv's defaults: black, 0.5/0.5).
+    Color shadowColor = Color::opaque(0, 0, 0, 1);
+    double shadowOffsetX = 0.5;
+    double shadowOffsetY = 0.5;
+    // $pango_markup: text labels are Pango markup (<b>, <span ...>, &amp; ...).
+    bool doPangoMarkup = false;
 
     double quiverScale = 1.0;
     bool quiverHead = true;

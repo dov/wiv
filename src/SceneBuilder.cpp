@@ -760,13 +760,16 @@ void triangulateSubpaths(std::vector<FillVertex>& tris, const std::vector<std::v
 // bidi / font-fallback path as SVG text, so a label needs no glyph atlas.
 // ---------------------------------------------------------------------
 
-// Appends the triangles of one label (see buildLabelTriangles).
+// Appends the triangles of one label (see buildLabelParts).
 //
 // World-scaled text ($scale_font): vertices are final world positions.
 // Pixel-sized text (the default): each vertex is the anchor plus a screen-pixel
 // offset, resolved in fill.vert, so the label keeps its size under zoom - the
 // same mechanism the arrowheads use (see addArrowHead). `anchor` is in world
 // space (y already negated).
+//
+// $text_style shadow draws the label once more underneath, in $shadow_color,
+// shifted by $shadow_offset (pixels, or data units for $scale_font text).
 void addTextOutlines(const Dataset& ds, const TextItem& item, const vsg::vec2& anchor, const vsg::vec4& color,
                      const vsg::vec4& labelColor, std::vector<FillVertex>& tris, std::vector<uint32_t>& arrowIndex,
                      std::vector<vsg::vec2>& arrowTip, std::vector<vsg::vec2>& arrowOffsetPixels)
@@ -774,132 +777,209 @@ void addTextOutlines(const Dataset& ds, const TextItem& item, const vsg::vec2& a
     const FontSpec fs = parseFontSpec(ds.fontName);
     const double size = fs.sizePt > 0 ? fs.sizePt : (ds.textSize > 0 ? ds.textSize : 12.0);
     const double em = size * 96.0 / 72.0; // Pango points -> pixels
-    std::vector<vsg::vec2> offsets;
-    buildLabelTriangles(item.text, fs, em, item.align, ds.textAngle, offsets);
-    for (const vsg::vec2& off : offsets)
-    {
+    std::vector<LabelPart> parts;
+    buildLabelParts(item.text, fs, em, item.align, ds.textAngle, ds.doPangoMarkup, parts);
+
+    auto emit = [&](const LabelPart& part, const vsg::vec2& shift, const vsg::vec4* forcedColor) {
+        vsg::vec4 c = forcedColor ? *forcedColor : (part.hasColor ? part.color : color);
+        if (!forcedColor) c.a *= part.alphaScale;
         if (ds.doScaleFonts)
         {
-            tris.push_back({anchor + off, color, labelColor});
+            for (const vsg::vec2& v : part.tris) tris.push_back({vsg::vec2(anchor.x + v.x + shift.x, anchor.y + v.y + shift.y), c, labelColor});
         }
         else
         {
-            arrowIndex.push_back(static_cast<uint32_t>(tris.size()));
-            tris.push_back({anchor, color, labelColor});
-            arrowTip.push_back(anchor);
-            arrowOffsetPixels.push_back(off);
+            for (const vsg::vec2& v : part.tris)
+            {
+                arrowIndex.push_back(static_cast<uint32_t>(tris.size()));
+                tris.push_back({anchor, c, labelColor});
+                arrowTip.push_back(anchor);
+                arrowOffsetPixels.push_back(vsg::vec2(v.x + shift.x, v.y + shift.y));
+            }
         }
+    };
+
+    if (ds.textStyle == TextStyle::DropShadow && !ds.shadowColor.isNone)
+    {
+        const vsg::vec4 shadow = toVsg(ds.shadowColor);
+        const vsg::vec2 shift(static_cast<float>(ds.shadowOffsetX), static_cast<float>(-ds.shadowOffsetY)); // y up
+        for (const LabelPart& part : parts)
+            if (!part.isBackground) emit(part, shift, &shadow);
     }
+    for (const LabelPart& part : parts) emit(part, vsg::vec2(0, 0), nullptr);
 }
 
 } // namespace
 
-// Triangles of a label as offsets from its anchor, y up, in units of `emPx`
-// (pixels or world units, the caller decides). giv semantics
-// (GivPainterCairo::add_text): the anchor sits at the (col/2, 1 - row/2) point
-// of the label's logical box (width = widest line, height = lines * (ascent +
-// descent)), lines are left aligned in that box, and the box is rotated by
-// `angle` (clockwise on screen) about the anchor. `align` is the numeric-keypad
-// alignment 1-9.
-void buildLabelTriangles(const std::string& text, const FontSpec& font, double emPx, int align, double angle,
-                         std::vector<vsg::vec2>& out)
+// The geometry of a label, as offsets from its anchor (y up, in units of `emPx`:
+// pixels or world units, the caller decides), in painting order: span
+// backgrounds, then each piece's glyphs and its underline/strikethrough.
+// giv semantics (GivPainterCairo::add_text): the anchor sits at the
+// (col/2, 1 - row/2) point of the label's logical box (see RichLabel), lines
+// are left aligned in that box, and the box is rotated by `angle` (clockwise
+// on screen) about the anchor. `align` is the numeric-keypad alignment 1-9.
+void buildLabelParts(const std::string& text, const FontSpec& font, double emPx, int align, double angle, bool markup,
+                     std::vector<LabelPart>& out)
 {
-    std::vector<TextOutline> lines;
-    if (!layoutLabel(text, font, emPx, lines)) return;
-    const double lineH = lines.front().ascent + lines.front().descent;
-    double width = 0;
-    for (const TextOutline& o : lines) width = std::max(width, o.advance);
-    const double height = lineH * static_cast<double>(lines.size());
+    out.clear();
+    RichLabel label;
+    if (!layoutRichLabel(text, font, emPx, markup, label)) return;
 
     const int col = (align - 1) % 3, row = (align - 1) / 3;
-    const double boxLeft = -(col / 2.0) * width;
-    const double boxTop = -(1.0 - row / 2.0) * height;
+    const double boxLeft = -(col / 2.0) * label.width;
+    const double boxTop = -(1.0 - row / 2.0) * label.height;
     const double ca = std::cos(angle), sa = std::sin(angle);
+    // y-down, relative to the anchor -> rotated -> y up
+    auto place = [&](double x, double y) {
+        const double rx = x * ca - y * sa, ry = x * sa + y * ca;
+        return vsg::vec2(static_cast<float>(rx), static_cast<float>(-ry));
+    };
+    auto setColor = [](LabelPart& part, const std::optional<Color>& c, const MarkupStyle& st) {
+        if (c && !c->isNone)
+        {
+            part.hasColor = true;
+            part.color = vsg::vec4(c->r, c->g, c->b, c->a * static_cast<float>(st.fgAlpha.value_or(1.0)));
+        }
+        else part.alphaScale = static_cast<float>(st.fgAlpha.value_or(1.0));
+    };
+    auto addRect = [&](LabelPart& part, double x0, double y0, double x1, double y1) { // y down
+        const vsg::vec2 a = place(x0, y0), b = place(x1, y0), c = place(x1, y1), d = place(x0, y1);
+        for (const vsg::vec2& v : {a, b, c, a, c, d}) part.tris.push_back(v);
+    };
+
+    // Span backgrounds go under everything.
+    for (const RichLine& line : label.lines)
+        for (const RichPiece& piece : line.pieces)
+        {
+            if (!piece.style.bg || piece.style.bg->isNone) continue;
+            LabelPart part;
+            part.isBackground = true;
+            part.hasColor = true;
+            part.color = vsg::vec4(piece.style.bg->r, piece.style.bg->g, piece.style.bg->b, piece.style.bg->a);
+            const double x0 = boxLeft + piece.x;
+            addRect(part, x0, boxTop + line.top, x0 + piece.outline.advance, boxTop + line.top + line.ascent + line.descent);
+            out.push_back(std::move(part));
+        }
+
     // Glyph meshes are cached in em-normalized, y-down coordinates around the
     // glyph origin: the same few distinct glyphs recur in every label, and
     // triangulating them dominates the cost. The curve tolerance is em-relative
     // for small text and capped at kCurveFlatness world units for large text;
     // the cache key carries the (power-of-two quantized) tolerance.
-    const double tolN = std::min(0.004, static_cast<double>(kCurveFlatness) / emPx);
-    const int tolTier = std::max(0, static_cast<int>(std::ceil(std::log2(0.004 / tolN))));
-    const float tol = static_cast<float>(0.004 / std::pow(2.0, tolTier));
     static std::mutex cacheMutex;
     static std::unordered_map<unsigned long long, std::shared_ptr<const std::vector<vsg::vec2>>> glyphMeshes;
 
-    for (size_t li = 0; li < lines.size(); ++li)
+    for (const RichLine& line : label.lines)
     {
-        const TextOutline& o = lines[li];
-        const double baseline = boxTop + lines.front().ascent + static_cast<double>(li) * lineH;
-        size_t pt = 0;
-        for (size_t g = 0; g < o.glyphEnd.size(); ++g)
+        const double baseline = boxTop + line.top + line.ascent;
+        for (const RichPiece& piece : line.pieces)
         {
-            const size_t first = pt, last = o.glyphEnd[g];
-            pt = last;
-            if (last == first) continue;
-            const unsigned long long key = o.glyphKey[g] * 31ull + static_cast<unsigned long long>(tolTier);
+            const TextOutline& o = piece.outline;
+            const double em = piece.emPx;
+            const double pieceBase = baseline - piece.style.risePx; // y down
+            const double pieceX = boxLeft + piece.x;
+            const double tolN = std::min(0.004, static_cast<double>(kCurveFlatness) / em);
+            const int tolTier = std::max(0, static_cast<int>(std::ceil(std::log2(0.004 / tolN))));
+            const float tol = static_cast<float>(0.004 / std::pow(2.0, tolTier));
 
-            std::shared_ptr<const std::vector<vsg::vec2>> mesh;
+            LabelPart glyphs;
+            setColor(glyphs, piece.style.fg, piece.style);
+            size_t pt = 0;
+            for (size_t g = 0; g < o.glyphEnd.size(); ++g)
             {
-                std::lock_guard<std::mutex> lock(cacheMutex);
-                auto it = glyphMeshes.find(key);
-                if (it != glyphMeshes.end()) mesh = it->second;
-            }
-            if (!mesh)
-            {
-                const double ox = o.glyphOx[g], oy = o.glyphOy[g];
-                auto local = [&](size_t k) {
-                    return vsg::vec2(static_cast<float>((o.x[k] - ox) / emPx), static_cast<float>((o.y[k] - oy) / emPx));
-                };
-                std::vector<std::vector<vsg::vec2>> subpaths;
-                std::vector<vsg::vec2> cur;
-                auto flush = [&] {
-                    if (cur.size() >= 3) subpaths.push_back(cur);
-                    cur.clear();
-                };
-                for (size_t k = first; k < last; ++k)
+                const size_t first = pt, last = o.glyphEnd[g];
+                pt = last;
+                if (last == first) continue;
+                const unsigned long long key = o.glyphKey[g] * 31ull + static_cast<unsigned long long>(tolTier);
+
+                std::shared_ptr<const std::vector<vsg::vec2>> mesh;
                 {
-                    switch (o.op[k])
-                    {
-                    case Op::Move:
-                        flush();
-                        cur.push_back(local(k));
-                        break;
-                    case Op::Draw:
-                        cur.push_back(local(k));
-                        break;
-                    case Op::Curve:
-                        if (k + 2 < last && !cur.empty())
-                        {
-                            tessellateCubic(cur.back(), local(k), local(k + 1), local(k + 2), cur, tol);
-                            k += 2;
-                        }
-                        break;
-                    case Op::ClosePath:
-                        flush();
-                        break;
-                    default: break;
-                    }
+                    std::lock_guard<std::mutex> lock(cacheMutex);
+                    auto it = glyphMeshes.find(key);
+                    if (it != glyphMeshes.end()) mesh = it->second;
                 }
-                flush();
-                std::vector<FillVertex> glyphTris;
-                if (!subpaths.empty()) triangulateSubpaths(glyphTris, subpaths, vsg::vec4(0, 0, 0, 1), vsg::vec4(0, 0, 0, 1));
-                auto built = std::make_shared<std::vector<vsg::vec2>>();
-                built->reserve(glyphTris.size());
-                for (const FillVertex& v : glyphTris) built->push_back(v.pos);
-                mesh = built;
-                std::lock_guard<std::mutex> lock(cacheMutex);
-                glyphMeshes.emplace(key, mesh);
+                if (!mesh)
+                {
+                    const double ox = o.glyphOx[g], oy = o.glyphOy[g];
+                    auto local = [&](size_t k) {
+                        return vsg::vec2(static_cast<float>((o.x[k] - ox) / em), static_cast<float>((o.y[k] - oy) / em));
+                    };
+                    std::vector<std::vector<vsg::vec2>> subpaths;
+                    std::vector<vsg::vec2> cur;
+                    auto flush = [&] {
+                        if (cur.size() >= 3) subpaths.push_back(cur);
+                        cur.clear();
+                    };
+                    for (size_t k = first; k < last; ++k)
+                    {
+                        switch (o.op[k])
+                        {
+                        case Op::Move:
+                            flush();
+                            cur.push_back(local(k));
+                            break;
+                        case Op::Draw:
+                            cur.push_back(local(k));
+                            break;
+                        case Op::Curve:
+                            if (k + 2 < last && !cur.empty())
+                            {
+                                tessellateCubic(cur.back(), local(k), local(k + 1), local(k + 2), cur, tol);
+                                k += 2;
+                            }
+                            break;
+                        case Op::ClosePath:
+                            flush();
+                            break;
+                        default: break;
+                        }
+                    }
+                    flush();
+                    std::vector<FillVertex> glyphTris;
+                    if (!subpaths.empty()) triangulateSubpaths(glyphTris, subpaths, vsg::vec4(0, 0, 0, 1), vsg::vec4(0, 0, 0, 1));
+                    auto built = std::make_shared<std::vector<vsg::vec2>>();
+                    built->reserve(glyphTris.size());
+                    for (const FillVertex& v : glyphTris) built->push_back(v.pos);
+                    mesh = built;
+                    std::lock_guard<std::mutex> lock(cacheMutex);
+                    glyphMeshes.emplace(key, mesh);
+                }
+                for (const vsg::vec2& v : *mesh)
+                    glyphs.tris.push_back(place(pieceX + o.glyphOx[g] + em * v.x, pieceBase + o.glyphOy[g] + em * v.y));
             }
+            if (!glyphs.tris.empty()) out.push_back(std::move(glyphs));
 
-            for (const vsg::vec2& v : *mesh)
+            // Underline / strikethrough strokes across the piece.
+            const double x0 = pieceX, x1 = pieceX + o.advance;
+            auto decoration = [&](double yTop, double thick, const std::optional<Color>& color) {
+                LabelPart part;
+                setColor(part, color ? color : piece.style.fg, piece.style);
+                addRect(part, x0, yTop, x1, yTop + thick);
+                out.push_back(std::move(part));
+            };
+            using U = MarkupStyle::Underline;
+            if (piece.style.underline != U::None)
             {
-                const double x = boxLeft + o.glyphOx[g] + emPx * v.x, y = baseline + o.glyphOy[g] + emPx * v.y; // y down
-                const double rx = x * ca - y * sa, ry = x * sa + y * ca; // text angle: clockwise on screen
-                const vsg::vec2 off(static_cast<float>(rx), static_cast<float>(-ry)); // world: y up
-                out.push_back(off);
+                const double thick = o.underlineThick;
+                double y = pieceBase + o.underlinePos - thick / 2;
+                if (piece.style.underline == U::Low) y = pieceBase + o.descent;
+                decoration(y, thick, piece.style.underlineColor);
+                if (piece.style.underline == U::Double) decoration(y + 2 * thick, thick, piece.style.underlineColor);
             }
+            if (piece.style.strike) decoration(pieceBase - o.strikePos - o.strikeThick / 2, o.strikeThick, piece.style.strikeColor);
         }
     }
+}
+
+// Just the triangles, in one piece (for labels without per-span colours, e.g. the
+// caliper's distance readout).
+void buildLabelTriangles(const std::string& text, const FontSpec& font, double emPx, int align, double angle,
+                         std::vector<vsg::vec2>& out)
+{
+    std::vector<LabelPart> parts;
+    buildLabelParts(text, font, emPx, align, angle, false, parts);
+    out.clear();
+    for (const LabelPart& part : parts) out.insert(out.end(), part.tris.begin(), part.tris.end());
 }
 
 

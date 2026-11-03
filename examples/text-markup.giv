@@ -1,0 +1,73 @@
+# Pango markup and drop-shadow text labels. Style directives apply to a whole
+# dataset, and datasets are separated by blank lines.
+$marks fcircle
+$color red
+$noline
+$mark_size 3
+50 40
+50 100
+50 160
+50 220
+50 300
+50 380
+380 40
+380 130
+380 220
+380 300
+
+$text_size 14
+$pango_markup 1
+$color black
+T4 50 40 <b>Bold</b>, <i>italic</i>, <u>underlined</u>, <s>struck</s> and <tt>monospace</tt>
+
+$text_size 14
+$pango_markup 1
+$color #333333
+T4 50 100 x<sup>2</sup> + y<sub>i</sub> = <span foreground="red" weight="bold">z</span><span size="x-large">!</span> <big>big</big> <small>small</small>
+
+$text_size 14
+$pango_markup 1
+$color #333333
+T4 50 160 <span background="yellow" foreground="blue"> highlighted </span> <span underline="double" underline_color="red">double</span> <span letter_spacing="3072">spaced</span>
+
+$text_size 14
+$pango_markup 1
+$color #333333
+T4 50 220 <span font="Serif Italic 20" foreground="#aa00aa">Serif 20pt</span> <span size="8pt" rise="4pt">raised small</span> &amp; &lt;entities&gt; &#233;&#x263a;
+
+$text_size 14
+$pango_markup 1
+$color #333333
+T4 50 300 First line\n<b>second</b>\n<span color="green">third</span>
+
+$text_size 14
+$pango_markup 0
+$color #333333
+T4 50 380 Markup off: <b>shown literally</b>
+
+$text_size 14
+$pango_markup 1
+$color #333333
+T4 380 40 <b>unclosed tag (malformed markup is shown literally)
+
+$text_size 24
+$color white
+$text_style shadow
+$shadow_color black
+$shadow_offset 2 2
+T4 380 130 Shadow 2px
+
+$text_size 24
+$color yellow
+$text_style shadow
+$shadow_color red/0.6
+$shadow_offset 4 4
+T4 380 220 Red shadow 4px
+
+$scale_font 1
+$text_size 30
+$color white
+$text_style shadow
+$shadow_color #0000ff
+$shadow_offset 3 3
+T4 380 300 Scaled shadow

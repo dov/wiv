@@ -378,10 +378,6 @@ void GivParser::parseLine(Dataset& ds, const char* line, size_t len, SceneData& 
             std::string spec = tok.getRest(1);
             if (parseGivColor(spec, c)) ds.quiverColor = c;
         }
-        else if (w0 == "$shadow_color" || w0 == "$shadow_offset")
-        {
-            // Phase 1: drop-shadow rendering not implemented; accept-and-ignore.
-        }
         else if (w0 == "$quiver_scale")
         {
             ds.quiverScale = tok.getFloat(1);
@@ -399,9 +395,19 @@ void GivParser::parseLine(Dataset& ds, const char* line, size_t len, SceneData& 
         else if (w0 == "$noline") ds.doDrawLines = false;
         else if (w0 == "$scale_marks") ds.doScaleMarks = (tok.size() == 1) ? true : (tok.getInt(1) != 0);
         else if (w0 == "$scale_font") ds.doScaleFonts = (tok.size() == 1) ? true : (tok.getInt(1) != 0);
-        else if (w0 == "$pango_markup")
+        else if (w0 == "$pango_markup") ds.doPangoMarkup = (tok.size() == 1) ? true : (tok.getInt(1) != 0);
+        else if (w0 == "$shadow_color")
         {
-            // Phase 1: markup parsing not implemented, text drawn as plain.
+            Color c;
+            if (parseGivColor(tok.getRest(1), c)) ds.shadowColor = c;
+        }
+        else if (w0 == "$shadow_offset")
+        {
+            if (tok.size() >= 3)
+            {
+                ds.shadowOffsetX = tok.getFloat(1);
+                ds.shadowOffsetY = tok.getFloat(2);
+            }
         }
         else if (w0 == "$path") ds.pathName = tok.getRest(1);
         else if (w0 == "$mark_size") ds.markSize = tok.getFloat(1);
@@ -595,7 +601,7 @@ void GivParser::parseLine(Dataset& ds, const char* line, size_t len, SceneData& 
                 const double size = fs.sizePt > 0 ? fs.sizePt : (ds.textSize > 0 ? ds.textSize : 12.0);
                 const double em = size * 96.0 / 72.0; // Pango points -> pixels
                 double w = 0, h = 0;
-                if (!measureLabel(out, fs, em, w, h))
+                if (!measureLabel(out, fs, em, ds.doPangoMarkup, w, h))
                 {
                     size_t lines = 1, maxChars = 0, cur = 0;
                     for (char c : out)
