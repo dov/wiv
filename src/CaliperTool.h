@@ -78,6 +78,14 @@ public:
     // disabled or before any caliper exists) - for a status-bar readout.
     std::function<void(const std::string&)> onMeasurementText;
 
+    // The extent, in device pixels, that the camera's projection actually spans
+    // - the visible part of the render window, which is smaller than the window
+    // itself (see VulkanViewport::viewportExtent()). Mouse positions and the
+    // world-units-per-pixel scale must be computed against this one, or the
+    // caliper lands at a different scale and place than the cursor. Falls back
+    // to the extent of the window the last event came from.
+    std::function<VkExtent2D()> viewportExtent;
+
     // Called after root_'s children change, so the owner can push the new
     // geometry to the GPU (vsg::Viewer::compile()).
     std::function<void()> onNeedsCompile;
@@ -148,6 +156,7 @@ private:
     double lastDistPx_ = 0.0; // see lastDistancePixels()
 
     vsg::dvec2 windowToWorld(int32_t x, int32_t y) const;
+    VkExtent2D currentExtent() const;
     double worldPerPixel() const;
 
     // Hit-tests `world` against the current caliper's three parts (jaw
