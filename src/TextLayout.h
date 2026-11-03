@@ -36,6 +36,12 @@ struct TextOutline
     std::vector<Op> op;
     // Index into the arrays after each glyph's points (for chunking).
     std::vector<size_t> glyphEnd;
+    // Per glyph: where its origin is (the glyph's points minus this give its
+    // shape on its own) and an id of the shape (font face, weight, glyph,
+    // synthetic slant) - equal ids have equal shapes at equal sizes, so
+    // callers can cache per-glyph work.
+    std::vector<float> glyphOx, glyphOy;
+    std::vector<unsigned long long> glyphKey;
     double advance = 0.0; // total line width
     double ascent = 0.0;  // of the primary font, > 0
     double descent = 0.0; // of the primary font, > 0

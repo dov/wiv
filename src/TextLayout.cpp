@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <map>
 #include <memory>
@@ -464,6 +465,15 @@ bool layoutText(const TextRequest& req, TextOutline& out)
         for (unsigned g = 0; g < count; ++g)
         {
             const auto& segs = glyphOutline(*face, req.weight, info[g].codepoint);
+            {
+                unsigned long long key = static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(face.get()));
+                key = key * 1099511628211ull + static_cast<unsigned long long>(face->weightKey(req.weight));
+                key = key * 1099511628211ull + info[g].codepoint;
+                key = key * 1099511628211ull + (synthItalic ? 1ull : 0ull);
+                out.glyphKey.push_back(key);
+                out.glyphOx.push_back(static_cast<float>(pen + pos[g].x_offset * scale));
+                out.glyphOy.push_back(static_cast<float>(-(pos[g].y_offset * scale)));
+            }
             const double gx = pen + pos[g].x_offset * scale;
             const double gy = pos[g].y_offset * scale; // up
             auto emit = [&](double px, double py, Op op) {

@@ -14,7 +14,9 @@
 #include <cstring>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <sstream>
+#include <unordered_map>
 #include <stdexcept>
 
 namespace giv
@@ -893,68 +895,97 @@ void addTextOutlines(const Dataset& ds, const TextItem& item, const vsg::vec2& a
     const double boxLeft = -(col / 2.0) * width;
     const double boxTop = -(1.0 - row / 2.0) * height;
     const double ca = std::cos(ds.textAngle), sa = std::sin(ds.textAngle);
-    const float tol = static_cast<float>(std::min<double>(kCurveFlatness, em * 0.004));
+    // Glyph meshes are cached in em-normalized, y-down coordinates around the
+    // glyph origin: the same few distinct glyphs recur in every label, and
+    // triangulating them dominates the cost. The curve tolerance is em-relative
+    // for small text and capped at kCurveFlatness world units for large text;
+    // the cache key carries the (power-of-two quantized) tolerance.
+    const double tolN = std::min(0.004, static_cast<double>(kCurveFlatness) / em);
+    const int tolTier = std::max(0, static_cast<int>(std::ceil(std::log2(0.004 / tolN))));
+    const float tol = static_cast<float>(0.004 / std::pow(2.0, tolTier));
+    static std::mutex cacheMutex;
+    static std::unordered_map<unsigned long long, std::shared_ptr<const std::vector<vsg::vec2>>> glyphMeshes;
 
     for (size_t li = 0; li < lines.size(); ++li)
     {
         const TextOutline& o = lines[li];
         const double baseline = boxTop + lines.front().ascent + static_cast<double>(li) * lineH;
-        // Each glyph is triangulated on its own: its contours only nest within it.
         size_t pt = 0;
         for (size_t g = 0; g < o.glyphEnd.size(); ++g)
         {
-            std::vector<std::vector<vsg::vec2>> subpaths;
-            std::vector<vsg::vec2> cur;
-            auto toOffset = [&](size_t k) {
-                const double x = boxLeft + o.x[k], y = baseline + o.y[k]; // y down, relative to the anchor
-                const double rx = x * ca - y * sa, ry = x * sa + y * ca;   // text angle: clockwise on screen
-                return vsg::vec2(static_cast<float>(rx), static_cast<float>(-ry)); // world: y up
-            };
-            auto flush = [&] {
-                if (cur.size() >= 3) subpaths.push_back(cur);
-                cur.clear();
-            };
-            for (; pt < o.glyphEnd[g]; ++pt)
-            {
-                switch (o.op[pt])
-                {
-                case Op::Move:
-                    flush();
-                    cur.push_back(toOffset(pt));
-                    break;
-                case Op::Draw:
-                    cur.push_back(toOffset(pt));
-                    break;
-                case Op::Curve:
-                    if (pt + 2 < o.op.size() && !cur.empty())
-                    {
-                        tessellateCubic(cur.back(), toOffset(pt), toOffset(pt + 1), toOffset(pt + 2), cur, tol);
-                        pt += 2;
-                    }
-                    break;
-                case Op::ClosePath:
-                    flush();
-                    break;
-                default: break;
-                }
-            }
-            flush();
-            if (subpaths.empty()) continue;
+            const size_t first = pt, last = o.glyphEnd[g];
+            pt = last;
+            if (last == first) continue;
+            const unsigned long long key = o.glyphKey[g] * 31ull + static_cast<unsigned long long>(tolTier);
 
-            std::vector<FillVertex> glyphTris;
-            triangulateSubpaths(glyphTris, subpaths, color, labelColor);
-            for (const FillVertex& v : glyphTris)
+            std::shared_ptr<const std::vector<vsg::vec2>> mesh;
             {
+                std::lock_guard<std::mutex> lock(cacheMutex);
+                auto it = glyphMeshes.find(key);
+                if (it != glyphMeshes.end()) mesh = it->second;
+            }
+            if (!mesh)
+            {
+                const double ox = o.glyphOx[g], oy = o.glyphOy[g];
+                auto local = [&](size_t k) {
+                    return vsg::vec2(static_cast<float>((o.x[k] - ox) / em), static_cast<float>((o.y[k] - oy) / em));
+                };
+                std::vector<std::vector<vsg::vec2>> subpaths;
+                std::vector<vsg::vec2> cur;
+                auto flush = [&] {
+                    if (cur.size() >= 3) subpaths.push_back(cur);
+                    cur.clear();
+                };
+                for (size_t k = first; k < last; ++k)
+                {
+                    switch (o.op[k])
+                    {
+                    case Op::Move:
+                        flush();
+                        cur.push_back(local(k));
+                        break;
+                    case Op::Draw:
+                        cur.push_back(local(k));
+                        break;
+                    case Op::Curve:
+                        if (k + 2 < last && !cur.empty())
+                        {
+                            tessellateCubic(cur.back(), local(k), local(k + 1), local(k + 2), cur, tol);
+                            k += 2;
+                        }
+                        break;
+                    case Op::ClosePath:
+                        flush();
+                        break;
+                    default: break;
+                    }
+                }
+                flush();
+                std::vector<FillVertex> glyphTris;
+                if (!subpaths.empty()) triangulateSubpaths(glyphTris, subpaths, vsg::vec4(0, 0, 0, 1), vsg::vec4(0, 0, 0, 1));
+                auto built = std::make_shared<std::vector<vsg::vec2>>();
+                built->reserve(glyphTris.size());
+                for (const FillVertex& v : glyphTris) built->push_back(v.pos);
+                mesh = built;
+                std::lock_guard<std::mutex> lock(cacheMutex);
+                glyphMeshes.emplace(key, mesh);
+            }
+
+            for (const vsg::vec2& v : *mesh)
+            {
+                const double x = boxLeft + o.glyphOx[g] + em * v.x, y = baseline + o.glyphOy[g] + em * v.y; // y down
+                const double rx = x * ca - y * sa, ry = x * sa + y * ca; // text angle: clockwise on screen
+                const vsg::vec2 off(static_cast<float>(rx), static_cast<float>(-ry)); // world: y up
                 if (ds.doScaleFonts)
                 {
-                    tris.push_back({anchor + v.pos, v.color, v.labelColor});
+                    tris.push_back({anchor + off, color, labelColor});
                 }
                 else
                 {
                     arrowIndex.push_back(static_cast<uint32_t>(tris.size()));
-                    tris.push_back({anchor, v.color, v.labelColor});
+                    tris.push_back({anchor, color, labelColor});
                     arrowTip.push_back(anchor);
-                    arrowOffsetPixels.push_back(v.pos);
+                    arrowOffsetPixels.push_back(off);
                 }
             }
         }
