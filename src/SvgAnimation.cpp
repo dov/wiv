@@ -83,55 +83,7 @@ struct Rgb
 
 bool parseColor(const std::string& in, Rgb& c)
 {
-    static const std::map<std::string, unsigned> names = {
-        {"black", 0x000000}, {"white", 0xffffff}, {"red", 0xff0000},     {"green", 0x008000},  {"blue", 0x0000ff},
-        {"yellow", 0xffff00}, {"cyan", 0x00ffff},  {"aqua", 0x00ffff},   {"magenta", 0xff00ff}, {"fuchsia", 0xff00ff},
-        {"gray", 0x808080},   {"grey", 0x808080},  {"silver", 0xc0c0c0}, {"maroon", 0x800000},  {"olive", 0x808000},
-        {"lime", 0x00ff00},   {"teal", 0x008080},  {"navy", 0x000080},   {"purple", 0x800080},  {"orange", 0xffa500},
-        {"pink", 0xffc0cb},   {"brown", 0xa52a2a}, {"gold", 0xffd700},   {"violet", 0xee82ee},  {"indigo", 0x4b0082}};
-    std::string s = trim(in);
-    unsigned v = 0;
-    if (!s.empty() && s[0] == '#')
-    {
-        if (s.size() == 7 || s.size() == 4)
-        {
-            for (size_t i = 1; i < s.size(); ++i)
-                if (!std::isxdigit(static_cast<unsigned char>(s[i]))) return false;
-            if (s.size() == 7) v = static_cast<unsigned>(std::strtoul(s.c_str() + 1, nullptr, 16));
-            else
-            {
-                unsigned r = std::strtoul(s.substr(1, 1).c_str(), nullptr, 16);
-                unsigned g = std::strtoul(s.substr(2, 1).c_str(), nullptr, 16);
-                unsigned b = std::strtoul(s.substr(3, 1).c_str(), nullptr, 16);
-                v = (r * 17 << 16) | (g * 17 << 8) | (b * 17);
-            }
-        }
-        else return false;
-    }
-    else if (s.compare(0, 4, "rgb(") == 0 && s.back() == ')')
-    {
-        std::string body = s.substr(4, s.size() - 5);
-        std::vector<double> comp;
-        for (const std::string& part : split(body, ','))
-        {
-            char* end = nullptr;
-            double x = std::strtod(part.c_str(), &end);
-            if (end == part.c_str()) return false;
-            if (*end == '%') x = x * 255.0 / 100.0;
-            comp.push_back(x);
-        }
-        if (comp.size() != 3) return false;
-        c = {comp[0], comp[1], comp[2]};
-        return true;
-    }
-    else
-    {
-        auto it = names.find(s);
-        if (it == names.end()) return false;
-        v = it->second;
-    }
-    c = {double((v >> 16) & 255), double((v >> 8) & 255), double(v & 255)};
-    return true;
+    return parseSvgColor(in, c.r, c.g, c.b);
 }
 
 std::string formatNumber(double v)
