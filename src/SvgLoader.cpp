@@ -1,6 +1,7 @@
 #include "SvgLoader.h"
 #include "ImagePluginHost.h"
 #include "PathUtils.h"
+#include "SvgAnimation.h"
 #include "SvgDom.h"
 
 #define NANOSVG_IMPLEMENTATION
@@ -521,9 +522,13 @@ bool decodeImageHref(std::string href, const std::string& absref, const std::str
     return false;
 }
 
+// Decoded <image> pictures by href, so an animation doesn't decode them again every frame.
+using SvgImageCache = std::unordered_map<std::string, RgbaImage>;
+
 struct ImageWalker
 {
     const std::string& svgFilename;
+    SvgImageCache* cache;
     SceneData& scene;
     int index = 0;
 
@@ -535,7 +540,14 @@ struct ImageWalker
         if (style.find("display:none") != std::string::npos || el.attr("display") == "none") return;
 
         RgbaImage img;
-        if (href.empty() || !decodeImageHref(href, el.attr("sodipodi:absref"), svgFilename, img) || img.empty()) return;
+        if (href.empty()) return;
+        auto cached = cache ? cache->find(href) : SvgImageCache::iterator();
+        if (cache && cached != cache->end()) img = cached->second;
+        else
+        {
+            if (!decodeImageHref(href, el.attr("sodipodi:absref"), svgFilename, img) || img.empty()) return;
+            if (cache) (*cache)[href] = img;
+        }
 
         double x = parseLength(el.attr("x")), y = parseLength(el.attr("y"));
         double w = parseLength(el.attr("width"), img.width);
@@ -610,7 +622,7 @@ struct ImageWalker
     }
 };
 
-void addSvgImages(const SvgNode& root, const std::string& svgFilename, const NSVGimage* svg, SceneData& scene)
+void addSvgImages(const SvgNode& root, const std::string& svgFilename, const NSVGimage* svg, SvgImageCache* cache, SceneData& scene)
 {
     // User units -> the pixel space nanosvg's shapes are in (see nsvgParse):
     // the viewBox is mapped onto width/height, xMidYMid meet.
@@ -623,36 +635,19 @@ void addSvgImages(const SvgNode& root, const std::string& svgFilename, const NSV
         offY = -vb[1] * scale + (svg->height - vb[3] * scale) * 0.5;
     }
     // The root element's own transform (if any) is not applied by nanosvg either.
-    ImageWalker walker{svgFilename, scene};
+    ImageWalker walker{svgFilename, cache, scene};
     walker.walk(root, Affine{scale, 0, 0, scale, offX, offY});
 }
 
-} // namespace
-
-bool loadSvgFile(const std::string& filename, SceneData& scene, std::string& error)
+// Everything after nanosvg's parse: the <image> sprites and one dataset per
+// fill/stroke. `dom` (may be null) is the XML the NSVGimage was parsed from.
+void populateScene(const NSVGimage* svgConst, const SvgNode* dom, const std::string& filename,
+                   const std::unordered_map<std::string, float>& elementBlur, SvgImageCache* imageCache, SceneData& scene)
 {
-    std::vector<char> svgText;
-    NSVGimage* svg = giv::readFileUtf8(filename, svgText) ? nsvgParse(svgText.data(), "px", 96.0f) : nullptr;
-    if (!svg)
-    {
-        error = "could not parse svg file: " + filename;
-        return false;
-    }
-
-    // nsvgParse() rewrites svgText in place, so re-read the pristine text.
-    std::unique_ptr<SvgNode> dom;
-    std::unordered_map<std::string, float> elementBlur;
-    {
-        std::vector<char> raw;
-        std::string xmlError;
-        if (giv::readFileUtf8(filename, raw) && raw.size() > 1)
-            dom = parseSvgXml(raw.data(), raw.size() - 1, xmlError);
-        if (dom) elementBlur = parseElementBlurRadii(*dom);
-    }
-
+    NSVGimage* svg = const_cast<NSVGimage*>(svgConst);
     // Images first: nanosvg drops <image>, so their z-order relative to the
     // shapes is lost; the usual case is a picture annotated with shapes.
-    if (dom) addSvgImages(*dom, filename, svg, scene);
+    if (dom) addSvgImages(*dom, filename, svg, imageCache, scene);
 
     int shapeIndex = 0;
     for (NSVGshape* shape = svg->shapes; shape; shape = shape->next, ++shapeIndex)
@@ -712,6 +707,142 @@ bool loadSvgFile(const std::string& filename, SceneData& scene, std::string& err
 
         // Shapes with neither a fill nor a stroke paint produce no dataset.
     }
+
+}
+
+} // namespace
+
+// Renders the frames of an animated SVG on demand: evaluate the SMIL
+// animations at the frame's time, serialize the resulting DOM, and run it
+// through nanosvg again. A few recent frames are kept.
+namespace
+{
+class SvgFrameProvider : public FrameProvider
+{
+public:
+    SvgFrameProvider(std::unique_ptr<SvgNode> dom, std::string filename, double fps)
+        : dom_(std::move(dom)), anim_(*dom_), filename_(std::move(filename)), fps_(fps)
+    {
+        elementBlur_ = parseElementBlurRadii(*dom_);
+    }
+
+    const SvgAnimation& animation() const { return anim_; }
+
+    // Frame `frame` as a scene: datasets tagged with `frame`, and their bounds.
+    SceneData render(int frame)
+    {
+        SceneData tmp;
+        auto evaluated = anim_.evaluate(frame / fps_);
+        std::string xml = serializeSvgXml(*evaluated);
+        std::vector<char> text(xml.begin(), xml.end());
+        text.push_back('\0');
+        if (NSVGimage* svg = nsvgParse(text.data(), "px", 96.0f))
+        {
+            populateScene(svg, evaluated.get(), filename_, elementBlur_, &images_, tmp);
+            nsvgDelete(svg);
+        }
+        for (Dataset& ds : tmp.datasets) ds.frame = frame;
+        return tmp;
+    }
+
+    std::vector<Dataset> datasets(int frame) override
+    {
+        auto it = cache_.find(frame);
+        if (it != cache_.end()) return it->second;
+        SceneData tmp = render(frame);
+
+        constexpr size_t kMaxCached = 48;
+        if (cache_.size() >= kMaxCached)
+        {
+            cache_.erase(order_.front());
+            order_.erase(order_.begin());
+        }
+        cache_[frame] = tmp.datasets;
+        order_.push_back(frame);
+        return tmp.datasets;
+    }
+
+private:
+    std::unique_ptr<SvgNode> dom_;
+    SvgAnimation anim_;
+    std::string filename_;
+    double fps_;
+    std::unordered_map<std::string, float> elementBlur_;
+    SvgImageCache images_;
+    std::unordered_map<int, std::vector<Dataset>> cache_;
+    std::vector<int> order_; // oldest first
+};
+} // namespace
+
+bool loadSvgFile(const std::string& filename, SceneData& scene, std::string& error)
+{
+    std::vector<char> svgText;
+    NSVGimage* svg = giv::readFileUtf8(filename, svgText) ? nsvgParse(svgText.data(), "px", 96.0f) : nullptr;
+    if (!svg)
+    {
+        error = "could not parse svg file: " + filename;
+        return false;
+    }
+
+    // nsvgParse() rewrites svgText in place, so re-read the pristine text.
+    std::unique_ptr<SvgNode> dom;
+    std::unordered_map<std::string, float> elementBlur;
+    {
+        std::vector<char> raw;
+        std::string xmlError;
+        if (giv::readFileUtf8(filename, raw) && raw.size() > 1)
+            dom = parseSvgXml(raw.data(), raw.size() - 1, xmlError);
+        if (dom) elementBlur = parseElementBlurRadii(*dom);
+    }
+
+    if (dom)
+    {
+        SvgAnimation probe(*dom);
+        if (!probe.empty())
+        {
+            // Frames are rendered on demand from the DOM (see SvgFrameProvider).
+            constexpr double kDefaultFps = 30.0;
+            constexpr int kMaxFrames = 20000;
+            if (probe.duration() > 0)
+            {
+                double fps = kDefaultFps;
+                if (probe.duration() * fps > kMaxFrames) fps = kMaxFrames / probe.duration();
+                const bool loops = probe.loops();
+                const double duration = probe.duration();
+                auto provider = std::make_shared<SvgFrameProvider>(std::move(dom), filename, fps);
+                scene.frameCount = std::max(1, static_cast<int>(std::ceil(duration * fps)));
+                scene.fps = fps;
+                scene.loopCount = loops ? 0 : 1;
+                {
+                    SceneData first = provider->render(0);
+                    for (Dataset& ds : first.datasets) scene.datasets.push_back(std::move(ds));
+                    scene.updateBounds(first.minX, first.minY);
+                    scene.updateBounds(first.maxX, first.maxY);
+                }
+                // Later frames may draw outside frame 0's extent; the canvas bounds them.
+                scene.updateBounds(0, 0);
+                scene.updateBounds(svg->width, svg->height);
+                scene.frameProvider = std::move(provider);
+                nsvgDelete(svg);
+                return true;
+            }
+            // Only instantaneous <set>s: render the document as it is at t = 0.
+            auto at0 = probe.evaluate(0);
+            std::string xml = serializeSvgXml(*at0);
+            std::vector<char> text(xml.begin(), xml.end());
+            text.push_back('\0');
+            if (NSVGimage* animated = nsvgParse(text.data(), "px", 96.0f))
+            {
+                nsvgDelete(svg);
+                svg = animated;
+                populateScene(svg, at0.get(), filename, elementBlur, nullptr, scene);
+                nsvgDelete(svg);
+                return true;
+            }
+        }
+    }
+
+    populateScene(svg, dom.get(), filename, elementBlur, nullptr, scene);
 
     nsvgDelete(svg);
     return true;

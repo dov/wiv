@@ -22,8 +22,81 @@ bool SvgNode::hasAttr(const std::string& key) const
     return false;
 }
 
+void SvgNode::setAttr(const std::string& key, const std::string& value)
+{
+    for (auto& a : attrs)
+        if (a.first == key)
+        {
+            a.second = value;
+            return;
+        }
+    attrs.emplace_back(key, value);
+}
+
+std::unique_ptr<SvgNode> SvgNode::clone() const
+{
+    auto n = std::make_unique<SvgNode>();
+    n->name = name;
+    n->attrs = attrs;
+    n->text = text;
+    n->children.reserve(children.size());
+    for (const auto& c : children) n->children.push_back(c->clone());
+    return n;
+}
+
 namespace
 {
+
+void escapeInto(std::string& out, const std::string& s, bool attr)
+{
+    for (char c : s)
+    {
+        switch (c)
+        {
+        case '&': out += "&amp;"; break;
+        case '<': out += "&lt;"; break;
+        case '>': out += "&gt;"; break;
+        case '"':
+            if (attr) out += "&quot;";
+            else out += c;
+            break;
+        case '\n':
+            if (attr) out += "&#10;";
+            else out += c;
+            break;
+        case '\t':
+            if (attr) out += "&#9;";
+            else out += c;
+            break;
+        default: out += c;
+        }
+    }
+}
+
+void serializeInto(std::string& out, const SvgNode& n)
+{
+    out += '<';
+    out += n.name;
+    for (const auto& a : n.attrs)
+    {
+        out += ' ';
+        out += a.first;
+        out += "=\"";
+        escapeInto(out, a.second, true);
+        out += '"';
+    }
+    if (n.children.empty() && n.text.empty())
+    {
+        out += "/>";
+        return;
+    }
+    out += '>';
+    escapeInto(out, n.text, false);
+    for (const auto& c : n.children) serializeInto(out, *c);
+    out += "</";
+    out += n.name;
+    out += '>';
+}
 
 struct ParseState
 {
@@ -63,6 +136,13 @@ void XMLCALL onText(void* user, const XML_Char* s, int len)
 }
 
 } // namespace
+
+std::string serializeSvgXml(const SvgNode& root)
+{
+    std::string out;
+    serializeInto(out, root);
+    return out;
+}
 
 std::unique_ptr<SvgNode> parseSvgXml(const char* data, size_t size, std::string& error)
 {

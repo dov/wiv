@@ -118,6 +118,7 @@ add_executable(wiv
   src/GivThumbnailRenderer.cpp
   src/SvgLoader.cpp
   src/SvgDom.cpp
+  src/SvgAnimation.cpp
   src/SceneBuilder.cpp
   src/CaliperTool.cpp
   src/PanZoomHandler.cpp
