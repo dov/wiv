@@ -33,6 +33,14 @@ find_package(spdlog CONFIG REQUIRED)
 # System sqlite3 on Linux, the vcpkg port on Windows.
 find_package(SQLite3 REQUIRED)
 find_package(EXPAT REQUIRED)
+# Text layout for SVG <text>: HarfBuzz (shaping, glyph outlines), FriBidi (bidi),
+# fontconfig (font lookup and fallback; Linux only - Windows uses its Fonts dir).
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(HARFBUZZ REQUIRED IMPORTED_TARGET harfbuzz)
+pkg_check_modules(FRIBIDI REQUIRED IMPORTED_TARGET fribidi)
+if(NOT WIN32)
+  pkg_check_modules(FONTCONFIG REQUIRED IMPORTED_TARGET fontconfig)
+endif()
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Concurrent Network)
 if(MINGW AND MINGW_DEPS_PREFIX)
   # Qt6's cross config replaced CMAKE_FIND_ROOT_PATH; put our prefix back so the
@@ -119,6 +127,7 @@ add_executable(wiv
   src/SvgLoader.cpp
   src/SvgDom.cpp
   src/SvgAnimation.cpp
+  src/TextLayout.cpp
   src/SceneBuilder.cpp
   src/CaliperTool.cpp
   src/PanZoomHandler.cpp
@@ -163,7 +172,10 @@ endif()
 add_dependencies(wiv wiv_shaders)
 
 target_include_directories(wiv PRIVATE src ${CMAKE_SOURCE_DIR}/third_party)
-target_link_libraries(wiv PRIVATE vsg::vsg vsgXchange::vsgXchange vsgQt::vsgQt Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent Qt6::Network QtAwesome spdlog::spdlog SQLite::SQLite3 EXPAT::EXPAT)
+target_link_libraries(wiv PRIVATE vsg::vsg vsgXchange::vsgXchange vsgQt::vsgQt Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent Qt6::Network QtAwesome spdlog::spdlog SQLite::SQLite3 EXPAT::EXPAT PkgConfig::HARFBUZZ PkgConfig::FRIBIDI)
+if(NOT WIN32)
+  target_link_libraries(wiv PRIVATE PkgConfig::FONTCONFIG)
+endif()
 
 # X11 only: the render window's bit gravity (see VulkanViewport::keepContentsInPlaceOnResize()).
 if(UNIX AND NOT APPLE)

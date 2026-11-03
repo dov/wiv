@@ -27,6 +27,8 @@
     "cfitsio",
     "sqlite3",
     "expat",
+    "harfbuzz",
+    "fribidi",
     {
       "name": "qtbase",
       "platform": "windows"

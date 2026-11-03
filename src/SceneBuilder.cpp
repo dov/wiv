@@ -1467,11 +1467,8 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
                     // Pixel-sized text is built around the origin at 1 unit
                     // == 1 px and positioned/scaled per frame (ViewParams).
                     layout->position = ds.doScaleFonts ? vsg::vec3(p.x, p.y, 0.0f) : vsg::vec3(0.0f, 0.0f, 0.0f);
-                    // textAngle rotates world-scaled text about its anchor (SVG <text> with a rotation).
-                    const float ca = ds.doScaleFonts ? static_cast<float>(std::cos(ds.textAngle)) : 1.0f;
-                    const float sa = ds.doScaleFonts ? static_cast<float>(std::sin(ds.textAngle)) : 0.0f;
-                    layout->horizontal = vsg::vec3(fsize * ca, fsize * sa, 0.0f);
-                    layout->vertical = vsg::vec3(-fsize * sa, fsize * ca, 0.0f);
+                    layout->horizontal = vsg::vec3(fsize, 0.0f, 0.0f);
+                    layout->vertical = vsg::vec3(0.0f, fsize, 0.0f);
                     layout->color = markColor;
 
                     if (font)
