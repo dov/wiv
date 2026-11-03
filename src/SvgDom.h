@@ -21,7 +21,14 @@ struct SvgNode
     // Value of attribute `key`, or "" if absent.
     const std::string& attr(const std::string& key) const;
     bool hasAttr(const std::string& key) const;
+    // Sets (adding or replacing) attribute `key`.
+    void setAttr(const std::string& key, const std::string& value);
+
+    std::unique_ptr<SvgNode> clone() const;
 };
+
+// Serializes the tree back to XML text (no XML declaration).
+std::string serializeSvgXml(const SvgNode& root);
 
 // Parses `size` bytes of XML. Returns the root element, or null (and fills
 // `error`) if the document is not well-formed.

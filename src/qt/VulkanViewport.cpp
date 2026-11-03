@@ -1809,6 +1809,12 @@ void VulkanViewport::showAnimationFrame(int frame)
             if (!decodeImageAt(wantImage))
                 spdlog::error("Failed to decode {} for frame {}", loadedImageNames_[static_cast<size_t>(wantImage)], frame);
         }
+        if (scene_.frameProvider)
+        {
+            // Frames are generated on demand: swap in this frame's datasets.
+            std::erase_if(scene_.datasets, [](const giv::Dataset& ds) { return ds.frame >= 0; });
+            for (giv::Dataset& ds : scene_.frameProvider->datasets(frame)) scene_.datasets.push_back(std::move(ds));
+        }
         QString error;
         if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
             spdlog::error("Failed to show mark frame {}: {}", frame, error.toStdString());
@@ -2869,6 +2875,7 @@ bool VulkanViewport::applyGivString(const std::string& text, bool append, QStrin
     {
         scene_.datasets.clear();
         scene_.frameCount = 0;
+        scene_.frameProvider.reset();
         scene_.minX = 1e30;
         scene_.minY = 1e30;
         scene_.maxX = -1e30;

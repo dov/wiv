@@ -41,7 +41,7 @@ in Edit > Preferences > Keyboard.
 | FITS | `.fits .fit` | `fits` | float/int samples; NAXIS=3 cubes as slices |
 | DICOM | `.dcm` | `dicom` | multi-frame as slices |
 | NumPy | `.npy` | `npy` | 2D and 3D arrays (3D = slices) |
-| SVG | `.svg` | built-in (nanosvg) | shapes loaded as vector datasets |
+| SVG | `.svg` | built-in (nanosvg + expat) | shapes loaded as vector datasets; `<image>` elements; SMIL animation (see Animation) |
 | giv vector | `.giv` | built-in parser | see "giv vector format" |
 
 - Content sniffing: an explicitly named file with an unrecognised suffix is
@@ -109,6 +109,11 @@ in Edit > Preferences > Keyboard.
   (`]`/`[`, 1/8x–8x), normal speed (`\`), loop toggle (`Shift+K`).
 - Animation bar/scrubber; status bar shows `Frame N/F`.
 - Vector animation in `.giv` via `$frame`/`$fps`/`$loop` (wiv extension).
+- Animated SVG: SMIL `<animate>`, `<set>` and `<animateTransform>` (values/from/to/by,
+  keyTimes, calcMode linear/discrete/spline, additive, fill=freeze, repeatCount, begin
+  offsets and `id.begin/end` syncbase). Numbers, colors and same-shape path data are
+  interpolated. Frames (30 fps over one full cycle) are rendered on demand and cached.
+  Not supported: `<animateMotion>`, CSS `@keyframes`, event-based `begin`, `end`.
 
 ## Scientific / pixel-value tools
 

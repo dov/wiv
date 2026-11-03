@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -139,6 +140,17 @@ struct Dataset
     size_t pointCount() const { return x.size(); }
 };
 
+// Source of the datasets of one animation frame, for scenes whose frames are
+// too many/large to keep around (animated SVG). The viewer replaces the
+// frame-tagged datasets of SceneData::datasets with datasets(frame) each time
+// it shows another frame; datasets with frame == -1 are never touched.
+struct FrameProvider
+{
+    virtual ~FrameProvider() = default;
+    // The datasets of `frame` (each tagged Dataset::frame == frame).
+    virtual std::vector<Dataset> datasets(int frame) = 0;
+};
+
 struct SceneData
 {
     std::vector<Dataset> datasets;
@@ -175,6 +187,9 @@ struct SceneData
     // frameCount is 0 for a file without $frame. $fps sets the playback rate;
     // nullopt = the viewer's default.
     int frameCount = 0;
+    // When set, the frame-tagged datasets are generated on demand (see
+    // FrameProvider); `datasets` then holds only frame 0's at load time.
+    std::shared_ptr<FrameProvider> frameProvider;
     std::optional<double> fps;
     // "$frame 500ms" / "$frame 0.5s": how long that frame is shown; 0 (or
     // missing) = 1/fps.

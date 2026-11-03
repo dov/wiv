@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+  <rect width="400" height="300" fill="#102030"/>
+  <!-- moves right and back, 4 s loop -->
+  <circle cx="60" cy="80" r="25" fill="red">
+    <animate attributeName="cx" values="60;340;60" dur="4s" repeatCount="indefinite"/>
+    <animate attributeName="fill" values="red;yellow;red" dur="4s" repeatCount="indefinite"/>
+  </circle>
+  <!-- pulsing opacity and radius, 2 s loop -->
+  <circle cx="200" cy="150" r="30" fill="#40c0ff">
+    <animate attributeName="opacity" from="1" to="0.1" dur="1s" repeatCount="indefinite"/>
+    <animate attributeName="r" values="20;50;20" dur="2s" repeatCount="indefinite"/>
+  </circle>
+  <!-- spinning square, 3 s loop -->
+  <rect x="-30" y="-30" width="60" height="60" fill="#80ff80" transform="translate(200 230)">
+    <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="3s" additive="sum" repeatCount="indefinite"/>
+  </rect>
+</svg>
