@@ -114,16 +114,30 @@ in Edit > Preferences > Keyboard.
   fill=freeze, repeatCount, `rotate="auto"`, `<mpath>`, begin offsets and `id.begin/end`
   syncbase). Numbers, colors, lengths (`50` vs `90%`) and same-shape path data are
   interpolated; a `width="100%"` root gets an 800x600 default viewport. Frames (30 fps
-  over one full cycle) are rendered on demand and cached. Not supported: CSS
-  `@keyframes`, event-based `begin`, `end`.
+  over one full cycle) are rendered on demand and cached. Motion paths follow arcs
+  exactly. Not supported: event-based `begin` (click, mouseover...), `end`.
+- CSS in SVG: `<style>` rules with `*`, element, `.class`, `#id`, compound, descendant
+  and `>` selectors (rules with pseudo-classes or attribute selectors are ignored) are
+  applied to the elements, and CSS animations - `@keyframes` with the `animation`
+  shorthand or longhands - are converted to the equivalent SMIL animations: any
+  presentation or geometry property plus `transform` (translate/scale/rotate/skew/matrix,
+  `transform-origin`, `transform-box: fill-box`), duration, delay (also negative),
+  iteration-count, direction (alternate/reverse), fill-mode, and timing functions per
+  keyframe interval (`steps()` is treated as linear). CSS variables and `calc()` are not
+  evaluated; percentages inside `translate()` are not supported.
+- `stroke-dasharray` / `stroke-dashoffset` (any pattern length, animatable) and all CSS
+  color names. Round/square line caps are not drawn, so zero-length dashes ("dots")
+  vanish.
 - SVG `<text>`/`<tspan>`: laid out with HarfBuzz (shaping, ligatures, kerning, variable-font
   weights), FriBidi (bidirectional text, `direction="rtl"`) and fontconfig (family lookup and
   per-character fallback for scripts the font lacks), then drawn as filled glyph outlines.
   Outlines scale, rotate and skew with the drawing, need no glyph atlas (new fonts cost
   nothing), and can be animated like any shape. Supports text-anchor, fill/stroke and their
   opacities, font family/size/weight/style, letter-spacing, `xml:lang`, `<tspan>` lines via
-  x/y/dy. Not supported: textLength, text on a path, word-spacing, text-decoration,
-  per-tspan styling within a line. (Windows has no fontconfig: it uses the Fonts folder
+  x/y/dy, per-`<tspan>` styling within a line (one text-anchor for the whole line),
+  `textLength` with `lengthAdjust` spacing/spacingAndGlyphs, and `<textPath>` (path data
+  in `d`, `startOffset` in units or %, glyphs placed at their midpoints and turned to the
+  tangent). Not supported: word-spacing, text-decoration, per-glyph x/y/rotate lists. (Windows has no fontconfig: it uses the Fonts folder
   with a fixed fallback list.)
 - `.giv` text marks (`t`/`T` lines) use the same engine: shaped, bidi-aware outlines with
   giv's 1-9 anchor rule, `\n` multi-line, `$text_angle` rotation, and Pango-style `$font`

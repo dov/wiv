@@ -127,6 +127,8 @@ add_executable(wiv
   src/SvgLoader.cpp
   src/SvgDom.cpp
   src/SvgAnimation.cpp
+  src/SvgPath.cpp
+  src/SvgCss.cpp
   src/TextLayout.cpp
   src/TextMarkup.cpp
   src/SceneBuilder.cpp

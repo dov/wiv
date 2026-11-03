@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="260" viewBox="0 0 400 260">
+  <rect width="400" height="260" fill="white"/>
+  <!-- CSS color names beyond the basic ones -->
+  <rect x="10" y="10" width="60" height="40" fill="orange"/>
+  <rect x="80" y="10" width="60" height="40" fill="darkorchid"/>
+  <rect x="150" y="10" width="60" height="40" fill="cornflowerblue"/>
+  <rect x="220" y="10" width="60" height="40" fill="slateblue"/>
+  <text x="290" y="40" font-size="20" fill="tomato">tomato</text>
+  <!-- stroke-dasharray -->
+  <line x1="10" y1="80" x2="390" y2="80" stroke="black" stroke-width="4" stroke-dasharray="20 10"/>
+  <line x1="10" y1="100" x2="390" y2="100" stroke="crimson" stroke-width="4" stroke-dasharray="20 5 5 5" stroke-dashoffset="12"/>
+  <line x1="10" y1="120" x2="390" y2="120" stroke="teal" stroke-width="6" stroke-dasharray="3 3"/>
+  <circle cx="70" cy="190" r="45" fill="none" stroke="navy" stroke-width="3" stroke-dasharray="8 6"/>
+  <path d="M 150 230 C 170 140, 250 140, 270 230" fill="none" stroke="darkgreen" stroke-width="3" stroke-dasharray="12 6"/>
+  <rect x="300" y="150" width="80" height="80" fill="none" stroke="purple" stroke-width="3" stroke-dasharray="10"/>
+</svg>

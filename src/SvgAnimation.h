@@ -3,8 +3,8 @@
 // <animateMotion> elements
 // are collected from the DOM once, and evaluate() then returns a copy of the
 // DOM with every animated attribute replaced by its value at a given time.
-// Not supported: CSS @keyframes, event-based begin times, `end`,
-// `accumulate`; arcs in motion paths are approximated by their chord.
+// CSS @keyframes animations are converted to <animate> elements beforehand
+// (SvgCss.h). Not supported: event-based begin times, `end`, `accumulate`.
 
 #include "SvgDom.h"
 

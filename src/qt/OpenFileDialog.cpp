@@ -257,7 +257,7 @@ QString thumbnailCacheDir(const QString& path)
 
 QString thumbnailCachePath(const QString& path)
 {
-    return thumbnailCacheDir(path) + QLatin1Char('/') + QFileInfo(path).fileName() + QStringLiteral(".v5.png") /* v5: .giv thumbnails draw text like the viewer (markup, shadow, rotation, fonts); v4: raw-sample images use the viewer's min..max window; v2: .giv thumbnails include the $image; v3: .svg thumbnails fit the drawn content, not the page */;
+    return thumbnailCacheDir(path) + QLatin1Char('/') + QFileInfo(path).fileName() + QStringLiteral(".v6.png") /* v6: .svg thumbnails draw CSS styles, dashes, textPath/textLength; v5: .giv thumbnails draw text like the viewer (markup, shadow, rotation, fonts); v4: raw-sample images use the viewer's min..max window; v2: .giv thumbnails include the $image; v3: .svg thumbnails fit the drawn content, not the page */;
 }
 
 QImage loadCachedThumbnail(const QString& path)

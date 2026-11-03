@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="300" viewBox="0 0 500 300">
+  <style>
+    rect.bg { fill: #f4f4f8; }
+    #spinner { transform-box: fill-box; transform-origin: center; animation: spin 2s linear infinite; }
+    .pulse { animation: pulse 1.5s ease-in-out infinite alternate; }
+    .slide { animation: slide 3s cubic-bezier(.5,0,.5,1) infinite alternate both; }
+    .colors { animation-name: colors; animation-duration: 4s; animation-iteration-count: infinite; }
+    .draw { stroke-dasharray: 400; animation: draw 3s ease-out infinite; }
+    text.label { font-size: 14px; fill: #555; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes pulse { 0% { r: 15px; opacity: 1; } 100% { r: 35px; opacity: .3; } }
+    @keyframes slide { 0% { transform: translate(0px, 0px); } 100% { transform: translate(200px, 0px); } }
+    @keyframes colors { 0%, 100% { fill: crimson; } 33% { fill: gold; } 66% { fill: seagreen; } }
+    @keyframes draw { from { stroke-dashoffset: 400; } 60%, to { stroke-dashoffset: 0; } }
+  </style>
+  <rect class="bg" width="500" height="300"/>
+  <rect id="spinner" x="40" y="40" width="60" height="60" fill="steelblue"/>
+  <text class="label" x="30" y="125">rotate</text>
+  <circle class="pulse" cx="200" cy="70" r="15" fill="orange"/>
+  <text class="label" x="150" y="125">pulse</text>
+  <rect class="slide" x="40" y="160" width="30" height="30" fill="purple"/>
+  <rect class="colors" x="320" y="40" width="80" height="60"/>
+  <path class="draw" d="M 40 260 C 120 200, 200 300, 280 240 S 400 200, 460 260" fill="none" stroke="#224" stroke-width="4"/>
+</svg>
