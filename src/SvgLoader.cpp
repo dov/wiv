@@ -622,10 +622,10 @@ struct ImageWalker
     }
 };
 
-void addSvgImages(const SvgNode& root, const std::string& svgFilename, const NSVGimage* svg, SvgImageCache* cache, SceneData& scene)
+// User units -> the pixel space nanosvg's shapes are in (see nsvgParse): the
+// viewBox is mapped onto width/height, xMidYMid meet.
+Affine rootAffine(const SvgNode& root, const NSVGimage* svg)
 {
-    // User units -> the pixel space nanosvg's shapes are in (see nsvgParse):
-    // the viewBox is mapped onto width/height, xMidYMid meet.
     double scale = 1.0, offX = 0.0, offY = 0.0;
     auto vb = parseNumbers(root.attr("viewBox"));
     if (vb.size() == 4 && vb[2] > 0 && vb[3] > 0 && svg->width > 0 && svg->height > 0)
@@ -634,9 +634,238 @@ void addSvgImages(const SvgNode& root, const std::string& svgFilename, const NSV
         offX = -vb[0] * scale + (svg->width - vb[2] * scale) * 0.5;
         offY = -vb[1] * scale + (svg->height - vb[3] * scale) * 0.5;
     }
+    return Affine{scale, 0, 0, scale, offX, offY};
+}
+
+void addSvgImages(const SvgNode& root, const std::string& svgFilename, const NSVGimage* svg, SvgImageCache* cache, SceneData& scene)
+{
     // The root element's own transform (if any) is not applied by nanosvg either.
     ImageWalker walker{svgFilename, cache, scene};
-    walker.walk(root, Affine{scale, 0, 0, scale, offX, offY});
+    walker.walk(root, rootAffine(root, svg));
+}
+
+// ---------------------------------------------------------------------------
+// <text> support. nanosvg ignores text, so it is read from the DOM here and
+// becomes text marks (the same kind a .giv "t" line makes), scaled with the
+// drawing. Supported: x/y (lists use the first), dx/dy, text-anchor, fill,
+// fill-opacity/opacity, font-family/size/weight/style, transform (translate,
+// uniform scale, rotation), and <tspan> (a tspan with x/y/dy starts a new line).
+// ---------------------------------------------------------------------------
+struct TextStyle
+{
+    double r = 0, g = 0, b = 0, alpha = 1;
+    bool fillNone = false;
+    double fontPx = 16.0;
+    std::string family = "Sans";
+    bool bold = false, italic = false;
+    int anchorCol = 0; // 0 start, 1 middle, 2 end
+    bool hidden = false;
+};
+
+// "style" declarations and presentation attributes of `el`; style wins.
+std::string cssProp(const SvgNode& el, const char* name)
+{
+    const std::string& style = el.attr("style");
+    size_t pos = 0;
+    const std::string key(name);
+    while (pos < style.size())
+    {
+        size_t semi = style.find(';', pos);
+        std::string decl = style.substr(pos, semi == std::string::npos ? std::string::npos : semi - pos);
+        size_t colon = decl.find(':');
+        if (colon != std::string::npos)
+        {
+            auto trimmed = [](std::string t) {
+                size_t a = t.find_first_not_of(" \t\n\r"), b = t.find_last_not_of(" \t\n\r");
+                return a == std::string::npos ? std::string() : t.substr(a, b - a + 1);
+            };
+            if (trimmed(decl.substr(0, colon)) == key) return trimmed(decl.substr(colon + 1));
+        }
+        if (semi == std::string::npos) break;
+        pos = semi + 1;
+    }
+    return el.attr(name);
+}
+
+TextStyle applyTextStyle(TextStyle st, const SvgNode& el)
+{
+    std::string v = cssProp(el, "fill");
+    if (v == "none") st.fillNone = true;
+    else if (!v.empty() && parseSvgColor(v, st.r, st.g, st.b)) st.fillNone = false;
+    // opacity multiplies down the tree; fill-opacity is not inherited as a product but close enough.
+    for (const char* k : {"opacity", "fill-opacity"})
+    {
+        v = cssProp(el, k);
+        if (!v.empty()) st.alpha *= std::clamp(parseLength(v, 1.0), 0.0, 1.0);
+    }
+    v = cssProp(el, "font-size");
+    if (!v.empty())
+    {
+        double n = parseLength(v, st.fontPx);
+        if (v.find("pt") != std::string::npos) n *= 96.0 / 72.0;
+        else if (v.find("em") != std::string::npos) n *= st.fontPx;
+        else if (v.find('%') != std::string::npos) n = st.fontPx * n / 100.0;
+        if (n > 0) st.fontPx = n;
+    }
+    v = cssProp(el, "font-family");
+    if (!v.empty())
+    {
+        std::string fam = v.substr(0, v.find(','));
+        fam.erase(std::remove(fam.begin(), fam.end(), '\''), fam.end());
+        fam.erase(std::remove(fam.begin(), fam.end(), '"'), fam.end());
+        size_t a = fam.find_first_not_of(" \t"), b = fam.find_last_not_of(" \t");
+        fam = a == std::string::npos ? std::string() : fam.substr(a, b - a + 1);
+        if (fam == "sans-serif") fam = "Sans";
+        else if (fam == "serif") fam = "Serif";
+        else if (fam == "monospace") fam = "Monospace";
+        if (!fam.empty()) st.family = fam;
+    }
+    v = cssProp(el, "font-weight");
+    if (!v.empty()) st.bold = v == "bold" || v == "bolder" || parseLength(v, 400) >= 600;
+    v = cssProp(el, "font-style");
+    if (!v.empty()) st.italic = v == "italic" || v == "oblique";
+    v = cssProp(el, "text-anchor");
+    if (v == "middle") st.anchorCol = 1;
+    else if (v == "end") st.anchorCol = 2;
+    else if (v == "start") st.anchorCol = 0;
+    if (cssProp(el, "display") == "none" || cssProp(el, "visibility") == "hidden") st.hidden = true;
+    return st;
+}
+
+struct TextWalker
+{
+    SceneData& scene;
+    int index = 0;
+
+    struct Run
+    {
+        double x, y;
+        std::string text;
+        TextStyle style;
+    };
+
+    // Appends the character data of `el` (and its tspans) to the runs.
+    void collect(const SvgNode& el, const TextStyle& st, double& cx, double& cy, std::vector<Run>& runs)
+    {
+        for (const auto& c : el.children)
+        {
+            if (c->name == "#text")
+            {
+                if (runs.empty()) runs.push_back({cx, cy, {}, st});
+                runs.back().text += c->text;
+            }
+            else if (c->name == "tspan" || c->name == "a")
+            {
+                const bool newLine = c->hasAttr("x") || c->hasAttr("y") || c->hasAttr("dy");
+                if (c->hasAttr("x")) cx = parseLength(c->attr("x"), cx);
+                if (c->hasAttr("y")) cy = parseLength(c->attr("y"), cy);
+                cx += parseLength(c->attr("dx"));
+                cy += parseLength(c->attr("dy"));
+                const TextStyle inner = applyTextStyle(st, *c);
+                // A tspan that moves the cursor starts a new run in its own style;
+                // otherwise it extends the current run (whose style then wins).
+                if (newLine && !runs.empty() && !runs.back().text.empty()) runs.push_back({cx, cy, {}, inner});
+                else if (runs.empty()) runs.push_back({cx, cy, {}, inner});
+                collect(*c, inner, cx, cy, runs);
+            }
+        }
+    }
+
+    static std::string collapse(const std::string& in)
+    {
+        std::string out;
+        bool space = true; // drops leading whitespace
+        for (char ch : in)
+        {
+            if (ch == ' ' || ch == '\n' || ch == '\t' || ch == '\r')
+            {
+                if (!space) out += ' ';
+                space = true;
+            }
+            else
+            {
+                out += ch;
+                space = false;
+            }
+        }
+        if (!out.empty() && out.back() == ' ') out.pop_back();
+        return out;
+    }
+
+    void addText(const SvgNode& el, const Affine& parent, const TextStyle& inherited)
+    {
+        TextStyle st = applyTextStyle(inherited, el);
+        if (st.hidden || st.fillNone) return;
+        const Affine m = parent * parseTransform(el.attr("transform"));
+
+        // x/y/dx/dy may be lists; the first value positions the text.
+        auto first = [](const std::string& l, double d) { auto n = parseNumbers(l); return n.empty() ? d : n[0]; };
+        double cx = first(el.attr("x"), 0.0) + first(el.attr("dx"), 0.0);
+        double cy = first(el.attr("y"), 0.0) + first(el.attr("dy"), 0.0);
+        std::vector<Run> runs;
+        collect(el, st, cx, cy, runs);
+
+        // Linear part of m: uniform scale and rotation (skew is ignored).
+        const double sc = std::sqrt(std::abs(m.a * m.d - m.b * m.c));
+        const double angle = std::atan2(m.b, m.a);
+        if (sc <= 0) return;
+
+        for (Run& run : runs)
+        {
+            run.text = collapse(run.text);
+            if (run.text.empty() || run.style.fillNone || run.style.hidden) continue;
+            const TextStyle& st = run.style;
+            const double fontWorld = st.fontPx * sc;
+            const double wx = m.a * run.x + m.c * run.y + m.e;
+            const double wy = m.b * run.x + m.d * run.y + m.f;
+
+            scene.datasets.emplace_back();
+            Dataset& ds = scene.datasets.back();
+            const std::string& id = el.attr("id");
+            ds.pathName = id.empty() ? "svg text " + std::to_string(index) : id;
+            ++index;
+            ds.color = Color::opaque(static_cast<float>(st.r / 255.0), static_cast<float>(st.g / 255.0),
+                                     static_cast<float>(st.b / 255.0), static_cast<float>(st.alpha));
+            ds.doDrawLines = false;
+            ds.doDrawPolygon = false;
+            ds.doDrawMarks = false;
+            ds.doScaleFonts = true;
+            ds.textSize = fontWorld * 72.0 / 96.0; // SceneBuilder takes points
+            ds.textAngle = angle;
+            ds.fontName = st.family + (st.bold ? " Bold" : "") + (st.italic ? " Italic" : "");
+            const int align = 1 + st.anchorCol; // bottom row: y is the baseline
+            ds.texts.push_back(TextItem{ds.pointCount(), align, run.text});
+            ds.addPoint(static_cast<float>(wx), static_cast<float>(wy), Op::Text);
+
+            // Estimated extent (~0.55 em per character) so fit-to-window leaves room.
+            const double w = 0.55 * fontWorld * static_cast<double>(run.text.size()), h = fontWorld;
+            SceneData::TextExtent te{wx, wy, 0, w, 0, h, true};
+            if (st.anchorCol == 1) { te.l = -w / 2; te.r = w / 2; }
+            else if (st.anchorCol == 2) { te.l = -w; te.r = 0; }
+            scene.textExtents.push_back(te);
+            scene.updateBounds(wx, wy);
+        }
+    }
+
+    void walk(const SvgNode& node, const Affine& m, const TextStyle& st)
+    {
+        for (const auto& c : node.children)
+        {
+            const std::string& n = c->name;
+            if (n == "text") addText(*c, m, st);
+            else if (n == "g" || n == "a" || n == "switch" || n == "svg")
+            {
+                TextStyle inner = applyTextStyle(st, *c);
+                if (!inner.hidden) walk(*c, m * parseTransform(c->attr("transform")), inner);
+            }
+        }
+    }
+};
+
+void addSvgTexts(const SvgNode& root, const NSVGimage* svg, SceneData& scene)
+{
+    TextWalker walker{scene};
+    walker.walk(root, rootAffine(root, svg), applyTextStyle(TextStyle{}, root));
 }
 
 // If the root <svg> has a percentage width/height, replaces it by pixels:
@@ -728,6 +957,8 @@ void populateScene(const NSVGimage* svgConst, const SvgNode* dom, const std::str
         // Shapes with neither a fill nor a stroke paint produce no dataset.
     }
 
+    // nanosvg ignores <text>, so text goes on top of the shapes, from the DOM.
+    if (dom) addSvgTexts(*dom, svg, scene);
 }
 
 } // namespace
@@ -855,6 +1086,7 @@ bool loadSvgFile(const std::string& filename, SceneData& scene, std::string& err
                     for (Dataset& ds : first.datasets) scene.datasets.push_back(std::move(ds));
                     scene.updateBounds(first.minX, first.minY);
                     scene.updateBounds(first.maxX, first.maxY);
+                    scene.textExtents = std::move(first.textExtents);
                 }
                 // Later frames may draw outside frame 0's extent; the canvas bounds them.
                 scene.updateBounds(0, 0);

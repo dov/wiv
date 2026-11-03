@@ -3,6 +3,9 @@
 #include <expat.h>
 
 #include <algorithm>
+#include <cctype>
+#include <cstdlib>
+#include <map>
 
 namespace giv
 {
@@ -85,14 +88,17 @@ void serializeInto(std::string& out, const SvgNode& n)
         escapeInto(out, a.second, true);
         out += '"';
     }
-    if (n.children.empty() && n.text.empty())
+    if (n.children.empty())
     {
         out += "/>";
         return;
     }
     out += '>';
-    escapeInto(out, n.text, false);
-    for (const auto& c : n.children) serializeInto(out, *c);
+    for (const auto& c : n.children)
+    {
+        if (c->name == "#text") escapeInto(out, c->text, false);
+        else serializeInto(out, *c);
+    }
     out += "</";
     out += n.name;
     out += '>';
@@ -132,10 +138,85 @@ void XMLCALL onEnd(void* user, const XML_Char*)
 void XMLCALL onText(void* user, const XML_Char* s, int len)
 {
     auto* st = static_cast<ParseState*>(user);
-    if (!st->stack.empty()) st->stack.back()->text.append(s, static_cast<size_t>(len));
+    if (st->stack.empty()) return;
+    SvgNode& cur = *st->stack.back();
+    cur.text.append(s, static_cast<size_t>(len));
+    if (cur.children.empty() || cur.children.back()->name != "#text")
+    {
+        auto t = std::make_unique<SvgNode>();
+        t->name = "#text";
+        cur.children.push_back(std::move(t));
+    }
+    cur.children.back()->text.append(s, static_cast<size_t>(len));
 }
 
 } // namespace
+
+bool parseSvgColor(const std::string& in, double& r, double& g, double& b)
+{
+    static const std::map<std::string, unsigned> names = {
+        {"black", 0x000000},   {"white", 0xffffff},  {"red", 0xff0000},      {"green", 0x008000},
+        {"blue", 0x0000ff},    {"yellow", 0xffff00}, {"cyan", 0x00ffff},     {"aqua", 0x00ffff},
+        {"magenta", 0xff00ff}, {"fuchsia", 0xff00ff}, {"gray", 0x808080},    {"grey", 0x808080},
+        {"silver", 0xc0c0c0},  {"maroon", 0x800000}, {"olive", 0x808000},    {"lime", 0x00ff00},
+        {"teal", 0x008080},    {"navy", 0x000080},   {"purple", 0x800080},   {"orange", 0xffa500},
+        {"pink", 0xffc0cb},    {"brown", 0xa52a2a},  {"gold", 0xffd700},     {"violet", 0xee82ee},
+        {"indigo", 0x4b0082},  {"crimson", 0xdc143c}, {"coral", 0xff7f50},   {"salmon", 0xfa8072},
+        {"khaki", 0xf0e68c},   {"turquoise", 0x40e0d0}, {"tomato", 0xff6347}, {"orchid", 0xda70d6},
+        {"lightblue", 0xadd8e6}, {"lightgreen", 0x90ee90}, {"lightgray", 0xd3d3d3}, {"lightgrey", 0xd3d3d3},
+        {"darkgray", 0xa9a9a9}, {"darkgrey", 0xa9a9a9}, {"darkblue", 0x00008b}, {"darkgreen", 0x006400},
+        {"darkred", 0x8b0000}, {"skyblue", 0x87ceeb}, {"steelblue", 0x4682b4}, {"royalblue", 0x4169e1},
+        {"slategray", 0x708090}, {"slategrey", 0x708090}, {"beige", 0xf5f5dc}, {"ivory", 0xfffff0},
+        {"tan", 0xd2b48c},     {"chocolate", 0xd2691e}};
+    size_t a = 0, e = in.size();
+    while (a < e && std::isspace(static_cast<unsigned char>(in[a]))) ++a;
+    while (e > a && std::isspace(static_cast<unsigned char>(in[e - 1]))) --e;
+    std::string s = in.substr(a, e - a);
+    if (s.empty()) return false;
+    unsigned v = 0;
+    if (s[0] == '#')
+    {
+        if (s.size() != 7 && s.size() != 4) return false;
+        for (size_t i = 1; i < s.size(); ++i)
+            if (!std::isxdigit(static_cast<unsigned char>(s[i]))) return false;
+        if (s.size() == 7) v = static_cast<unsigned>(std::strtoul(s.c_str() + 1, nullptr, 16));
+        else
+        {
+            unsigned c[3];
+            for (int i = 0; i < 3; ++i) c[i] = static_cast<unsigned>(std::strtoul(s.substr(1 + i, 1).c_str(), nullptr, 16)) * 17;
+            v = (c[0] << 16) | (c[1] << 8) | c[2];
+        }
+    }
+    else if (s.compare(0, 4, "rgb(") == 0 && s.back() == ')')
+    {
+        double comp[3];
+        const char* p = s.c_str() + 4;
+        for (int i = 0; i < 3; ++i)
+        {
+            char* end = nullptr;
+            double x = std::strtod(p, &end);
+            if (end == p) return false;
+            if (*end == '%') { x = x * 255.0 / 100.0; ++end; }
+            comp[i] = x;
+            p = end;
+            while (*p == ',' || std::isspace(static_cast<unsigned char>(*p))) ++p;
+        }
+        r = comp[0]; g = comp[1]; b = comp[2];
+        return true;
+    }
+    else
+    {
+        std::string lower;
+        for (char c : s) lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        auto it = names.find(lower);
+        if (it == names.end()) return false;
+        v = it->second;
+    }
+    r = double((v >> 16) & 255);
+    g = double((v >> 8) & 255);
+    b = double(v & 255);
+    return true;
+}
 
 std::string serializeSvgXml(const SvgNode& root)
 {

@@ -17,6 +17,9 @@ struct SvgNode
     std::vector<std::pair<std::string, std::string>> attrs;
     std::vector<std::unique_ptr<SvgNode>> children;
     std::string text; // concatenated character data directly inside this element
+    // Character data also appears in document order among `children`, as
+    // nodes named "#text" (their `text` is the run); needed for mixed content
+    // such as <text>a<tspan>b</tspan>c</text>.
 
     // Value of attribute `key`, or "" if absent.
     const std::string& attr(const std::string& key) const;
@@ -26,6 +29,9 @@ struct SvgNode
 
     std::unique_ptr<SvgNode> clone() const;
 };
+
+// CSS color (#rgb, #rrggbb, rgb(r,g,b), a basic color name) -> 0..255 components.
+bool parseSvgColor(const std::string& s, double& r, double& g, double& b);
 
 // Serializes the tree back to XML text (no XML declaration).
 std::string serializeSvgXml(const SvgNode& root);
