@@ -2,9 +2,12 @@
 #include "ImagePluginHost.h"
 #include "PathUtils.h"
 #include "SvgAnimation.h"
+#include "SvgCss.h"
 #include "SvgDom.h"
+#include "SvgPath.h"
 #include "TextLayout.h"
 
+#define NANOSVG_ALL_COLOR_KEYWORDS // all CSS color names, not just the 22 basic ones
 #define NANOSVG_IMPLEMENTATION
 #include "nanosvg.h"
 #define NANOSVGRAST_IMPLEMENTATION
@@ -16,6 +19,7 @@
 #include "stb_image.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstring>
@@ -116,6 +120,95 @@ void appendPath(Dataset& ds, SceneData& scene, const NSVGpath* path)
     }
 
     if (path->closed) ds.addPoint(0, 0, Op::ClosePath);
+}
+
+// stroke-dasharray: nanosvg parses the pattern but the line renderer has no
+// notion of dashes, so a dashed stroke is cut into separate polyline pieces
+// here (curves flattened first). Dash lengths are in the path's own units.
+void appendDashedPath(Dataset& ds, SceneData& scene, const NSVGpath* path, const float* dashArray, int dashCount,
+                      float dashOffset)
+{
+    if (path->npts < 1) return;
+    std::vector<double> pat(dashArray, dashArray + dashCount);
+    if (pat.size() % 2) pat.insert(pat.end(), pat.begin(), pat.end());
+    double sum = 0;
+    for (double& d : pat)
+    {
+        d = std::max(0.0, d);
+        sum += d;
+    }
+    if (sum <= 1e-9) return appendPath(ds, scene, path);
+
+    // Flatten to a polyline.
+    std::vector<std::array<double, 2>> poly;
+    const float* pts = path->pts;
+    poly.push_back({pts[0], pts[1]});
+    for (int seg = 0; (seg * 3 + 3) < path->npts; ++seg)
+    {
+        const float* p0 = pts + seg * 3 * 2;
+        const float* p1 = p0 + 2;
+        const float* p2 = p0 + 4;
+        const float* p3 = p0 + 6;
+        const double ctrl = std::hypot(p1[0] - p0[0], p1[1] - p0[1]) + std::hypot(p2[0] - p1[0], p2[1] - p1[1]) +
+                            std::hypot(p3[0] - p2[0], p3[1] - p2[1]);
+        const int steps = std::clamp(static_cast<int>(ctrl / 2.0), 4, 200);
+        for (int i = 1; i <= steps; ++i)
+        {
+            const double t = double(i) / steps, u = 1 - t;
+            poly.push_back({u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
+                            u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1]});
+        }
+    }
+    if (path->closed && (poly.back()[0] != poly[0][0] || poly.back()[1] != poly[0][1])) poly.push_back(poly[0]);
+
+    // Where in the pattern the path starts.
+    double off = std::fmod(static_cast<double>(dashOffset), sum);
+    if (off < 0) off += sum;
+    size_t idx = 0;
+    while (off >= pat[idx])
+    {
+        off -= pat[idx];
+        idx = (idx + 1) % pat.size();
+    }
+    double remain = pat[idx] - off;
+    bool on = idx % 2 == 0;
+    auto emit = [&](double x, double y, Op op) {
+        ds.addPoint(static_cast<float>(x), static_cast<float>(y), op);
+        scene.updateBounds(x, y);
+    };
+    double startX = poly[0][0], startY = poly[0][1]; // where the current dash began
+    const double dot = std::max(1e-3, ds.lineWidth * 0.02);
+    if (on) emit(poly[0][0], poly[0][1], Op::Move);
+    for (size_t i = 1; i < poly.size(); ++i)
+    {
+        double x0 = poly[i - 1][0], y0 = poly[i - 1][1];
+        const double x1 = poly[i][0], y1 = poly[i][1];
+        double len = std::hypot(x1 - x0, y1 - y0);
+        while (len > remain)
+        {
+            const double f = remain / len;
+            x0 += (x1 - x0) * f;
+            y0 += (y1 - y0) * f;
+            len -= remain;
+            if (on)
+            {
+                // A zero-length dash (round-capped dots) still needs some direction to draw along.
+                if (x0 == startX && y0 == startY) emit(x0 + (x1 - x0) / (len + remain) * dot, y0 + (y1 - y0) / (len + remain) * dot, Op::Draw);
+                else emit(x0, y0, Op::Draw);
+            }
+            on = !on;
+            idx = (idx + 1) % pat.size();
+            remain = pat[idx];
+            if (on)
+            {
+                emit(x0, y0, Op::Move);
+                startX = x0;
+                startY = y0;
+            }
+        }
+        remain -= len;
+        if (on) emit(x1, y1, Op::Draw);
+    }
 }
 
 // nanosvg has no support at all for SVG <filter>/feGaussianBlur - it's a
@@ -653,7 +746,8 @@ void addSvgImages(const SvgNode& root, const std::string& svgFilename, const NSV
 // glyph outlines, which makes it scale, rotate and skew like any other shape.
 // Supported: x/y (lists use the first), dx/dy, text-anchor, direction, fill,
 // fill-opacity/opacity, font-family/size/weight/style, letter-spacing,
-// xml:lang, transform, and <tspan> (a tspan with x/y/dy starts a new line).
+// xml:lang, transform, <tspan> (styled pieces flow along the line; x/y/dy start
+// new chunks, each anchored as a whole), textLength/lengthAdjust and <textPath>.
 // ---------------------------------------------------------------------------
 struct TextStyle
 {
@@ -766,49 +860,77 @@ TextStyle applyTextStyle(TextStyle st, const SvgNode& el)
     return st;
 }
 
+// A path's points through an affine map (the cumulative lengths follow).
+MotionPath transformedPath(const MotionPath& in, const Affine& m)
+{
+    MotionPath out;
+    for (size_t i = 0; i < in.pts.size(); ++i)
+    {
+        const double x = in.pts[i][0], y = in.pts[i][1];
+        const bool jump = i > 0 && in.cum[i] == in.cum[i - 1] && (x != in.pts[i - 1][0] || y != in.pts[i - 1][1]);
+        out.add(m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f, jump);
+    }
+    return out;
+}
+
 struct TextWalker
 {
     SceneData& scene;
+    const SvgNode* root = nullptr;
     int index = 0;
 
-    struct Run
+    // textLength / lengthAdjust of an element: the text it covers is stretched to `length`.
+    struct LengthAdj
     {
-        double x, y;
-        std::string text;
-        TextStyle style;
+        double length = 0;
+        bool glyphs = false; // lengthAdjust="spacingAndGlyphs" (else only the spacing changes)
     };
 
-    // Appends the character data of `el` (and its tspans) to the runs.
-    void collect(const SvgNode& el, const TextStyle& st, double& cx, double& cy, std::vector<Run>& runs)
+    // A stretch of character data in one style. Pieces flow along the line; a
+    // piece with `hasX` starts a new chunk, which is what text-anchor applies to.
+    struct Piece
     {
-        for (const auto& c : el.children)
-        {
-            if (c->name == "#text")
-            {
-                if (runs.empty()) runs.push_back({cx, cy, {}, st});
-                runs.back().text += c->text;
-            }
-            else if (c->name == "tspan" || c->name == "a")
-            {
-                const bool newLine = c->hasAttr("x") || c->hasAttr("y") || c->hasAttr("dy");
-                if (c->hasAttr("x")) cx = parseLength(c->attr("x"), cx);
-                if (c->hasAttr("y")) cy = parseLength(c->attr("y"), cy);
-                cx += parseLength(c->attr("dx"));
-                cy += parseLength(c->attr("dy"));
-                const TextStyle inner = applyTextStyle(st, *c);
-                // A tspan that moves the cursor starts a new run in its own style;
-                // otherwise it extends the current run (whose style then wins).
-                if (newLine && !runs.empty() && !runs.back().text.empty()) runs.push_back({cx, cy, {}, inner});
-                else if (runs.empty()) runs.push_back({cx, cy, {}, inner});
-                collect(*c, inner, cx, cy, runs);
-            }
-        }
+        std::string text;
+        TextStyle style;
+        bool hasX = false;
+        double x = 0, y = 0, dx = 0;
+        int group = -1;                // index into the LengthAdj list, or -1
+        const SvgNode* path = nullptr; // <textPath> target
+        std::string startOffset;
+    };
+
+    struct Cursor
+    {
+        double x = 0, y = 0, dx = 0;
+        bool hasX = true;
+    };
+
+    struct Context
+    {
+        std::vector<Piece> pieces;
+        std::vector<LengthAdj> groups;
+        bool space = true; // the last character emitted was a collapsed space
+    };
+
+    static double firstNumber(const std::string& l, double d)
+    {
+        auto n = parseNumbers(l);
+        return n.empty() ? d : n[0];
     }
 
-    static std::string collapse(const std::string& in)
+    const SvgNode* findById(const SvgNode& n, const std::string& id) const
+    {
+        if (n.attr("id") == id) return &n;
+        for (const auto& c : n.children)
+            if (const SvgNode* r = findById(*c, id)) return r;
+        return nullptr;
+    }
+
+    // XML whitespace handling: runs of white space become one space, and one that
+    // follows another (even across tspans) disappears.
+    static std::string collapseInto(const std::string& in, bool& space)
     {
         std::string out;
-        bool space = true; // drops leading whitespace
         for (char ch : in)
         {
             if (ch == ' ' || ch == '\n' || ch == '\t' || ch == '\r')
@@ -822,59 +944,176 @@ struct TextWalker
                 space = false;
             }
         }
-        if (!out.empty() && out.back() == ' ') out.pop_back();
         return out;
     }
 
-    void addText(const SvgNode& el, const Affine& parent, const TextStyle& inherited)
+    int openGroup(const SvgNode& el, int group, Context& ctx)
     {
-        TextStyle st = applyTextStyle(inherited, el);
-        if (st.hidden || (st.fillNone && st.strokeNone)) return;
-        const Affine m = parent * parseTransform(el.attr("transform"));
+        if (!el.hasAttr("textLength")) return group;
+        LengthAdj g;
+        g.length = parseLength(el.attr("textLength"), 0.0);
+        g.glyphs = el.attr("lengthAdjust") == "spacingAndGlyphs";
+        if (g.length <= 0) return group;
+        ctx.groups.push_back(g);
+        return static_cast<int>(ctx.groups.size()) - 1;
+    }
 
-        // x/y/dx/dy may be lists; the first value positions the text.
-        auto first = [](const std::string& l, double d) { auto n = parseNumbers(l); return n.empty() ? d : n[0]; };
-        double cx = first(el.attr("x"), 0.0) + first(el.attr("dx"), 0.0);
-        double cy = first(el.attr("y"), 0.0) + first(el.attr("dy"), 0.0);
-        std::vector<Run> runs;
-        collect(el, st, cx, cy, runs);
-
-
-        for (Run& run : runs)
+    // Appends the character data of `el` (and its tspans) as pieces.
+    void collect(const SvgNode& el, const TextStyle& st, int group, Cursor& cur, Context& ctx, const SvgNode* path,
+                 const std::string& startOffset)
+    {
+        for (const auto& c : el.children)
         {
-            run.text = collapse(run.text);
-            if (run.text.empty() || (run.style.fillNone && run.style.strokeNone) || run.style.hidden) continue;
-            const TextStyle& st = run.style;
+            if (c->name == "#text")
+            {
+                std::string t = collapseInto(c->text, ctx.space);
+                if (t.empty()) continue;
+                Piece p;
+                p.text = std::move(t);
+                p.style = st;
+                p.hasX = cur.hasX;
+                p.x = cur.x;
+                p.y = cur.y;
+                p.dx = cur.dx;
+                p.group = group;
+                p.path = path;
+                p.startOffset = startOffset;
+                cur.hasX = false;
+                cur.dx = 0;
+                ctx.pieces.push_back(std::move(p));
+            }
+            else if (c->name == "tspan" || c->name == "a" || c->name == "textPath")
+            {
+                const bool isPath = c->name == "textPath";
+                if (!isPath && c->hasAttr("x"))
+                {
+                    cur.x = firstNumber(c->attr("x"), cur.x);
+                    cur.hasX = true;
+                }
+                if (!isPath && c->hasAttr("y")) cur.y = firstNumber(c->attr("y"), cur.y);
+                cur.dx += firstNumber(c->attr("dx"), 0.0);
+                cur.y += firstNumber(c->attr("dy"), 0.0);
+                const TextStyle inner = applyTextStyle(st, *c);
+                const SvgNode* innerPath = path;
+                std::string innerOffset = startOffset;
+                if (isPath)
+                {
+                    const std::string& h = c->hasAttr("xlink:href") ? c->attr("xlink:href") : c->attr("href");
+                    innerPath = root && h.size() > 1 && h[0] == '#' ? findById(*root, h.substr(1)) : nullptr;
+                    innerOffset = c->attr("startOffset");
+                    cur.hasX = true;
+                }
+                collect(*c, inner, openGroup(*c, group, ctx), cur, ctx, innerPath, innerOffset);
+                if (isPath) cur.hasX = true; // text after the path starts a chunk of its own
+            }
+        }
+    }
 
-            TextRequest req;
-            req.text = run.text;
-            req.family = st.family;
-            req.weight = st.weight;
-            req.italic = st.italic;
-            req.sizePx = st.fontPx;
-            req.letterSpacing = st.letterSpacing;
-            req.rtlBase = st.rtl;
-            req.lang = st.lang;
-            TextOutline outline;
-            if (!layoutText(req, outline) || outline.empty()) continue;
+    struct Placed
+    {
+        const Piece* piece = nullptr;
+        TextOutline outline;
+        std::vector<Affine> xf; // per glyph: outline coordinates -> user space of the text element
+        std::vector<bool> skip; // per glyph: off the end of its path
+        double x = 0;           // start from the chunk origin (path-less pieces)
+        double xs = 1, extra = 0; // textLength: glyph stretch and added spacing
+        double advance() const { return outline.advance * xs + extra * outline.glyphEnd.size(); }
+    };
 
-            // text-anchor refers to the logical start of the line: the right end for rtl text.
-            double anchor = st.anchorCol == 1 ? 0.5 : (st.anchorCol == 2 ? 1.0 : 0.0);
-            if (st.rtl) anchor = 1.0 - anchor;
-            const double offX = -outline.advance * anchor;
+    // Lays out one run of pieces that share an origin (or one <textPath> piece).
+    void placeChunk(std::vector<Placed>& chunk, const Context& ctx)
+    {
+        if (chunk.empty()) return;
+        const Piece& first = *chunk[0].piece;
+        double anchor = first.style.anchorCol == 1 ? 0.5 : (first.style.anchorCol == 2 ? 1.0 : 0.0);
+        if (first.style.rtl) anchor = 1.0 - anchor;
 
-            // One dataset per chunk of glyphs: the fill step nests contours within a dataset.
+        // textLength: stretch each group to its length, from the natural advances.
+        for (size_t gi = 0; gi < ctx.groups.size(); ++gi)
+        {
+            double natural = 0;
+            size_t glyphs = 0;
+            for (const Placed& p : chunk)
+                if (p.piece->group == static_cast<int>(gi))
+                {
+                    natural += p.outline.advance + p.piece->dx;
+                    glyphs += p.outline.glyphEnd.size();
+                }
+            if (natural <= 0) continue;
+            const LengthAdj& adj = ctx.groups[gi];
+            for (Placed& p : chunk)
+            {
+                if (p.piece->group != static_cast<int>(gi)) continue;
+                if (adj.glyphs) p.xs = adj.length / natural;
+                else if (glyphs > 1) p.extra = (adj.length - natural) / static_cast<double>(glyphs - 1);
+            }
+        }
+
+        // Positions along the line.
+        double pen = 0;
+        for (Placed& p : chunk)
+        {
+            pen += p.piece->dx;
+            p.x = pen;
+            pen += p.advance();
+        }
+        const double total = pen;
+
+        for (Placed& p : chunk)
+        {
+            const size_t n = p.outline.glyphEnd.size();
+            p.xf.assign(n, Affine{});
+            p.skip.assign(n, false);
+            if (!p.piece->path)
+            {
+                const double baseX = first.x - total * anchor + p.x;
+                for (size_t g = 0; g < n; ++g)
+                    p.xf[g] = Affine{p.xs, 0, 0, 1, baseX + p.extra * static_cast<double>(g), p.piece->y};
+                continue;
+            }
+            // <textPath>: each glyph sits on the path at its midpoint, turned to the tangent.
+            const SvgNode& pn = *p.piece->path;
+            MotionPath path = transformedPath(flattenPath(pn.attr("d")), parseTransform(pn.attr("transform")));
+            double s0 = 0;
+            const std::string& so = p.piece->startOffset;
+            if (!so.empty()) s0 = so.back() == '%' ? parseLength(so, 0.0) * path.total() / 100.0 : parseLength(so, 0.0);
+            s0 -= p.advance() * anchor;
+            for (size_t g = 0; g < n; ++g)
+            {
+                const double ox = p.outline.glyphOx[g];
+                const double nextOx = g + 1 < n ? p.outline.glyphOx[g + 1] : p.outline.advance;
+                const double adv = std::abs(nextOx - ox);
+                const double mid = (std::min(ox, nextOx) + adv / 2) * p.xs + p.extra * static_cast<double>(g);
+                const double dist = s0 + mid;
+                if (path.pts.size() < 2 || dist < 0 || dist > path.total())
+                {
+                    p.skip[g] = true;
+                    continue;
+                }
+                double px, py, ang;
+                path.atDistance(dist, px, py, ang);
+                const double ca = std::cos(ang * M_PI / 180.0), sa = std::sin(ang * M_PI / 180.0);
+                const double local = std::min(ox, nextOx) + adv / 2; // glyph midpoint in outline coordinates
+                p.xf[g] = Affine{ca, sa, -sa, ca, px - ca * local, py - sa * local};
+            }
+        }
+    }
+
+    void emitChunk(const SvgNode& el, const std::vector<Placed>& chunk, const Affine& m)
+    {
+        for (const Placed& pl : chunk)
+        {
+            const TextOutline& outline = pl.outline;
+            const TextStyle& st = pl.piece->style;
+            // One dataset per run of glyphs: the fill step nests contours within a dataset.
             constexpr size_t kGlyphsPerDataset = 150;
-            size_t pt = 0;
             for (size_t g0 = 0; g0 < outline.glyphEnd.size(); g0 += kGlyphsPerDataset)
             {
                 const size_t g1 = std::min(outline.glyphEnd.size(), g0 + kGlyphsPerDataset);
-                const size_t end = outline.glyphEnd[g1 - 1];
                 const std::string& id = el.attr("id");
                 const std::string name = id.empty() ? "svg text " + std::to_string(index) : id;
                 ++index;
-                // Same outline twice at most: SVG paints the fill, then the stroke over it.
-                const size_t firstPt = pt;
+                // The same outline twice at most: SVG paints the fill, then the stroke over it.
                 for (int pass = 0; pass < 2; ++pass)
                 {
                     if (pass == 0 && st.fillNone) continue;
@@ -899,22 +1138,75 @@ struct TextWalker
                         ds.doDrawLines = true;
                         ds.doDrawPolygon = false;
                     }
-                    for (pt = firstPt; pt < end; ++pt)
+                    for (size_t g = g0; g < g1; ++g)
                     {
-                        if (outline.op[pt] == Op::ClosePath)
+                        if (pl.skip[g]) continue;
+                        const Affine full = m * pl.xf[g];
+                        for (size_t pt = g == 0 ? 0 : outline.glyphEnd[g - 1]; pt < outline.glyphEnd[g]; ++pt)
                         {
-                            ds.addPoint(0, 0, Op::ClosePath);
-                            continue;
+                            if (outline.op[pt] == Op::ClosePath)
+                            {
+                                ds.addPoint(0, 0, Op::ClosePath);
+                                continue;
+                            }
+                            const double wx = full.a * outline.x[pt] + full.c * outline.y[pt] + full.e;
+                            const double wy = full.b * outline.x[pt] + full.d * outline.y[pt] + full.f;
+                            ds.addPoint(static_cast<float>(wx), static_cast<float>(wy), outline.op[pt]);
+                            scene.updateBounds(wx, wy);
                         }
-                        const double ux = run.x + offX + outline.x[pt], uy = run.y + outline.y[pt];
-                        const double wx = m.a * ux + m.c * uy + m.e, wy = m.b * ux + m.d * uy + m.f;
-                        ds.addPoint(static_cast<float>(wx), static_cast<float>(wy), outline.op[pt]);
-                        scene.updateBounds(wx, wy);
                     }
                 }
-                pt = end;
             }
         }
+    }
+
+    void addText(const SvgNode& el, const Affine& parent, const TextStyle& inherited)
+    {
+        TextStyle st = applyTextStyle(inherited, el);
+        if (st.hidden || (st.fillNone && st.strokeNone)) return;
+        const Affine m = parent * parseTransform(el.attr("transform"));
+
+        // x/y/dx/dy may be lists; the first value positions the text.
+        Context ctx;
+        Cursor cur;
+        cur.x = firstNumber(el.attr("x"), 0.0);
+        cur.y = firstNumber(el.attr("y"), 0.0) + firstNumber(el.attr("dy"), 0.0);
+        cur.dx = firstNumber(el.attr("dx"), 0.0);
+        collect(el, st, openGroup(el, -1, ctx), cur, ctx, nullptr, {});
+        // Trailing white space of the whole text is dropped.
+        while (!ctx.pieces.empty())
+        {
+            std::string& t = ctx.pieces.back().text;
+            if (!t.empty() && t.back() == ' ') t.pop_back();
+            if (t.empty()) ctx.pieces.pop_back();
+            else break;
+        }
+
+        std::vector<Placed> chunk;
+        auto flush = [&] {
+            placeChunk(chunk, ctx);
+            emitChunk(el, chunk, m);
+            chunk.clear();
+        };
+        for (const Piece& piece : ctx.pieces)
+        {
+            if (piece.style.hidden || (piece.style.fillNone && piece.style.strokeNone)) continue;
+            if (piece.hasX || piece.path || (!chunk.empty() && chunk.back().piece->path)) flush();
+            TextRequest req;
+            req.text = piece.text;
+            req.family = piece.style.family;
+            req.weight = piece.style.weight;
+            req.italic = piece.style.italic;
+            req.sizePx = piece.style.fontPx;
+            req.letterSpacing = piece.style.letterSpacing;
+            req.rtlBase = piece.style.rtl;
+            req.lang = piece.style.lang;
+            Placed pl;
+            pl.piece = &piece;
+            if (!layoutText(req, pl.outline) || pl.outline.empty()) continue;
+            chunk.push_back(std::move(pl));
+        }
+        flush();
     }
 
     void walk(const SvgNode& node, const Affine& m, const TextStyle& st)
@@ -935,6 +1227,7 @@ struct TextWalker
 void addSvgTexts(const SvgNode& root, const NSVGimage* svg, SceneData& scene)
 {
     TextWalker walker{scene};
+    walker.root = &root;
     walker.walk(root, rootAffine(root, svg), applyTextStyle(TextStyle{}, root));
 }
 
@@ -1021,7 +1314,12 @@ void populateScene(const NSVGimage* svgConst, const SvgNode* dom, const std::str
             ds.doDrawLines = true;
             ds.doDrawPolygon = false;
             ds.doDrawMarks = false;
-            for (NSVGpath* path = shape->paths; path; path = path->next) appendPath(ds, scene, path);
+            for (NSVGpath* path = shape->paths; path; path = path->next)
+            {
+                if (shape->strokeDashCount > 0)
+                    appendDashedPath(ds, scene, path, shape->strokeDashArray, shape->strokeDashCount, shape->strokeDashOffset);
+                else appendPath(ds, scene, path);
+            }
         }
 
         // Shapes with neither a fill nor a stroke paint produce no dataset.
@@ -1117,8 +1415,16 @@ bool loadSvgFile(const std::string& filename, SceneData& scene, std::string& err
     }
 
     // nanosvg has no viewport to resolve width="100%" against (it ends up
-    // with a 1-unit canvas); give such a root a concrete size.
-    if (dom && resolveRootPercentSize(*dom))
+    // with a 1-unit canvas); give such a root a concrete size. <style> rules
+    // (beyond the simple class selectors nanosvg knows) and CSS animations are
+    // folded into the DOM as well.
+    bool domChanged = false;
+    if (dom)
+    {
+        domChanged = resolveRootPercentSize(*dom);
+        domChanged = applySvgCss(*dom) || domChanged;
+    }
+    if (domChanged)
     {
         std::string xml = serializeSvgXml(*dom);
         std::vector<char> text(xml.begin(), xml.end());

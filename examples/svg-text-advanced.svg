@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="520" viewBox="0 0 500 520">
+  <rect width="500" height="520" fill="white"/>
+  <!-- styled tspans inside one line, centered as a whole -->
+  <text x="250" y="40" font-size="24" text-anchor="middle" fill="#333">Plain, <tspan fill="crimson" font-weight="bold">bold red</tspan>, <tspan font-style="italic" fill="navy">italic blue</tspan> and <tspan font-size="14" dy="-8" fill="darkgreen">raised</tspan></text>
+  <!-- textLength -->
+  <text x="20" y="90" font-size="20" fill="black" textLength="300" lengthAdjust="spacing">Spread over 300 px</text>
+  <line x1="20" y1="96" x2="320" y2="96" stroke="#ccc"/>
+  <text x="20" y="130" font-size="20" fill="black" textLength="300" lengthAdjust="spacingAndGlyphs">Stretched to 300 px</text>
+  <line x1="20" y1="136" x2="320" y2="136" stroke="#ccc"/>
+  <!-- text on paths -->
+  <path id="wave" d="M 20 250 C 100 160, 180 340, 260 250 S 400 160, 480 250" fill="none" stroke="#ddd"/>
+  <text font-size="22" fill="purple"><textPath href="#wave">Text following a curvy path, glyph by glyph</textPath></text>
+  <path id="arc" d="M 100 510 A 150 150 0 0 1 400 510" fill="none" stroke="#ddd"/>
+  <text font-size="20" fill="teal" text-anchor="middle"><textPath href="#arc" startOffset="50%">Centered on an arc</textPath></text>
+</svg>
