@@ -26,6 +26,7 @@
     "spdlog",
     "cfitsio",
     "sqlite3",
+    "expat",
     {
       "name": "qtbase",
       "platform": "windows"
