@@ -42,6 +42,24 @@ struct TextOutline
     bool empty() const { return op.empty(); }
 };
 
+// A Pango-style font description ("Sans Bold Italic 14", "Serif 10") as giv's
+// $font uses: family, weight, slant and the size in points (or -1 if absent).
+struct FontSpec
+{
+    std::string family = "Sans";
+    int weight = 400;
+    bool italic = false;
+    double sizePt = -1.0;
+};
+FontSpec parseFontSpec(const std::string& spec);
+
+// Lays out a (possibly multi-line, '\n'-separated) label, one outline per line.
+bool layoutLabel(const std::string& text, const FontSpec& font, double emPx, std::vector<TextOutline>& lines);
+
+// Size of a label's logical box, as giv computes it (Pango): the widest line
+// by lines * (ascent + descent). False if no font was found.
+bool measureLabel(const std::string& text, const FontSpec& font, double emPx, double& width, double& height);
+
 // Lays out one line of text. Returns false if no font could be found at all.
 bool layoutText(const TextRequest& req, TextOutline& out);
 

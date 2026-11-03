@@ -1,4 +1,5 @@
 #include "SceneBuilder.h"
+#include "TextLayout.h"
 
 #include <vsg/io/convert_utf.h>
 
@@ -857,6 +858,109 @@ void triangulateSubpaths(std::vector<FillVertex>& tris, const std::vector<std::v
     }
 }
 
+
+// ---------------------------------------------------------------------
+// Text labels as filled glyph outlines (see TextLayout): the same shaping /
+// bidi / font-fallback path as SVG text, so a label needs no glyph atlas.
+// ---------------------------------------------------------------------
+
+// Appends the triangles of one label. giv semantics (GivPainterCairo::add_text):
+// the anchor sits at the (col/2, 1 - row/2) point of the label's logical box
+// (width = widest line, height = lines * (ascent + descent)), lines are left
+// aligned in that box, and the box is rotated by the text angle about the
+// anchor. `anchor` is in world space (y already negated).
+//
+// World-scaled text ($scale_font): vertices are final world positions.
+// Pixel-sized text (the default): each vertex is the anchor plus a screen-pixel
+// offset, resolved in fill.vert, so the label keeps its size under zoom - the
+// same mechanism the arrowheads use (see addArrowHead).
+void addTextOutlines(const Dataset& ds, const TextItem& item, const vsg::vec2& anchor, const vsg::vec4& color,
+                     const vsg::vec4& labelColor, std::vector<FillVertex>& tris, std::vector<uint32_t>& arrowIndex,
+                     std::vector<vsg::vec2>& arrowTip, std::vector<vsg::vec2>& arrowOffsetPixels)
+{
+    const FontSpec fs = parseFontSpec(ds.fontName);
+    const double size = fs.sizePt > 0 ? fs.sizePt : (ds.textSize > 0 ? ds.textSize : 12.0);
+    const double em = size * 96.0 / 72.0; // Pango points -> pixels
+
+    std::vector<TextOutline> lines;
+    if (!layoutLabel(item.text, fs, em, lines)) return;
+    const double lineH = lines.front().ascent + lines.front().descent;
+    double width = 0;
+    for (const TextOutline& o : lines) width = std::max(width, o.advance);
+    const double height = lineH * static_cast<double>(lines.size());
+
+    const int col = (item.align - 1) % 3, row = (item.align - 1) / 3;
+    const double boxLeft = -(col / 2.0) * width;
+    const double boxTop = -(1.0 - row / 2.0) * height;
+    const double ca = std::cos(ds.textAngle), sa = std::sin(ds.textAngle);
+    const float tol = static_cast<float>(std::min<double>(kCurveFlatness, em * 0.004));
+
+    for (size_t li = 0; li < lines.size(); ++li)
+    {
+        const TextOutline& o = lines[li];
+        const double baseline = boxTop + lines.front().ascent + static_cast<double>(li) * lineH;
+        // Each glyph is triangulated on its own: its contours only nest within it.
+        size_t pt = 0;
+        for (size_t g = 0; g < o.glyphEnd.size(); ++g)
+        {
+            std::vector<std::vector<vsg::vec2>> subpaths;
+            std::vector<vsg::vec2> cur;
+            auto toOffset = [&](size_t k) {
+                const double x = boxLeft + o.x[k], y = baseline + o.y[k]; // y down, relative to the anchor
+                const double rx = x * ca - y * sa, ry = x * sa + y * ca;   // text angle: clockwise on screen
+                return vsg::vec2(static_cast<float>(rx), static_cast<float>(-ry)); // world: y up
+            };
+            auto flush = [&] {
+                if (cur.size() >= 3) subpaths.push_back(cur);
+                cur.clear();
+            };
+            for (; pt < o.glyphEnd[g]; ++pt)
+            {
+                switch (o.op[pt])
+                {
+                case Op::Move:
+                    flush();
+                    cur.push_back(toOffset(pt));
+                    break;
+                case Op::Draw:
+                    cur.push_back(toOffset(pt));
+                    break;
+                case Op::Curve:
+                    if (pt + 2 < o.op.size() && !cur.empty())
+                    {
+                        tessellateCubic(cur.back(), toOffset(pt), toOffset(pt + 1), toOffset(pt + 2), cur, tol);
+                        pt += 2;
+                    }
+                    break;
+                case Op::ClosePath:
+                    flush();
+                    break;
+                default: break;
+                }
+            }
+            flush();
+            if (subpaths.empty()) continue;
+
+            std::vector<FillVertex> glyphTris;
+            triangulateSubpaths(glyphTris, subpaths, color, labelColor);
+            for (const FillVertex& v : glyphTris)
+            {
+                if (ds.doScaleFonts)
+                {
+                    tris.push_back({anchor + v.pos, v.color, v.labelColor});
+                }
+                else
+                {
+                    arrowIndex.push_back(static_cast<uint32_t>(tris.size()));
+                    tris.push_back({anchor, v.color, v.labelColor});
+                    arrowTip.push_back(anchor);
+                    arrowOffsetPixels.push_back(v.pos);
+                }
+            }
+        }
+    }
+}
+
 } // namespace
 
 SceneBuilder::SceneBuilder(vsg::ref_ptr<vsg::Options> options) : options_(options) {}
@@ -1263,6 +1367,8 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
 
     // Text nodes are created directly (not batched); typical giv scenes have
     // at most thousands of labels, not millions.
+    // WIV_ATLAS_TEXT=1 selects the old glyph-atlas labels (kept for comparison).
+    static const bool useAtlasText = std::getenv("WIV_ATLAS_TEXT") != nullptr;
     auto textGroup = vsg::Group::create();
     if (viewParams_) viewParams_->pixelTexts.clear();
 
@@ -1443,7 +1549,12 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             }
 
             case Op::Text:
-                if (textIdx < ds.texts.size() && ds.texts[textIdx].pointIndex == i)
+                if (!useAtlasText && textIdx < ds.texts.size() && ds.texts[textIdx].pointIndex == i)
+                {
+                    addTextOutlines(ds, ds.texts[textIdx], p, markColor, labelColor, fillTris, arrowIndex, arrowTip, arrowOffsetPixels);
+                    ++textIdx;
+                }
+                else if (textIdx < ds.texts.size() && ds.texts[textIdx].pointIndex == i)
                 {
                     const TextItem& item = ds.texts[textIdx];
                     ++textIdx;
