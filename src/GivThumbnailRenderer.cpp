@@ -1,4 +1,5 @@
 #include "GivThumbnailRenderer.h"
+#include "SceneBuilder.h"
 
 #include "GivParser.h"
 #include "GivScene.h"
@@ -7,9 +8,8 @@
 
 #include <QBrush>
 #include <QColor>
-#include <QFont>
-#include <QFontMetrics>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPen>
 #include <QPointF>
 #include <QPolygonF>
@@ -123,6 +123,59 @@ struct RenderContext
     QPointF toPixel(double x, double y) const { return QPointF(x * scale + offsetX, y * scale + offsetY); }
     QPointF toPixel(QPointF p) const { return toPixel(p.x(), p.y()); }
 };
+
+// Draws one text label the way the viewer does (SceneBuilder.cpp,
+// buildLabelParts): the same shaped, bidi-aware glyph outlines, Pango markup,
+// rotation and drop shadow, filled as one winding-rule path per part so the
+// triangles leave no seams. The size is kept legible at thumbnail scale.
+void drawLabel(QPainter& painter, const Dataset& ds, const TextItem& item, const QPointF& anchor, const RenderContext& ctx)
+{
+    const FontSpec fs = parseFontSpec(ds.fontName);
+    double size = fs.sizePt > 0 ? fs.sizePt : (ds.textSize > 0 ? ds.textSize : 12.0);
+    if (ds.doScaleFonts) size *= ctx.scale;
+    size = std::clamp(size, 6.0, 28.0);
+    const double em = size * 96.0 / 72.0; // points -> pixels
+
+    std::vector<LabelPart> parts;
+    buildLabelParts(item.text, fs, em, item.align, ds.textAngle, ds.doPangoMarkup, parts);
+
+    auto fill = [&](const LabelPart& part, const QPointF& shift, const QColor& color) {
+        QPainterPath path;
+        path.setFillRule(Qt::WindingFill);
+        for (size_t i = 0; i + 2 < part.tris.size(); i += 3)
+        {
+            // Offsets are y up; the thumbnail is y down. Wind every triangle the same way.
+            QPointF a(anchor.x() + shift.x() + part.tris[i].x, anchor.y() + shift.y() - part.tris[i].y);
+            QPointF b(anchor.x() + shift.x() + part.tris[i + 1].x, anchor.y() + shift.y() - part.tris[i + 1].y);
+            QPointF c(anchor.x() + shift.x() + part.tris[i + 2].x, anchor.y() + shift.y() - part.tris[i + 2].y);
+            const double area = (b.x() - a.x()) * (c.y() - a.y()) - (c.x() - a.x()) * (b.y() - a.y());
+            if (area < 0) std::swap(b, c);
+            QPolygonF tri;
+            tri << a << b << c;
+            path.addPolygon(tri);
+            path.closeSubpath();
+        }
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(color);
+        painter.drawPath(path);
+    };
+
+    if (ds.textStyle == TextStyle::DropShadow && !ds.shadowColor.isNone)
+    {
+        const double k = ds.doScaleFonts ? ctx.scale : 1.0;
+        const QPointF shift(ds.shadowOffsetX * k, ds.shadowOffsetY * k); // y down
+        const QColor shadow = toQColor(ds.shadowColor);
+        for (const LabelPart& part : parts)
+            if (!part.isBackground) fill(part, shift, shadow);
+    }
+    for (const LabelPart& part : parts)
+    {
+        QColor color = toQColor(ds.color);
+        if (part.hasColor) color = QColor::fromRgbF(part.color.r, part.color.g, part.color.b, std::clamp<double>(part.color.a, 0.0, 1.0));
+        else color.setAlphaF(std::clamp<double>(color.alphaF() * part.alphaScale, 0.0, 1.0));
+        fill(part, QPointF(0, 0), color);
+    }
+}
 
 // Draws one Dataset's marks/lines/curves/ellipses/polygons/quivers/text,
 // mirroring the point-stream walk in SceneBuilder::build() (SceneBuilder.cpp,
@@ -312,37 +365,7 @@ void renderDataset(QPainter& painter, const Dataset& ds, const RenderContext& ct
                 {
                     const TextItem& item = ds.texts[textIdx];
                     ++textIdx;
-                    if (!ds.color.isNone && !item.text.empty())
-                    {
-                        double size = ds.textSize > 0 ? ds.textSize : 12.0;
-                        if (ds.doScaleFonts) size *= ctx.scale;
-                        size = std::clamp(size, 6.0, 28.0);
-
-                        QFont font;
-                        if (!ds.fontName.empty()) font.setFamily(QString::fromStdString(ds.fontName));
-                        font.setPointSizeF(size);
-                        painter.setFont(font);
-                        const QFontMetricsF fm(font);
-
-                        const QString text = QString::fromStdString(item.text);
-                        const double textWidth = fm.horizontalAdvance(text);
-                        const double ascent = fm.ascent(), descent = fm.descent();
-
-                        // Numpad alignment (see TextItem's comment in
-                        // GivScene.h and SceneBuilder.cpp ~L1090-1098):
-                        // col 0=left,1=center,2=right; row 0=bottom,1=center,2=top.
-                        const int col = (item.align - 1) % 3;
-                        const int row = (item.align - 1) / 3;
-
-                        const QPointF anchor = ctx.toPixel(p);
-                        const double x0 = (col == 0) ? 0.0 : (col == 1) ? -textWidth / 2.0 : -textWidth;
-                        const double baselineY = (row == 0)   ? anchor.y() - descent
-                                                 : (row == 2) ? anchor.y() + ascent
-                                                              : anchor.y() + (ascent - descent) / 2.0;
-
-                        painter.setPen(markColor);
-                        painter.drawText(QPointF(anchor.x() + x0, baselineY), text);
-                    }
+                    if (!ds.color.isNone && !item.text.empty()) drawLabel(painter, ds, item, ctx.toPixel(p), ctx);
                 }
                 break;
         }
