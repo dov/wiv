@@ -41,7 +41,7 @@ in Edit > Preferences > Keyboard.
 | FITS | `.fits .fit` | `fits` | float/int samples; NAXIS=3 cubes as slices |
 | DICOM | `.dcm` | `dicom` | multi-frame as slices |
 | NumPy | `.npy` | `npy` | 2D and 3D arrays (3D = slices) |
-| SVG | `.svg` | built-in (nanosvg + expat) | shapes loaded as vector datasets; `<image>` elements; `<text>`/`<tspan>`; SMIL animation (see Animation) |
+| SVG | `.svg` | built-in (nanosvg + expat) | shapes loaded as vector datasets; `<image>` elements; multilingual `<text>`; SMIL animation (see Animation) |
 | giv vector | `.giv` | built-in parser | see "giv vector format" |
 
 - Content sniffing: an explicitly named file with an unrecognised suffix is
@@ -116,11 +116,16 @@ in Edit > Preferences > Keyboard.
   interpolated; a `width="100%"` root gets an 800x600 default viewport. Frames (30 fps
   over one full cycle) are rendered on demand and cached. Not supported: CSS
   `@keyframes`, event-based `begin`, `end`.
-- SVG `<text>`: drawn as scaled text marks (anchor start/middle/end, fill and opacity,
-  font family/size/weight/style, translate/scale/rotate transforms, `<tspan>` lines via
-  x/y/dy, animatable with `<animateMotion>`). Not supported: textLength, text on a path,
-  letter/word spacing, per-tspan styling within a line, stroke on text. A font used
-  for the first time takes a while to build its glyph atlas (cached afterwards).
+- SVG `<text>`/`<tspan>`: laid out with HarfBuzz (shaping, ligatures, kerning, variable-font
+  weights), FriBidi (bidirectional text, `direction="rtl"`) and fontconfig (family lookup and
+  per-character fallback for scripts the font lacks), then drawn as filled glyph outlines.
+  Outlines scale, rotate and skew with the drawing, need no glyph atlas (new fonts cost
+  nothing), and can be animated like any shape. Supports text-anchor, fill/stroke and their
+  opacities, font family/size/weight/style, letter-spacing, `xml:lang`, `<tspan>` lines via
+  x/y/dy. Not supported: textLength, text on a path, word-spacing, text-decoration,
+  per-tspan styling within a line. (Windows has no fontconfig: it uses the Fonts folder
+  with a fixed fallback list.) `.giv` text marks still use the glyph atlas; the first use of
+  each font there builds and caches it, which is slow.
 
 ## Scientific / pixel-value tools
 

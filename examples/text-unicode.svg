@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="420" viewBox="0 0 560 420">
+  <rect width="560" height="420" fill="#fffbe8"/>
+  <path d="M280,10 V150" stroke="#c88" fill="none"/>
+  <g font-family="sans-serif" font-size="26">
+    <text x="20" y="40">Latin: fi ffl AV To — ligatures &amp; kerning</text>
+    <text x="20" y="75" font-weight="700" fill="#a00">Bold 700</text>
+    <text x="150" y="75" font-weight="300" fill="#060">Light 300</text>
+    <text x="280" y="75" font-style="italic" fill="#00a">Italic</text>
+    <text x="540" y="115" direction="rtl" text-anchor="start" fill="#606">עברית: שלום עולם</text>
+    <text x="20" y="150" fill="#066">mixed abc שלום 123 (ok)</text>
+    <text x="280" y="190" text-anchor="middle" fill="#800">مرحبا بالعالم</text>
+    <text x="20" y="230" fill="#444">日本語のテキスト · 한국어 · 中文</text>
+    <text x="20" y="270" fill="#444">हिन्दी: नमस्ते दुनिया</text>
+    <text x="20" y="310" fill="#444" letter-spacing="4">Spaced out</text>
+  </g>
+  <text x="0" y="0" font-size="30" fill="#066" transform="translate(300 400) rotate(-25)">Rotated עברית</text>
+  <text x="0" y="0" font-size="30" fill="#c60" transform="translate(30 380) skewX(-20)">Skewed</text>
+  <text x="290" y="290" font-size="44" font-weight="700" fill="none" stroke="#a0a" stroke-width="1.5" font-family="serif">Outline</text>
+</svg>

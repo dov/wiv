@@ -3,6 +3,7 @@
 #include "PathUtils.h"
 #include "SvgAnimation.h"
 #include "SvgDom.h"
+#include "TextLayout.h"
 
 #define NANOSVG_IMPLEMENTATION
 #include "nanosvg.h"
@@ -367,6 +368,8 @@ Affine parseTransform(const std::string& str)
         if (name == "matrix" && n.size() >= 6) m = {n[0], n[1], n[2], n[3], n[4], n[5]};
         else if (name == "translate" && !n.empty()) { m.e = n[0]; m.f = n.size() > 1 ? n[1] : 0; }
         else if (name == "scale" && !n.empty()) { m.a = n[0]; m.d = n.size() > 1 ? n[1] : n[0]; }
+        else if (name == "skewX" && !n.empty()) m.c = std::tan(n[0] * M_PI / 180.0);
+        else if (name == "skewY" && !n.empty()) m.b = std::tan(n[0] * M_PI / 180.0);
         else if (name == "rotate" && !n.empty())
         {
             double r = n[0] * M_PI / 180.0, cs = std::cos(r), sn = std::sin(r);
@@ -645,19 +648,26 @@ void addSvgImages(const SvgNode& root, const std::string& svgFilename, const NSV
 }
 
 // ---------------------------------------------------------------------------
-// <text> support. nanosvg ignores text, so it is read from the DOM here and
-// becomes text marks (the same kind a .giv "t" line makes), scaled with the
-// drawing. Supported: x/y (lists use the first), dx/dy, text-anchor, fill,
-// fill-opacity/opacity, font-family/size/weight/style, transform (translate,
-// uniform scale, rotation), and <tspan> (a tspan with x/y/dy starts a new line).
+// <text> support. nanosvg ignores text, so it is read from the DOM here, laid
+// out with TextLayout (fontconfig + FriBidi + HarfBuzz) and drawn as filled
+// glyph outlines, which makes it scale, rotate and skew like any other shape.
+// Supported: x/y (lists use the first), dx/dy, text-anchor, direction, fill,
+// fill-opacity/opacity, font-family/size/weight/style, letter-spacing,
+// xml:lang, transform, and <tspan> (a tspan with x/y/dy starts a new line).
 // ---------------------------------------------------------------------------
 struct TextStyle
 {
     double r = 0, g = 0, b = 0, alpha = 1;
     bool fillNone = false;
+    bool strokeNone = true;
+    double sr = 0, sg = 0, sb = 0, strokeAlpha = 1, strokeWidth = 1;
     double fontPx = 16.0;
     std::string family = "Sans";
-    bool bold = false, italic = false;
+    int weight = 400;
+    bool italic = false;
+    double letterSpacing = 0.0;
+    bool rtl = false;
+    std::string lang;
     int anchorCol = 0; // 0 start, 1 middle, 2 end
     bool hidden = false;
 };
@@ -692,6 +702,13 @@ TextStyle applyTextStyle(TextStyle st, const SvgNode& el)
     std::string v = cssProp(el, "fill");
     if (v == "none") st.fillNone = true;
     else if (!v.empty() && parseSvgColor(v, st.r, st.g, st.b)) st.fillNone = false;
+    v = cssProp(el, "stroke");
+    if (v == "none") st.strokeNone = true;
+    else if (!v.empty() && parseSvgColor(v, st.sr, st.sg, st.sb)) st.strokeNone = false;
+    v = cssProp(el, "stroke-width");
+    if (!v.empty()) st.strokeWidth = std::max(0.0, parseLength(v, st.strokeWidth));
+    v = cssProp(el, "stroke-opacity");
+    if (!v.empty()) st.strokeAlpha *= std::clamp(parseLength(v, 1.0), 0.0, 1.0);
     // opacity multiplies down the tree; fill-opacity is not inherited as a product but close enough.
     for (const char* k : {"opacity", "fill-opacity"})
     {
@@ -721,7 +738,24 @@ TextStyle applyTextStyle(TextStyle st, const SvgNode& el)
         if (!fam.empty()) st.family = fam;
     }
     v = cssProp(el, "font-weight");
-    if (!v.empty()) st.bold = v == "bold" || v == "bolder" || parseLength(v, 400) >= 600;
+    if (!v.empty())
+    {
+        if (v == "bold" || v == "bolder") st.weight = 700;
+        else if (v == "lighter") st.weight = 300;
+        else if (v == "normal") st.weight = 400;
+        else st.weight = static_cast<int>(std::clamp(parseLength(v, 400), 1.0, 1000.0));
+    }
+    v = cssProp(el, "letter-spacing");
+    if (!v.empty() && v != "normal")
+    {
+        double n = parseLength(v, 0.0);
+        if (v.find("em") != std::string::npos) n *= st.fontPx;
+        st.letterSpacing = n;
+    }
+    v = cssProp(el, "direction");
+    if (!v.empty()) st.rtl = v == "rtl";
+    if (el.hasAttr("xml:lang")) st.lang = el.attr("xml:lang");
+    else if (el.hasAttr("lang")) st.lang = el.attr("lang");
     v = cssProp(el, "font-style");
     if (!v.empty()) st.italic = v == "italic" || v == "oblique";
     v = cssProp(el, "text-anchor");
@@ -795,7 +829,7 @@ struct TextWalker
     void addText(const SvgNode& el, const Affine& parent, const TextStyle& inherited)
     {
         TextStyle st = applyTextStyle(inherited, el);
-        if (st.hidden || st.fillNone) return;
+        if (st.hidden || (st.fillNone && st.strokeNone)) return;
         const Affine m = parent * parseTransform(el.attr("transform"));
 
         // x/y/dx/dy may be lists; the first value positions the text.
@@ -805,45 +839,81 @@ struct TextWalker
         std::vector<Run> runs;
         collect(el, st, cx, cy, runs);
 
-        // Linear part of m: uniform scale and rotation (skew is ignored).
-        const double sc = std::sqrt(std::abs(m.a * m.d - m.b * m.c));
-        const double angle = std::atan2(m.b, m.a);
-        if (sc <= 0) return;
 
         for (Run& run : runs)
         {
             run.text = collapse(run.text);
-            if (run.text.empty() || run.style.fillNone || run.style.hidden) continue;
+            if (run.text.empty() || (run.style.fillNone && run.style.strokeNone) || run.style.hidden) continue;
             const TextStyle& st = run.style;
-            const double fontWorld = st.fontPx * sc;
-            const double wx = m.a * run.x + m.c * run.y + m.e;
-            const double wy = m.b * run.x + m.d * run.y + m.f;
 
-            scene.datasets.emplace_back();
-            Dataset& ds = scene.datasets.back();
-            const std::string& id = el.attr("id");
-            ds.pathName = id.empty() ? "svg text " + std::to_string(index) : id;
-            ++index;
-            ds.color = Color::opaque(static_cast<float>(st.r / 255.0), static_cast<float>(st.g / 255.0),
-                                     static_cast<float>(st.b / 255.0), static_cast<float>(st.alpha));
-            ds.doDrawLines = false;
-            ds.doDrawPolygon = false;
-            ds.doDrawMarks = false;
-            ds.doScaleFonts = true;
-            ds.textSize = fontWorld * 72.0 / 96.0; // SceneBuilder takes points
-            ds.textAngle = angle;
-            ds.fontName = st.family + (st.bold ? " Bold" : "") + (st.italic ? " Italic" : "");
-            const int align = 1 + st.anchorCol; // bottom row: y is the baseline
-            ds.texts.push_back(TextItem{ds.pointCount(), align, run.text});
-            ds.addPoint(static_cast<float>(wx), static_cast<float>(wy), Op::Text);
+            TextRequest req;
+            req.text = run.text;
+            req.family = st.family;
+            req.weight = st.weight;
+            req.italic = st.italic;
+            req.sizePx = st.fontPx;
+            req.letterSpacing = st.letterSpacing;
+            req.rtlBase = st.rtl;
+            req.lang = st.lang;
+            TextOutline outline;
+            if (!layoutText(req, outline) || outline.empty()) continue;
 
-            // Estimated extent (~0.55 em per character) so fit-to-window leaves room.
-            const double w = 0.55 * fontWorld * static_cast<double>(run.text.size()), h = fontWorld;
-            SceneData::TextExtent te{wx, wy, 0, w, 0, h, true};
-            if (st.anchorCol == 1) { te.l = -w / 2; te.r = w / 2; }
-            else if (st.anchorCol == 2) { te.l = -w; te.r = 0; }
-            scene.textExtents.push_back(te);
-            scene.updateBounds(wx, wy);
+            // text-anchor refers to the logical start of the line: the right end for rtl text.
+            double anchor = st.anchorCol == 1 ? 0.5 : (st.anchorCol == 2 ? 1.0 : 0.0);
+            if (st.rtl) anchor = 1.0 - anchor;
+            const double offX = -outline.advance * anchor;
+
+            // One dataset per chunk of glyphs: the fill step nests contours within a dataset.
+            constexpr size_t kGlyphsPerDataset = 150;
+            size_t pt = 0;
+            for (size_t g0 = 0; g0 < outline.glyphEnd.size(); g0 += kGlyphsPerDataset)
+            {
+                const size_t g1 = std::min(outline.glyphEnd.size(), g0 + kGlyphsPerDataset);
+                const size_t end = outline.glyphEnd[g1 - 1];
+                const std::string& id = el.attr("id");
+                const std::string name = id.empty() ? "svg text " + std::to_string(index) : id;
+                ++index;
+                // Same outline twice at most: SVG paints the fill, then the stroke over it.
+                const size_t firstPt = pt;
+                for (int pass = 0; pass < 2; ++pass)
+                {
+                    if (pass == 0 && st.fillNone) continue;
+                    if (pass == 1 && st.strokeNone) continue;
+                    scene.datasets.emplace_back();
+                    Dataset& ds = scene.datasets.back();
+                    ds.pathName = name;
+                    ds.doDrawMarks = false;
+                    if (pass == 0)
+                    {
+                        ds.color = Color::opaque(static_cast<float>(st.r / 255.0), static_cast<float>(st.g / 255.0),
+                                                 static_cast<float>(st.b / 255.0), static_cast<float>(st.alpha));
+                        ds.doDrawLines = false;
+                        ds.doDrawPolygon = true;
+                    }
+                    else
+                    {
+                        ds.color = Color::opaque(static_cast<float>(st.sr / 255.0), static_cast<float>(st.sg / 255.0),
+                                                 static_cast<float>(st.sb / 255.0), static_cast<float>(st.strokeAlpha));
+                        ds.lineWidth = std::max(1e-3, st.strokeWidth * std::sqrt(std::abs(m.a * m.d - m.b * m.c)));
+                        ds.lineCap = 1;
+                        ds.doDrawLines = true;
+                        ds.doDrawPolygon = false;
+                    }
+                    for (pt = firstPt; pt < end; ++pt)
+                    {
+                        if (outline.op[pt] == Op::ClosePath)
+                        {
+                            ds.addPoint(0, 0, Op::ClosePath);
+                            continue;
+                        }
+                        const double ux = run.x + offX + outline.x[pt], uy = run.y + outline.y[pt];
+                        const double wx = m.a * ux + m.c * uy + m.e, wy = m.b * ux + m.d * uy + m.f;
+                        ds.addPoint(static_cast<float>(wx), static_cast<float>(wy), outline.op[pt]);
+                        scene.updateBounds(wx, wy);
+                    }
+                }
+                pt = end;
+            }
         }
     }
 
