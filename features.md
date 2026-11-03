@@ -124,8 +124,13 @@ in Edit > Preferences > Keyboard.
   opacities, font family/size/weight/style, letter-spacing, `xml:lang`, `<tspan>` lines via
   x/y/dy. Not supported: textLength, text on a path, word-spacing, text-decoration,
   per-tspan styling within a line. (Windows has no fontconfig: it uses the Fonts folder
-  with a fixed fallback list.) `.giv` text marks still use the glyph atlas; the first use of
-  each font there builds and caches it, which is slow.
+  with a fixed fallback list.)
+- `.giv` text marks (`t`/`T` lines) use the same engine: shaped, bidi-aware outlines with
+  giv's 1-9 anchor rule, `\n` multi-line, `$text_angle` rotation, and Pango-style `$font`
+  descriptions (family, Bold/Italic/Light..., size). Pixel-sized labels (the default) keep
+  their size under zoom; `$scale_font` labels scale with the drawing. No glyph atlas, so a
+  new font costs nothing. `$text_style shadow` is parsed but not drawn. (Set
+  `WIV_ATLAS_TEXT=1` to use the old atlas labels for comparison.)
 
 ## Scientific / pixel-value tools
 
@@ -203,7 +208,7 @@ Stored in `state.db` (SQLite, WAL mode) next to `wiv.ini` (e.g.
 - Lines: width, dash patterns (first on/off pair only), caps, arrows.
 - Polygons (fan-triangulated; concave polygons may fill wrongly), holes.
 - Quivers with heads and scale.
-- Text with numeric-keypad alignment, rotation, size, font via fontconfig.
+- Text with numeric-keypad alignment, rotation, size, font via fontconfig (HarfBuzz/FriBidi outlines).
 - Colours: X11 names, `name/alpha` suffix syntax, hex.
 - `$image` embeds raster images (one pixel = one world unit).
 - Mark Browser dock (`O`): checkbox tree of `$path` hierarchy to show/hide

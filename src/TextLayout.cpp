@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <map>
 #include <memory>
+#include <sstream>
 #include <mutex>
 #include <unordered_map>
 
@@ -509,6 +510,79 @@ bool layoutText(const TextRequest& req, TextOutline& out)
     }
     hb_buffer_destroy(buf);
     out.advance = pen;
+    return true;
+}
+
+FontSpec parseFontSpec(const std::string& spec)
+{
+    FontSpec fs;
+    std::vector<std::string> words;
+    {
+        std::istringstream iss(spec);
+        std::string w;
+        while (iss >> w) words.push_back(w);
+    }
+    if (!words.empty())
+    {
+        char* end = nullptr;
+        double v = std::strtod(words.back().c_str(), &end);
+        if (end != words.back().c_str() && *end == '\0' && v > 0)
+        {
+            fs.sizePt = v;
+            words.pop_back();
+        }
+    }
+    std::string family;
+    for (const std::string& w : words)
+    {
+        std::string l;
+        for (char c : w) l += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (l == "bold") fs.weight = 700;
+        else if (l == "semibold" || l == "semi-bold" || l == "demibold") fs.weight = 600;
+        else if (l == "light") fs.weight = 300;
+        else if (l == "ultralight" || l == "thin") fs.weight = 200;
+        else if (l == "heavy" || l == "black" || l == "ultrabold") fs.weight = 900;
+        else if (l == "medium") fs.weight = 500;
+        else if (l == "italic" || l == "oblique") fs.italic = true;
+        else if (l == "normal" || l == "regular" || l == "roman") continue;
+        else family += (family.empty() ? "" : " ") + w;
+    }
+    // "Sans, Serif": the first family; the rest is fontconfig's fallback job.
+    if (size_t comma = family.find(','); comma != std::string::npos) family.resize(comma);
+    if (!family.empty()) fs.family = family;
+    return fs;
+}
+
+
+bool layoutLabel(const std::string& text, const FontSpec& font, double emPx, std::vector<TextOutline>& lines)
+{
+    lines.clear();
+    size_t start = 0;
+    while (true)
+    {
+        size_t nl = text.find('\n', start);
+        TextRequest req;
+        req.text = text.substr(start, nl == std::string::npos ? std::string::npos : nl - start);
+        req.family = font.family;
+        req.weight = font.weight;
+        req.italic = font.italic;
+        req.sizePx = emPx;
+        TextOutline o;
+        if (!layoutText(req, o)) return false;
+        lines.push_back(std::move(o));
+        if (nl == std::string::npos) break;
+        start = nl + 1;
+    }
+    return true;
+}
+
+bool measureLabel(const std::string& text, const FontSpec& font, double emPx, double& width, double& height)
+{
+    std::vector<TextOutline> lines;
+    if (!layoutLabel(text, font, emPx, lines)) return false;
+    width = 0;
+    for (const TextOutline& o : lines) width = std::max(width, o.advance);
+    height = static_cast<double>(lines.size()) * (lines.front().ascent + lines.front().descent);
     return true;
 }
 

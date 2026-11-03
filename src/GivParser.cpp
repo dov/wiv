@@ -1,4 +1,5 @@
 #include "GivParser.h"
+#include "TextLayout.h"
 #include "SvgLoader.h"
 #include "PathUtils.h"
 
@@ -587,29 +588,37 @@ void GivParser::parseLine(Dataset& ds, const char* line, size_t len, SceneData& 
             }
             ds.texts.push_back(TextItem{ds.pointCount(), align, out});
             {
-                // Estimated glyph box (the real metrics live in the font,
-                // which the parser doesn't have): ~0.55 em per character.
-                // Same size rule as SceneBuilder: font-spec size, else
-                // $text_size, else 12; Pango points -> pixels (x 4/3).
-                double size = -1.0;
-                size_t sp = ds.fontName.find_last_of(' ');
-                if (sp != std::string::npos && sp + 1 < ds.fontName.size() && std::isdigit(static_cast<unsigned char>(ds.fontName[sp + 1])))
-                    size = std::atof(ds.fontName.c_str() + sp + 1);
-                if (size <= 0) size = ds.textSize > 0 ? ds.textSize : 12.0;
-                const double em = size * 96.0 / 72.0;
-                size_t lines = 1, maxChars = 0, cur = 0;
-                for (char c : out)
+                // The label's logical box (as giv computes it), rotated by the
+                // text angle about the anchor; falls back to ~0.55 em per
+                // character if no font can be found.
+                FontSpec fs = parseFontSpec(ds.fontName);
+                const double size = fs.sizePt > 0 ? fs.sizePt : (ds.textSize > 0 ? ds.textSize : 12.0);
+                const double em = size * 96.0 / 72.0; // Pango points -> pixels
+                double w = 0, h = 0;
+                if (!measureLabel(out, fs, em, w, h))
                 {
-                    if (c == '\n') { ++lines; cur = 0; }
-                    else if ((static_cast<unsigned char>(c) & 0xC0) != 0x80 && ++cur > maxChars) maxChars = cur;
+                    size_t lines = 1, maxChars = 0, cur = 0;
+                    for (char c : out)
+                    {
+                        if (c == '\n') { ++lines; cur = 0; }
+                        else if ((static_cast<unsigned char>(c) & 0xC0) != 0x80 && ++cur > maxChars) maxChars = cur;
+                    }
+                    w = 0.55 * em * maxChars;
+                    h = em * lines;
                 }
-                const double w = 0.55 * em * maxChars, h = em * lines;
                 const int col = (align - 1) % 3, row = (align - 1) / 3;
-                SceneData::TextExtent te{x, y, 0, w, 0, h, ds.doScaleFonts};
-                if (col == 1) { te.l = -w / 2; te.r = w / 2; }
-                else if (col == 2) { te.l = -w; te.r = 0; }
-                if (row == 1) { te.b = -h / 2; te.t = h / 2; }
-                else if (row == 2) { te.b = -h; te.t = 0; }
+                const double left = -(col / 2.0) * w, top = -(1.0 - row / 2.0) * h; // y down, from the anchor
+                const double ca = std::cos(ds.textAngle), sa = std::sin(ds.textAngle);
+                double minX = 1e300, maxX = -1e300, minY = 1e300, maxY = -1e300;
+                for (int k = 0; k < 4; ++k)
+                {
+                    const double px = left + (k & 1 ? w : 0.0), py = top + (k & 2 ? h : 0.0);
+                    const double rx = px * ca - py * sa, ry = px * sa + py * ca;
+                    minX = std::min(minX, rx); maxX = std::max(maxX, rx);
+                    minY = std::min(minY, ry); maxY = std::max(maxY, ry);
+                }
+                // TextExtent offsets are y-up screen space: b/t are below/above the anchor.
+                SceneData::TextExtent te{x, y, minX, maxX, -maxY, -minY, ds.doScaleFonts};
                 scene.textExtents.push_back(te);
             }
             ds.addPoint(static_cast<float>(x), static_cast<float>(y), Op::Text);
