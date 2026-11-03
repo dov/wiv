@@ -71,24 +71,31 @@ void CaliperTool::clearGeometry()
     if (onNeedsCompile) onNeedsCompile();
 }
 
+VkExtent2D CaliperTool::currentExtent() const
+{
+    return viewportExtent ? viewportExtent() : lastExtent_;
+}
+
 vsg::dvec2 CaliperTool::windowToWorld(int32_t x, int32_t y) const
 {
+    const VkExtent2D extent = currentExtent();
     auto ortho = camera_ ? camera_->projectionMatrix.cast<vsg::Orthographic>() : vsg::ref_ptr<vsg::Orthographic>();
     auto lookAt = camera_ ? camera_->viewMatrix.cast<vsg::LookAt>() : vsg::ref_ptr<vsg::LookAt>();
-    if (!ortho || !lookAt || lastExtent_.width == 0 || lastExtent_.height == 0) return {0.0, 0.0};
+    if (!ortho || !lookAt || extent.width == 0 || extent.height == 0) return {0.0, 0.0};
 
-    double worldPerPixelX = (ortho->right - ortho->left) / static_cast<double>(lastExtent_.width);
-    double worldPerPixelY = (ortho->top - ortho->bottom) / static_cast<double>(lastExtent_.height);
-    const vsg::dvec2 o = screenToViewOffset(camera_, (static_cast<double>(x) - lastExtent_.width * 0.5) * worldPerPixelX,
-                                            (lastExtent_.height * 0.5 - static_cast<double>(y)) * worldPerPixelY);
+    double worldPerPixelX = (ortho->right - ortho->left) / static_cast<double>(extent.width);
+    double worldPerPixelY = (ortho->top - ortho->bottom) / static_cast<double>(extent.height);
+    const vsg::dvec2 o = screenToViewOffset(camera_, (static_cast<double>(x) - extent.width * 0.5) * worldPerPixelX,
+                                            (extent.height * 0.5 - static_cast<double>(y)) * worldPerPixelY);
     return {lookAt->center.x + o.x, lookAt->center.y + o.y};
 }
 
 double CaliperTool::worldPerPixel() const
 {
+    const VkExtent2D extent = currentExtent();
     auto ortho = camera_ ? camera_->projectionMatrix.cast<vsg::Orthographic>() : vsg::ref_ptr<vsg::Orthographic>();
-    if (!ortho || lastExtent_.width == 0) return 1.0;
-    return (ortho->right - ortho->left) / static_cast<double>(lastExtent_.width);
+    if (!ortho || extent.width == 0) return 1.0;
+    return (ortho->right - ortho->left) / static_cast<double>(extent.width);
 }
 
 int CaliperTool::hitTest(const vsg::dvec2& world) const

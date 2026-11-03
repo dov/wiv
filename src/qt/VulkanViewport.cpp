@@ -1018,6 +1018,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
             spdlog::error("caliper compile failed: {} (VkResult {})", e.message, e.result);
         }
     };
+    caliperTool_->viewportExtent = [this]() { return viewportExtent(); };
     caliperTool_->waitForGpuIdle = [this]() { return waitForGpuIdle(); };
     caliperTool_->onMeasurementText = [this](const std::string& text) { emit measurementChanged(QString::fromStdString(text)); };
     caliperTool_->setPixelSize(pixelSize_, pixelSizeUnit_);
