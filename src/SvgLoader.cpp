@@ -639,6 +639,26 @@ void addSvgImages(const SvgNode& root, const std::string& svgFilename, const NSV
     walker.walk(root, Affine{scale, 0, 0, scale, offX, offY});
 }
 
+// If the root <svg> has a percentage width/height, replaces it by pixels:
+// the viewBox size if there is one, else a default (800x600) viewport.
+// Returns true if anything changed.
+bool resolveRootPercentSize(SvgNode& root)
+{
+    bool changed = false;
+    auto vb = parseNumbers(root.attr("viewBox"));
+    const bool hasVb = vb.size() == 4 && vb[2] > 0 && vb[3] > 0;
+    for (const char* name : {"width", "height"})
+    {
+        const std::string& v = root.attr(name);
+        if (v.empty() || v.back() != '%') continue;
+        const bool isW = name[0] == 'w';
+        const double ref = hasVb ? vb[isW ? 2 : 3] : (isW ? 800.0 : 600.0);
+        root.setAttr(name, std::to_string(parseLength(v, 100.0) * ref / 100.0));
+        changed = true;
+    }
+    return changed;
+}
+
 // Everything after nanosvg's parse: the <image> sprites and one dataset per
 // fill/stroke. `dom` (may be null) is the XML the NSVGimage was parsed from.
 void populateScene(const NSVGimage* svgConst, const SvgNode* dom, const std::string& filename,
@@ -795,6 +815,20 @@ bool loadSvgFile(const std::string& filename, SceneData& scene, std::string& err
         if (dom) elementBlur = parseElementBlurRadii(*dom);
     }
 
+    // nanosvg has no viewport to resolve width="100%" against (it ends up
+    // with a 1-unit canvas); give such a root a concrete size.
+    if (dom && resolveRootPercentSize(*dom))
+    {
+        std::string xml = serializeSvgXml(*dom);
+        std::vector<char> text(xml.begin(), xml.end());
+        text.push_back('\0');
+        if (NSVGimage* resized = nsvgParse(text.data(), "px", 96.0f))
+        {
+            nsvgDelete(svg);
+            svg = resized;
+        }
+    }
+
     if (dom)
     {
         SvgAnimation probe(*dom);
@@ -810,7 +844,10 @@ bool loadSvgFile(const std::string& filename, SceneData& scene, std::string& err
                 const bool loops = probe.loops();
                 const double duration = probe.duration();
                 auto provider = std::make_shared<SvgFrameProvider>(std::move(dom), filename, fps);
-                scene.frameCount = std::max(1, static_cast<int>(std::ceil(duration * fps)));
+                // A looping timeline's end is its start again; a one-shot one needs a
+                // frame at its very end to show where it freezes.
+                scene.frameCount = loops ? std::max(1, static_cast<int>(std::ceil(duration * fps)))
+                                         : static_cast<int>(std::floor(duration * fps)) + 1;
                 scene.fps = fps;
                 scene.loopCount = loops ? 0 : 1;
                 {

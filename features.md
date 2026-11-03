@@ -109,11 +109,13 @@ in Edit > Preferences > Keyboard.
   (`]`/`[`, 1/8x–8x), normal speed (`\`), loop toggle (`Shift+K`).
 - Animation bar/scrubber; status bar shows `Frame N/F`.
 - Vector animation in `.giv` via `$frame`/`$fps`/`$loop` (wiv extension).
-- Animated SVG: SMIL `<animate>`, `<set>` and `<animateTransform>` (values/from/to/by,
-  keyTimes, calcMode linear/discrete/spline, additive, fill=freeze, repeatCount, begin
-  offsets and `id.begin/end` syncbase). Numbers, colors and same-shape path data are
-  interpolated. Frames (30 fps over one full cycle) are rendered on demand and cached.
-  Not supported: `<animateMotion>`, CSS `@keyframes`, event-based `begin`, `end`.
+- Animated SVG: SMIL `<animate>`, `<set>`, `<animateTransform>` and `<animateMotion>`
+  (values/from/to/by, keyTimes/keyPoints, calcMode linear/discrete/spline, additive,
+  fill=freeze, repeatCount, `rotate="auto"`, `<mpath>`, begin offsets and `id.begin/end`
+  syncbase). Numbers, colors, lengths (`50` vs `90%`) and same-shape path data are
+  interpolated; a `width="100%"` root gets an 800x600 default viewport. Frames (30 fps
+  over one full cycle) are rendered on demand and cached. Not supported: CSS
+  `@keyframes`, event-based `begin`, `end`, SVG `<text>` (nanosvg ignores it).
 
 ## Scientific / pixel-value tools
 
