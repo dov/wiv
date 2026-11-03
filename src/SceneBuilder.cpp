@@ -1,7 +1,6 @@
 #include "SceneBuilder.h"
 #include "TextLayout.h"
 
-#include <vsg/io/convert_utf.h>
 
 #include <algorithm>
 #include <array>
@@ -28,8 +27,6 @@ void ViewParams::update(float worldPerPixel)
     value->value().x = worldPerPixel;
     value->value().y = forceOpaque_ ? 1.0f : 0.0f;
     value->value().z = showPixelGrid_ ? 1.0f : 0.0f;
-    for (auto& t : pixelTexts)
-        t.xform->matrix = vsg::translate(t.anchor) * vsg::scale(worldPerPixel, worldPerPixel, 1.0f);
     // Written (16 bytes, whatever the scene's size) and dirtied on *every*
     // frame, not just when the value actually changes: vsg::TransferTask
     // keeps one GPU copy of a DYNAMIC_DATA buffer per in-flight frame and
@@ -65,78 +62,6 @@ vsg::vec4 toVsg(const Color& c)
 {
     return vsg::vec4(c.r, c.g, c.b, c.isNone ? 0.0f : c.a);
 }
-
-// Stable (process-to-process) FNV-1a hash used to name on-disk font-atlas
-// cache files - deliberately not std::hash<std::string>, whose output isn't
-// guaranteed stable across runs.
-uint64_t fnv1a(const std::string& s)
-{
-    uint64_t h = 1469598103934665603ull;
-    for (unsigned char c : s)
-    {
-        h ^= c;
-        h *= 1099511628211ull;
-    }
-    return h;
-}
-
-// Directory for cached, pre-rasterized vsg::Font atlases (see resolveFont).
-std::string fontCacheDir()
-{
-    const char* xdgCache = std::getenv("XDG_CACHE_HOME");
-    if (xdgCache && *xdgCache) return std::string(xdgCache) + "/wiv/fonts";
-#ifdef _WIN32
-    if (const char* local = std::getenv("LOCALAPPDATA"); local && *local)
-        return std::string(local) + "/wiv/fonts";
-    return (std::filesystem::temp_directory_path() / "wiv-font-cache").string();
-#else
-    const char* home = std::getenv("HOME");
-    if (home && *home) return std::string(home) + "/.cache/wiv/fonts";
-    return "/tmp/wiv-font-cache";
-#endif
-}
-
-#ifdef _WIN32
-// No fontconfig on Windows: map the common generic/Pango family names onto
-// the stock fonts in %WINDIR%\Fonts, else try "<family>.ttf" as given.
-std::string findWindowsFontFile(const std::string& family, bool bold, bool italic)
-{
-    namespace fs = std::filesystem;
-    const char* windir = std::getenv("WINDIR");
-    fs::path dir = fs::path(windir && *windir ? windir : "C:\\Windows") / "Fonts";
-
-    std::string lower;
-    for (char c : family) lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-
-    // {regular, bold, italic, bold-italic}
-    struct Set { const char* f[4]; };
-    static const Set sans = {{"arial.ttf", "arialbd.ttf", "ariali.ttf", "arialbi.ttf"}};
-    static const Set serif = {{"times.ttf", "timesbd.ttf", "timesi.ttf", "timesbi.ttf"}};
-    static const Set mono = {{"consola.ttf", "consolab.ttf", "consolai.ttf", "consolaz.ttf"}};
-    const Set* set = &sans;
-    if (lower == "serif") set = &serif;
-    else if (lower == "monospace" || lower == "mono") set = &mono;
-
-    int idx = (bold ? 1 : 0) + (italic ? 2 : 0);
-    std::error_code ec;
-    if (lower != "sans" && lower != "sans-serif" && lower != "serif" && lower != "monospace" && lower != "mono")
-    {
-        std::string stem;
-        for (char c : lower)
-            if (c != ' ') stem += c;
-        for (const char* suffix : {"", "bd", "i", "bi"})
-        {
-            if (std::string(suffix) != std::string(idx == 0 ? "" : idx == 1 ? "bd" : idx == 2 ? "i" : "bi"))
-                continue;
-            fs::path p = dir / (stem + suffix + ".ttf");
-            if (fs::exists(p, ec)) return p.string();
-        }
-    }
-    fs::path p = dir / set->f[idx];
-    if (fs::exists(p, ec)) return p.string();
-    return {};
-}
-#endif
 
 vsg::ref_ptr<vsg::ShaderStage> loadShader(VkShaderStageFlagBits stage, const std::string& dir, const std::string& file)
 {
@@ -280,37 +205,6 @@ ImagePipeline makeImagePipeline(const std::string& shaderDir, bool rawSamples = 
     auto stateGroup = vsg::StateGroup::create();
     stateGroup->add(vsg::BindGraphicsPipeline::create(graphicsPipeline));
     return {stateGroup, pipelineLayout};
-}
-
-// vsg::createTextShaderSet()'s built-in pipeline states fall back to
-// vsg::DepthStencilState's default (depthTestEnable/depthWriteEnable both
-// true), unlike every other batch here (see makePipeline()'s "no depth
-// test (flat 2D scene)" above) - since giv's balloon-tooltip overlay is a
-// second vsg::View sharing the same window RenderGraph and painted with
-// depth testing disabled (so it always wins the fragments it touches
-// regardless of submission order relative to that depth buffer's
-// contents), a text glyph that passed *its own* depth test and wrote a
-// depth value earlier in the same frame can still show back through the
-// overlay's non-depth-tested box/label afterwards. Appending a disabled
-// DepthStencilState - appended, not replacing in place, so
-// GraphicsPipelineConfigurator's "last DepthStencilState of this type
-// wins" merge (see AssignGraphicsPipelineStates::apply(DepthStencilState&))
-// picks it over the shaderSet's own built-in one - keeps text flat/2D like
-// every other mark/line/fill batch. Only called when options_->shaderSets
-// has no "text" entry yet, so createTextShaderSet() here returns a fresh,
-// uniquely-owned ShaderSet (freshly deserialized from vsg's embedded
-// binary, not a shared/cached singleton) - safe to mutate directly. Once
-// cached into options_->shaderSets["text"] below, any other caller looking
-// up "text" through the same vsg::createTextShaderSet(options_) resolves
-// this same flattened instance too.
-vsg::ref_ptr<vsg::ShaderSet> makeFlatTextShaderSet(vsg::ref_ptr<vsg::Options> options)
-{
-    auto shaderSet = vsg::createTextShaderSet(options);
-    auto depthStencil = vsg::DepthStencilState::create();
-    depthStencil->depthTestEnable = VK_FALSE;
-    depthStencil->depthWriteEnable = VK_FALSE;
-    shaderSet->defaultGraphicsPipelineStates.push_back(depthStencil);
-    return shaderSet;
 }
 
 // ---------------------------------------------------------------------
@@ -866,16 +760,13 @@ void triangulateSubpaths(std::vector<FillVertex>& tris, const std::vector<std::v
 // bidi / font-fallback path as SVG text, so a label needs no glyph atlas.
 // ---------------------------------------------------------------------
 
-// Appends the triangles of one label. giv semantics (GivPainterCairo::add_text):
-// the anchor sits at the (col/2, 1 - row/2) point of the label's logical box
-// (width = widest line, height = lines * (ascent + descent)), lines are left
-// aligned in that box, and the box is rotated by the text angle about the
-// anchor. `anchor` is in world space (y already negated).
+// Appends the triangles of one label (see buildLabelTriangles).
 //
 // World-scaled text ($scale_font): vertices are final world positions.
 // Pixel-sized text (the default): each vertex is the anchor plus a screen-pixel
 // offset, resolved in fill.vert, so the label keeps its size under zoom - the
-// same mechanism the arrowheads use (see addArrowHead).
+// same mechanism the arrowheads use (see addArrowHead). `anchor` is in world
+// space (y already negated).
 void addTextOutlines(const Dataset& ds, const TextItem& item, const vsg::vec2& anchor, const vsg::vec4& color,
                      const vsg::vec4& labelColor, std::vector<FillVertex>& tris, std::vector<uint32_t>& arrowIndex,
                      std::vector<vsg::vec2>& arrowTip, std::vector<vsg::vec2>& arrowOffsetPixels)
@@ -883,24 +774,53 @@ void addTextOutlines(const Dataset& ds, const TextItem& item, const vsg::vec2& a
     const FontSpec fs = parseFontSpec(ds.fontName);
     const double size = fs.sizePt > 0 ? fs.sizePt : (ds.textSize > 0 ? ds.textSize : 12.0);
     const double em = size * 96.0 / 72.0; // Pango points -> pixels
+    std::vector<vsg::vec2> offsets;
+    buildLabelTriangles(item.text, fs, em, item.align, ds.textAngle, offsets);
+    for (const vsg::vec2& off : offsets)
+    {
+        if (ds.doScaleFonts)
+        {
+            tris.push_back({anchor + off, color, labelColor});
+        }
+        else
+        {
+            arrowIndex.push_back(static_cast<uint32_t>(tris.size()));
+            tris.push_back({anchor, color, labelColor});
+            arrowTip.push_back(anchor);
+            arrowOffsetPixels.push_back(off);
+        }
+    }
+}
 
+} // namespace
+
+// Triangles of a label as offsets from its anchor, y up, in units of `emPx`
+// (pixels or world units, the caller decides). giv semantics
+// (GivPainterCairo::add_text): the anchor sits at the (col/2, 1 - row/2) point
+// of the label's logical box (width = widest line, height = lines * (ascent +
+// descent)), lines are left aligned in that box, and the box is rotated by
+// `angle` (clockwise on screen) about the anchor. `align` is the numeric-keypad
+// alignment 1-9.
+void buildLabelTriangles(const std::string& text, const FontSpec& font, double emPx, int align, double angle,
+                         std::vector<vsg::vec2>& out)
+{
     std::vector<TextOutline> lines;
-    if (!layoutLabel(item.text, fs, em, lines)) return;
+    if (!layoutLabel(text, font, emPx, lines)) return;
     const double lineH = lines.front().ascent + lines.front().descent;
     double width = 0;
     for (const TextOutline& o : lines) width = std::max(width, o.advance);
     const double height = lineH * static_cast<double>(lines.size());
 
-    const int col = (item.align - 1) % 3, row = (item.align - 1) / 3;
+    const int col = (align - 1) % 3, row = (align - 1) / 3;
     const double boxLeft = -(col / 2.0) * width;
     const double boxTop = -(1.0 - row / 2.0) * height;
-    const double ca = std::cos(ds.textAngle), sa = std::sin(ds.textAngle);
+    const double ca = std::cos(angle), sa = std::sin(angle);
     // Glyph meshes are cached in em-normalized, y-down coordinates around the
     // glyph origin: the same few distinct glyphs recur in every label, and
     // triangulating them dominates the cost. The curve tolerance is em-relative
     // for small text and capped at kCurveFlatness world units for large text;
     // the cache key carries the (power-of-two quantized) tolerance.
-    const double tolN = std::min(0.004, static_cast<double>(kCurveFlatness) / em);
+    const double tolN = std::min(0.004, static_cast<double>(kCurveFlatness) / emPx);
     const int tolTier = std::max(0, static_cast<int>(std::ceil(std::log2(0.004 / tolN))));
     const float tol = static_cast<float>(0.004 / std::pow(2.0, tolTier));
     static std::mutex cacheMutex;
@@ -928,7 +848,7 @@ void addTextOutlines(const Dataset& ds, const TextItem& item, const vsg::vec2& a
             {
                 const double ox = o.glyphOx[g], oy = o.glyphOy[g];
                 auto local = [&](size_t k) {
-                    return vsg::vec2(static_cast<float>((o.x[k] - ox) / em), static_cast<float>((o.y[k] - oy) / em));
+                    return vsg::vec2(static_cast<float>((o.x[k] - ox) / emPx), static_cast<float>((o.y[k] - oy) / emPx));
                 };
                 std::vector<std::vector<vsg::vec2>> subpaths;
                 std::vector<vsg::vec2> cur;
@@ -973,160 +893,17 @@ void addTextOutlines(const Dataset& ds, const TextItem& item, const vsg::vec2& a
 
             for (const vsg::vec2& v : *mesh)
             {
-                const double x = boxLeft + o.glyphOx[g] + em * v.x, y = baseline + o.glyphOy[g] + em * v.y; // y down
+                const double x = boxLeft + o.glyphOx[g] + emPx * v.x, y = baseline + o.glyphOy[g] + emPx * v.y; // y down
                 const double rx = x * ca - y * sa, ry = x * sa + y * ca; // text angle: clockwise on screen
                 const vsg::vec2 off(static_cast<float>(rx), static_cast<float>(-ry)); // world: y up
-                if (ds.doScaleFonts)
-                {
-                    tris.push_back({anchor + off, color, labelColor});
-                }
-                else
-                {
-                    arrowIndex.push_back(static_cast<uint32_t>(tris.size()));
-                    tris.push_back({anchor, color, labelColor});
-                    arrowTip.push_back(anchor);
-                    arrowOffsetPixels.push_back(off);
-                }
+                out.push_back(off);
             }
         }
     }
 }
 
-} // namespace
 
 SceneBuilder::SceneBuilder(vsg::ref_ptr<vsg::Options> options) : options_(options) {}
-
-vsg::ref_ptr<vsg::Font> SceneBuilder::resolveFont(const std::string& fontSpec, double& outSize)
-{
-    std::string family = fontSpec.empty() ? "Sans" : fontSpec;
-    outSize = -1.0;
-
-    // Pull a trailing numeric token off as the point size (giv/Pango style
-    // font descriptions embed the size at the end, e.g. "Sans Bold 18").
-    size_t lastSpace = family.find_last_of(' ');
-    if (lastSpace != std::string::npos)
-    {
-        std::string tail = family.substr(lastSpace + 1);
-        if (!tail.empty() && (std::isdigit(static_cast<unsigned char>(tail[0]))))
-        {
-            outSize = std::atof(tail.c_str());
-            family = family.substr(0, lastSpace);
-        }
-    }
-
-    // giv passes the whole spec through to Pango, which parses out
-    // weight/style keywords (Bold, Italic, Oblique) embedded among the
-    // family words (e.g. "Sans Bold Italic"). fontconfig's own pattern
-    // syntax doesn't understand those as part of the family name - it needs
-    // them as separate ":weight=...:slant=..." fields - so pull them out of
-    // the remaining words here and build the equivalent fontconfig pattern
-    // (see `man fontconfig-pattern` / `fc-match --help`).
-    bool bold = false, italic = false, oblique = false;
-    std::vector<std::string> familyWords;
-    {
-        std::istringstream iss(family);
-        std::string word;
-        while (iss >> word)
-        {
-            std::string lower = word;
-            for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            if (lower == "bold") bold = true;
-            else if (lower == "italic") italic = true;
-            else if (lower == "oblique") oblique = true;
-            else familyWords.push_back(word);
-        }
-    }
-    family.clear();
-    for (size_t i = 0; i < familyWords.size(); ++i)
-    {
-        if (i) family += ' ';
-        family += familyWords[i];
-    }
-    if (family.empty()) family = "Sans";
-
-    std::string cacheKey = family;
-    if (bold) cacheKey += ":bold";
-    if (italic) cacheKey += ":italic";
-    else if (oblique) cacheKey += ":oblique";
-
-    auto cached = fontCache_.find(cacheKey);
-    if (cached != fontCache_.end()) return cached->second;
-
-    std::string pattern = family;
-    if (bold) pattern += ":weight=bold";
-    if (italic) pattern += ":slant=italic";
-    else if (oblique) pattern += ":slant=oblique";
-
-    // Resolve an actual font file via fontconfig (Linux). Falls back to
-    // whatever vsgXchange's default search turns up if fc-match is absent.
-    std::string path;
-#ifdef _WIN32
-    path = findWindowsFontFile(family, bold, italic || oblique);
-#else
-    std::string cmd = "fc-match -f '%{file}' \"" + pattern + "\" 2>/dev/null";
-    if (FILE* p = popen(cmd.c_str(), "r"))
-    {
-        char buf[1024] = {0};
-        if (fgets(buf, sizeof(buf), p)) path = buf;
-        pclose(p);
-    }
-#endif
-
-    vsg::ref_ptr<vsg::Font> font;
-    if (!path.empty())
-    {
-        // vsgXchange's freetype reader rasterizes *every* glyph in the font
-        // file into the atlas (it walks the whole charmap via
-        // FT_Get_First_Char/FT_Get_Next_Char, sized off face->num_glyphs),
-        // not just the glyphs a given label actually uses. For a large
-        // Unicode-coverage font like Noto Sans that's thousands of glyphs
-        // and costs ~1-2 seconds - independent of, and much larger than,
-        // the fc-match lookup above. fontCache_ already avoids paying that
-        // cost twice *within* one run for the same font spec, but every
-        // fresh wiv process pays it again. The built vsg::Font is a plain
-        // data object (atlas image + glyph metrics) that round-trips
-        // losslessly through VSG's native binary (.vsgb) format, so persist
-        // it on disk, keyed by the resolved font file's path+mtime, and
-        // load that on subsequent runs instead of re-rasterizing.
-        std::error_code ec;
-        std::string trimmedPath = path;
-        while (!trimmedPath.empty() && (trimmedPath.back() == '\n' || trimmedPath.back() == '\r'))
-            trimmedPath.pop_back();
-
-        std::string cacheDir = fontCacheDir();
-        std::filesystem::create_directories(cacheDir, ec);
-
-        auto mtime = std::filesystem::last_write_time(trimmedPath, ec);
-        std::ostringstream keyStream;
-        keyStream << trimmedPath << '|' << (ec ? int64_t{0} : mtime.time_since_epoch().count());
-        std::string cacheFile = cacheDir + "/" + std::to_string(fnv1a(keyStream.str())) + ".vsgb";
-
-        if (std::filesystem::exists(cacheFile, ec))
-            font = vsg::read_cast<vsg::Font>(cacheFile, options_);
-
-        if (!font)
-        {
-            font = vsg::read_cast<vsg::Font>(path, options_);
-            if (font)
-            {
-                std::error_code writeEc;
-                try
-                {
-                    vsg::write(font, cacheFile, options_);
-                }
-                catch (...)
-                {
-                    // Non-fatal - just means this run doesn't get to prime
-                    // the cache (e.g. unwritable cache dir); font loading
-                    // itself already succeeded above.
-                }
-            }
-        }
-    }
-
-    fontCache_[cacheKey] = font; // cache even nullptr, so we don't keep retrying
-    return font;
-}
 
 vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::string& shaderDir,
                                               const std::vector<LoadedImage>& images)
@@ -1396,25 +1173,6 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     std::vector<vsg::vec2> arrowTip;
     std::vector<vsg::vec2> arrowOffsetPixels;
 
-    // Text nodes are created directly (not batched); typical giv scenes have
-    // at most thousands of labels, not millions.
-    // WIV_ATLAS_TEXT=1 selects the old glyph-atlas labels (kept for comparison).
-    static const bool useAtlasText = std::getenv("WIV_ATLAS_TEXT") != nullptr;
-    auto textGroup = vsg::Group::create();
-    if (viewParams_) viewParams_->pixelTexts.clear();
-
-    // vsg::Text::setup() calls vsg::createTextShaderSet(options_) whenever
-    // text->shaderSet isn't already set, and that function only consults
-    // options_->shaderSets["text"] as a cache - if it's empty (the default),
-    // every single text item re-deserializes the embedded text shader (a
-    // binary VSG blob with several GLSL stages) from scratch instead of
-    // reusing one instance. That's cheap next to the font-atlas cost fixed
-    // in resolveFont() below, but it's still wasted, redundant work per
-    // label, so avoid it too: populate the cache once up front so every
-    // Text::setup() call below hits it.
-    if (options_ && options_->shaderSets.find("text") == options_->shaderSets.end())
-        options_->shaderSets["text"] = makeFlatTextShaderSet(options_);
-
     for (size_t dsIdx = 0; dsIdx < scene.datasets.size(); ++dsIdx)
     {
         const Dataset& ds = scene.datasets[dsIdx];
@@ -1580,58 +1338,10 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             }
 
             case Op::Text:
-                if (!useAtlasText && textIdx < ds.texts.size() && ds.texts[textIdx].pointIndex == i)
+                if (textIdx < ds.texts.size() && ds.texts[textIdx].pointIndex == i)
                 {
                     addTextOutlines(ds, ds.texts[textIdx], p, markColor, labelColor, fillTris, arrowIndex, arrowTip, arrowOffsetPixels);
                     ++textIdx;
-                }
-                else if (textIdx < ds.texts.size() && ds.texts[textIdx].pointIndex == i)
-                {
-                    const TextItem& item = ds.texts[textIdx];
-                    ++textIdx;
-
-                    double size = ds.textSize;
-                    auto font = resolveFont(ds.fontName, size);
-                    if (size <= 0) size = ds.textSize > 0 ? ds.textSize : 12.0;
-
-                    auto layout = vsg::StandardLayout::create();
-                    int align = item.align;
-                    int col = (align - 1) % 3; // 0=left,1=center,2=right
-                    int row = (align - 1) / 3; // 0=bottom,1=center,2=top
-                    layout->horizontalAlignment = (col == 0) ? vsg::StandardLayout::LEFT_ALIGNMENT
-                                                              : (col == 1) ? vsg::StandardLayout::CENTER_ALIGNMENT
-                                                                            : vsg::StandardLayout::RIGHT_ALIGNMENT;
-                    layout->verticalAlignment = (row == 0) ? vsg::StandardLayout::BOTTOM_ALIGNMENT
-                                                            : (row == 1) ? vsg::StandardLayout::CENTER_ALIGNMENT
-                                                                          : vsg::StandardLayout::TOP_ALIGNMENT;
-                    // Pango sizes are points (96 dpi -> 4/3 px per pt).
-                    float fsize = static_cast<float>(size * (96.0 / 72.0));
-                    // Pixel-sized text is built around the origin at 1 unit
-                    // == 1 px and positioned/scaled per frame (ViewParams).
-                    layout->position = ds.doScaleFonts ? vsg::vec3(p.x, p.y, 0.0f) : vsg::vec3(0.0f, 0.0f, 0.0f);
-                    layout->horizontal = vsg::vec3(fsize, 0.0f, 0.0f);
-                    layout->vertical = vsg::vec3(0.0f, fsize, 0.0f);
-                    layout->color = markColor;
-
-                    if (font)
-                    {
-                        auto text = vsg::Text::create();
-                        // vsg::stringValue iterates raw bytes rather than decoding UTF-8,
-                        // which corrupts non-ASCII text; use wstringValue instead.
-                        text->text = vsg::wstringValue::create(vsg::convert_utf<std::wstring>(item.text));
-                        text->font = font;
-                        text->layout = layout;
-                        text->setup(0, options_);
-                        if (ds.doScaleFonts)
-                            textGroup->addChild(text);
-                        else
-                        {
-                            auto xf = vsg::MatrixTransform::create();
-                            xf->addChild(text);
-                            textGroup->addChild(xf);
-                            viewParams_->pixelTexts.push_back({xf, vsg::vec3(p.x, p.y, 0.0f)});
-                        }
-                    }
                 }
                 break;
             }
@@ -2054,7 +1764,6 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
         emitLines(lineRanges[dsIdx]);
     }
 
-    if (textGroup->children.size() > 0) root->addChild(textGroup);
 
     labelGraph_ = labelRoot;
 

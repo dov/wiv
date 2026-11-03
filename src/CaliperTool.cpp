@@ -1,10 +1,10 @@
 #include "CaliperTool.h"
 #include "CaliperJawShape.h"
+#include "SceneBuilder.h"
 #include "ViewFlip.h"
 
 #include <spdlog/spdlog.h>
 
-#include <vsg/io/convert_utf.h>
 #include <vsg/utils/Builder.h>
 
 #include <array>
@@ -36,8 +36,8 @@ inline vsg::vec3 toVec3(const vsg::dvec2& v, float z = 0.0f)
 }
 } // namespace
 
-CaliperTool::CaliperTool(vsg::ref_ptr<vsg::Camera> camera, vsg::ref_ptr<vsg::Options> options, vsg::ref_ptr<vsg::Font> font)
-    : camera_(camera), options_(options), font_(font)
+CaliperTool::CaliperTool(vsg::ref_ptr<vsg::Camera> camera, vsg::ref_ptr<vsg::Options> options)
+    : camera_(camera), options_(options)
 {
     root_ = vsg::Group::create();
     builder_ = vsg::Builder::create();
@@ -49,6 +49,7 @@ CaliperTool::CaliperTool(vsg::ref_ptr<vsg::Camera> camera, vsg::ref_ptr<vsg::Opt
     jawState.two_sided = true;
     jawState.blending = true;
     jawStateGroup_ = builder_->createStateGroup(jawState);
+    labelStateGroup_ = builder_->createStateGroup(jawState);
 }
 
 void CaliperTool::setEnabled(bool enabled)
@@ -331,7 +332,6 @@ void CaliperTool::rebuildGeometry()
     lastDistPx_ = dist;
     std::string label = std::format("{:.3f}{}", dist * pixelSize_, unit_);
 
-    if (font_)
     {
         // Parallel to the bar; flip 180 degrees when it points leftward so
         // the text never renders upside down (independent of the jaws'
@@ -339,29 +339,41 @@ void CaliperTool::rebuildGeometry()
         double angle = std::atan2(dir.y, dir.x);
         if (std::cos(angle) < 0.0) angle += vsg::PI;
 
-        auto layout = vsg::StandardLayout::create();
-        layout->horizontalAlignment = vsg::StandardLayout::CENTER_ALIGNMENT;
-        layout->verticalAlignment = vsg::StandardLayout::CENTER_ALIGNMENT;
-        vsg::vec3 labelPos3 = toVec3(barCenter, 0.02f); // centered in the bar, above its own z=0.01f
-        layout->position = labelPos3;
-        // Almost fills the bar's own width (2*kBarWidthPx) in y.
-        float fsize = static_cast<float>(2.0 * kBarWidthPx * kLabelFillFrac * wpp);
-        layout->horizontal = vsg::vec3(fsize, 0.0f, 0.0f);
-        layout->vertical = vsg::vec3(0.0f, fsize, 0.0f);
-        layout->color = kLabelColor;
+        // Centered in the bar (above its own z=0.01f), almost filling the
+        // bar's own width (2*kBarWidthPx) in y.
+        const double fsize = 2.0 * kBarWidthPx * kLabelFillFrac * wpp;
+        FontSpec font;
+        font.weight = 700;
+        std::vector<vsg::vec2> offsets;
+        // buildLabelTriangles rotates clockwise on screen; this world is y up.
+        buildLabelTriangles(label, font, fsize, 5, -angle, offsets);
 
-        auto text = vsg::Text::create();
-        // Labels can contain non-ASCII unit prefixes (e.g. "µm"); vsg::stringValue
-        // iterates raw bytes rather than decoding UTF-8, so use wstringValue instead.
-        text->text = vsg::wstringValue::create(vsg::convert_utf<std::wstring>(label));
-        text->font = font_;
-        text->layout = layout;
-        text->setup(0, options_);
-
-        auto xform = vsg::MatrixTransform::create();
-        xform->matrix = vsg::translate(labelPos3) * vsg::rotate(static_cast<float>(angle), 0.0f, 0.0f, 1.0f) * vsg::translate(-labelPos3);
-        xform->addChild(text);
-        newRoot->addChild(xform);
+        labelStateGroup_->children.clear();
+        if (!offsets.empty())
+        {
+            const size_t n = offsets.size();
+            auto vertices = vsg::vec3Array::create(static_cast<uint32_t>(n));
+            auto normals = vsg::vec3Array::create(static_cast<uint32_t>(n));
+            auto texcoords = vsg::vec2Array::create(static_cast<uint32_t>(n));
+            auto indices = vsg::uintArray::create(static_cast<uint32_t>(n));
+            const vsg::vec3 center = toVec3(barCenter, 0.02f);
+            for (size_t i = 0; i < n; ++i)
+            {
+                vertices->set(i, vsg::vec3(center.x + offsets[i].x, center.y + offsets[i].y, center.z));
+                normals->set(i, vsg::vec3(0.0f, 0.0f, 1.0f));
+                texcoords->set(i, vsg::vec2(0.0f, 0.0f));
+                indices->set(i, static_cast<uint32_t>(i));
+            }
+            auto colors = vsg::vec4Array::create(1, kLabelColor);
+            auto vid = vsg::VertexIndexDraw::create();
+            vsg::DataList arrays{vertices, normals, texcoords, colors};
+            vid->assignArrays(arrays);
+            vid->assignIndices(indices);
+            vid->indexCount = static_cast<uint32_t>(n);
+            vid->instanceCount = 1;
+            labelStateGroup_->addChild(vid);
+        }
+        newRoot->addChild(labelStateGroup_);
     }
 
     root_->children = newRoot->children;

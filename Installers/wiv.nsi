@@ -97,10 +97,6 @@ Section "Install"
   WriteRegStr HKLM "Software\Classes\wiv.GivFile\shell\open\command" "" '"$INSTDIR\bin\wiv.exe" "%1"'
   System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
 
-  # Pre-build the font atlas cache (~3 s per face) so the first scene opens fast
-  DetailPrint "Building font cache..."
-  ExecWait '"$INSTDIR\bin\wiv.exe" --warm-fonts'
-
   WriteUninstaller "$INSTDIR\uninst.exe"
 SectionEnd
 

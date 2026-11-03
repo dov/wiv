@@ -39,7 +39,7 @@ public:
     // map window pixels to world coordinates (see PanZoomHandler, whose
     // window-to-world math this mirrors). `font` (may be null, in which case
     // no label is drawn) is used for the floating distance label.
-    CaliperTool(vsg::ref_ptr<vsg::Camera> camera, vsg::ref_ptr<vsg::Options> options, vsg::ref_ptr<vsg::Font> font);
+    CaliperTool(vsg::ref_ptr<vsg::Camera> camera, vsg::ref_ptr<vsg::Options> options);
 
     // The overlay subgraph - add as a child of the main view alongside the
     // regular scene graph.
@@ -111,7 +111,6 @@ private:
 
     vsg::ref_ptr<vsg::Camera> camera_;
     vsg::ref_ptr<vsg::Options> options_;
-    vsg::ref_ptr<vsg::Font> font_;
     vsg::ref_ptr<vsg::Group> root_;
 
     // Kept alive across a single in-progress gesture (a whole drag's worth of
@@ -130,6 +129,9 @@ private:
     // createQuad()), so doing that per mouse-move would recompile a pipeline
     // on every drag step.
     vsg::ref_ptr<vsg::StateGroup> jawStateGroup_;
+    // The distance label's glyph triangles (see buildLabelTriangles), swapped in
+    // the same way as the jaws' mesh and for the same reason.
+    vsg::ref_ptr<vsg::StateGroup> labelStateGroup_;
 
     bool enabled_ = false;
     bool haveCaliper_ = false;    // a *completed* (released) diagonal exists

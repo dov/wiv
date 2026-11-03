@@ -480,7 +480,6 @@ private:
     vsg::ref_ptr<giv::BalloonController> balloonController_;
 
     vsg::ref_ptr<giv::CaliperTool> caliperTool_;
-    vsg::ref_ptr<vsg::Font> caliperFont_;
     bool measureEnabled_ = false;
     double pixelSize_ = 1.0; // see setPixelCalibration()
     std::string pixelSizeUnit_;
