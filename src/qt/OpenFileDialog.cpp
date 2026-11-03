@@ -189,11 +189,17 @@ QImage rasterizeSvgThumbnail(const QString& path)
     return result;
 }
 
-// True if the svg contains an <image> element (cheap substring scan).
-bool svgHasImages(const QString& path)
+// True if the svg needs the scene renderer (SvgLoader) rather than plain
+// nanosvg: an <image> element, a <style> block (CSS rules/animations) or SMIL
+// animation - nanosvg ignores all of those (cheap substring scan).
+bool svgNeedsSceneRenderer(const QString& path)
 {
     QFile f(path);
-    return f.open(QIODevice::ReadOnly) && f.readAll().contains("<image");
+    if (!f.open(QIODevice::ReadOnly)) return false;
+    const QByteArray data = f.readAll();
+    for (const char* tag : {"<image", "<style", "<animate", "<set"})
+        if (data.contains(tag)) return true;
+    return false;
 }
 
 // Decodes any raster format wiv's plugin host can read into a thumbnail-
@@ -257,7 +263,7 @@ QString thumbnailCacheDir(const QString& path)
 
 QString thumbnailCachePath(const QString& path)
 {
-    return thumbnailCacheDir(path) + QLatin1Char('/') + QFileInfo(path).fileName() + QStringLiteral(".v6.png") /* v6: .svg thumbnails draw CSS styles, dashes, textPath/textLength; v5: .giv thumbnails draw text like the viewer (markup, shadow, rotation, fonts); v4: raw-sample images use the viewer's min..max window; v2: .giv thumbnails include the $image; v3: .svg thumbnails fit the drawn content, not the page */;
+    return thumbnailCacheDir(path) + QLatin1Char('/') + QFileInfo(path).fileName() + QStringLiteral(".v7.png") /* v7: .svg thumbnails with <style>/animation use the scene renderer; v6: .svg thumbnails draw CSS styles, dashes, textPath/textLength; v5: .giv thumbnails draw text like the viewer (markup, shadow, rotation, fonts); v4: raw-sample images use the viewer's min..max window; v2: .giv thumbnails include the $image; v3: .svg thumbnails fit the drawn content, not the page */;
 }
 
 QImage loadCachedThumbnail(const QString& path)
@@ -284,8 +290,8 @@ QImage decodeThumbnail(const QString& path)
     if (path.endsWith(".giv", Qt::CaseInsensitive)) image = decodeGivThumbnail(path);
     else if (path.endsWith(".svg", Qt::CaseInsensitive))
     {
-        // nanosvg ignores <image>; the scene renderer (SvgLoader) draws them.
-        image = svgHasImages(path) ? decodeGivThumbnail(path) : QImage();
+        // nanosvg ignores <image>, CSS and animation; the scene renderer (SvgLoader) draws them.
+        image = svgNeedsSceneRenderer(path) ? decodeGivThumbnail(path) : QImage();
         if (image.isNull()) image = rasterizeSvgThumbnail(path);
     }
     else image = decodeRasterThumbnail(path);
