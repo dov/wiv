@@ -13,11 +13,12 @@
 //    expanded in lines.vert, dashed in lines.frag.
 //  - Filled polygons and arrow/quiver heads are flat-shaded triangle soup
 //    in one more draw (fill.vert/fill.frag), fan-triangulated on the CPU.
-//  - Text uses vsg::Text/StandardLayout/CpuLayoutTechnique with a font
-//    resolved via `fc-match` (Linux) from the giv $font spec.
+//  - Text is shaped by TextLayout (HarfBuzz/FriBidi/fontconfig) and drawn as
+//    triangulated glyph outlines in the fill batch (see buildLabelTriangles).
 //
 #include "GivScene.h"
 #include "ImagePluginHost.h"
+#include "TextLayout.h"
 
 #include <vsg/all.h>
 
@@ -55,17 +56,6 @@ public:
     // anyway). .z = show-pixel-grid flag (giv's 'g' key, do_show_grid), read
     // by grid.vert.
     vsg::ref_ptr<vsg::vec4Value> value;
-
-    // Text labels sized in screen pixels (giv's default, no $scale_font):
-    // the text geometry is built at 1 unit == 1 pixel around the local
-    // origin, and update() sets each transform to translate(anchor) *
-    // scale(worldPerPixel) so the glyphs keep their pixel size under zoom.
-    struct PixelText
-    {
-        vsg::ref_ptr<vsg::MatrixTransform> xform;
-        vsg::vec3 anchor;
-    };
-    std::vector<PixelText> pixelTexts;
 
     // Call once per frame - not just on zoom, see the implementation - with
     // the current world-units-per-pixel scale (assumed isotropic: x and y
@@ -188,16 +178,8 @@ public:
     // scene has no markable geometry.
     vsg::ref_ptr<vsg::Group> labelGraph() const { return labelGraph_; }
 
-    // Resolves a giv/Pango-style font spec ("Sans Bold 18") to a vsg::Font
-    // (via fc-match, with an on-disk .vsgb cache - see the .cpp) plus its
-    // trailing point size, if any (else outSize is left at -1). Exposed
-    // publicly so callers other than build() (e.g. the caliper measurement
-    // tool's overlay label) can share the same font resolution/caching path.
-    vsg::ref_ptr<vsg::Font> resolveFont(const std::string& fontSpec, double& outSize);
-
 private:
     vsg::ref_ptr<vsg::Options> options_;
-    std::unordered_map<std::string, vsg::ref_ptr<vsg::Font>> fontCache_;
     vsg::ref_ptr<ViewParams> viewParams_;
     vsg::ref_ptr<vsg::Group> labelGraph_;
     vsg::ref_ptr<vsg::Switch> imageSwitch_;
@@ -223,5 +205,12 @@ private:
     vsg::ref_ptr<vsg::Sampler> nearestSampler_;
     vsg::ref_ptr<vsg::Sampler> linearSampler_;
 };
+
+// Triangles of a text label as offsets (y up, in the units of `emPx`) from its
+// anchor, laid out with TextLayout and positioned the way giv does
+// (numeric-keypad alignment `align` 1-9, `angle` radians clockwise on screen).
+// Used for .giv text marks and the caliper tool's distance label.
+void buildLabelTriangles(const std::string& text, const FontSpec& font, double emPx, int align, double angle,
+                         std::vector<vsg::vec2>& out);
 
 } // namespace giv

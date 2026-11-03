@@ -127,9 +127,12 @@ Two environment variables help when benchmarking the render path:
   - **Fills**: one plain (non-instanced) triangle-soup draw for filled
     polygons (fan-triangulated - not a full earcut) and arrow/quiver-head
     glyphs, in `shaders/fill.vert/frag`.
-  - **Text**: `vsg::Text` + `StandardLayout` (CPU layout technique), font
-    resolved per `$font` spec via `fc-match` (Linux), mapping giv's
-    numeric-keypad `text_align` (1-9) to horizontal/vertical alignment.
+  - **Text**: shaped by `TextLayout` (HarfBuzz + FriBidi, fonts via
+    fontconfig with per-character fallback) and drawn as triangulated glyph
+    outlines in the fill batch - no glyph atlas. Pixel-sized labels are stored
+    as anchor + pixel offset (like arrowheads); `$font` is a Pango-style
+    description, and giv's numeric-keypad `text_align` (1-9) anchors the
+    label's logical box.
   - **Images**: `$image <filename>` references are rendered as a textured
     quad (one image pixel = one world unit, top-left anchored at the
     origin, matching giv's own convention). Texture filtering switches

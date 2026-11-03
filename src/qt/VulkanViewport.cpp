@@ -19,7 +19,6 @@
 
 #include <vsg/all.h>
 #include <vsgXchange/all.h>
-#include <vsgXchange/freetype.h>
 
 #include <QCoreApplication>
 #include <QGuiApplication>
@@ -293,8 +292,6 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
     options_ = vsg::Options::create();
     options_->paths = vsg::getEnvPaths("VSG_FILE_PATH");
     options_->add(vsgXchange::all::create());
-    options_->setValue(vsgXchange::freetype::texel_margin_ratio, 0.5f);
-    options_->setValue(vsgXchange::freetype::quad_margin_ratio, 0.25f);
 
 #ifndef WIV_SHADER_DIR
 #    define WIV_SHADER_DIR "shaders"
@@ -1006,12 +1003,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     // ref must track a fresh camera_ on isInitialLoad), preserving whether it
     // was toggled on across the rebuild - mirrors wasBalloonEnabled above.
     bool wasMeasureEnabled = isInitialLoad ? false : measureEnabled_;
-    if (!caliperFont_)
-    {
-        double unusedSize = -1.0;
-        caliperFont_ = builder.resolveFont("Sans Bold 12", unusedSize);
-    }
-    caliperTool_ = giv::CaliperTool::create(camera_, options_, caliperFont_);
+    caliperTool_ = giv::CaliperTool::create(camera_, options_);
     // CaliperTool itself waits for the GPU (via waitForGpuIdle_ below)
     // before it ever drops the old geometry's GPU objects, so by the time
     // this runs it's already safe to compile the replacement.

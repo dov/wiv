@@ -129,8 +129,8 @@ in Edit > Preferences > Keyboard.
   giv's 1-9 anchor rule, `\n` multi-line, `$text_angle` rotation, and Pango-style `$font`
   descriptions (family, Bold/Italic/Light..., size). Pixel-sized labels (the default) keep
   their size under zoom; `$scale_font` labels scale with the drawing. No glyph atlas, so a
-  new font costs nothing. `$text_style shadow` is parsed but not drawn. (Set
-  `WIV_ATLAS_TEXT=1` to use the old atlas labels for comparison.)
+  new font costs nothing; the caliper label uses it too. `$text_style shadow` is parsed
+  but not drawn.
 
 ## Scientific / pixel-value tools
 
