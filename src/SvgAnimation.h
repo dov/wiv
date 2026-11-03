@@ -1,9 +1,10 @@
 #pragma once
-// SMIL animation for SVG: <animate>, <set> and <animateTransform> elements
+// SMIL animation for SVG: <animate>, <set>, <animateTransform> and
+// <animateMotion> elements
 // are collected from the DOM once, and evaluate() then returns a copy of the
 // DOM with every animated attribute replaced by its value at a given time.
-// Not supported: <animateMotion>, CSS @keyframes, event-based begin times,
-// `end`, `accumulate`.
+// Not supported: CSS @keyframes, event-based begin times, `end`,
+// `accumulate`; arcs in motion paths are approximated by their chord.
 
 #include "SvgDom.h"
 
@@ -34,6 +35,7 @@ private:
     struct Anim;
     const SvgNode& root_;
     std::vector<Anim> anims_;
+    double vw_ = 800.0, vh_ = 600.0; // viewport, for resolving percentages
     double duration_ = 0.0;
     bool loops_ = false;
 };
