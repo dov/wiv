@@ -6,7 +6,17 @@
 #define NANOSVGRAST_IMPLEMENTATION
 #include "nanosvgrast.h"
 
+#include <QByteArray>
+#include <QDir>
+#include <QFileInfo>
+#include <QStringList>
+#include <QFile>
+#include <QImage>
+#include <QString>
+#include <QUrl>
+
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -321,6 +331,300 @@ bool rasterizeBlurredShape(NSVGshape* shape, float stdDev, Dataset& out)
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// <image> elements. nanosvg ignores them, so they are found with the same
+// kind of minimal tag scan as the blur filters above and added as sprite
+// Datasets. Handles data: URIs (base64 or percent-encoded) and file
+// hrefs relative to the svg, x/y/width/height, preserveAspectRatio, opacity,
+// and translate/scale/matrix transforms on the image and its <g> ancestors
+// (a rotated/skewed image is drawn as its axis-aligned bounding box).
+// ---------------------------------------------------------------------------
+struct Affine
+{
+    double a = 1, b = 0, c = 0, d = 1, e = 0, f = 0;
+    // this * m (m is applied first)
+    Affine operator*(const Affine& m) const
+    {
+        return {a * m.a + c * m.b, b * m.a + d * m.b, a * m.c + c * m.d,
+                b * m.c + d * m.d, a * m.e + c * m.f + e, b * m.e + d * m.f + f};
+    }
+};
+
+// Finds ` name="value"` (or single-quoted) in a tag, requiring whitespace
+// before the name so that e.g. "width" doesn't match "stroke-width".
+std::string tagAttr(const std::string& tag, const std::string& name)
+{
+    size_t pos = 0;
+    while ((pos = tag.find(name, pos)) != std::string::npos)
+    {
+        size_t end = pos + name.size();
+        bool okStart = pos > 0 && std::isspace(static_cast<unsigned char>(tag[pos - 1]));
+        size_t q = end;
+        while (q < tag.size() && std::isspace(static_cast<unsigned char>(tag[q]))) ++q;
+        if (okStart && q < tag.size() && tag[q] == '=')
+        {
+            ++q;
+            while (q < tag.size() && std::isspace(static_cast<unsigned char>(tag[q]))) ++q;
+            if (q < tag.size() && (tag[q] == '"' || tag[q] == '\''))
+            {
+                size_t close = tag.find(tag[q], q + 1);
+                if (close != std::string::npos) return tag.substr(q + 1, close - q - 1);
+            }
+        }
+        pos = end;
+    }
+    return {};
+}
+
+std::vector<double> parseNumbers(const std::string& s)
+{
+    std::vector<double> v;
+    const char* p = s.c_str();
+    char* endp = nullptr;
+    while (*p)
+    {
+        double x = std::strtod(p, &endp);
+        if (endp == p) { ++p; continue; }
+        v.push_back(x);
+        p = endp;
+    }
+    return v;
+}
+
+Affine parseTransform(const std::string& str)
+{
+    Affine t;
+    size_t pos = 0;
+    while (true)
+    {
+        size_t open = str.find('(', pos);
+        if (open == std::string::npos) break;
+        size_t close = str.find(')', open);
+        if (close == std::string::npos) break;
+        size_t nb = open;
+        while (nb > pos && std::isspace(static_cast<unsigned char>(str[nb - 1]))) --nb;
+        size_t ns = nb;
+        while (ns > pos && std::isalpha(static_cast<unsigned char>(str[ns - 1]))) --ns;
+        std::string name = str.substr(ns, nb - ns);
+        auto n = parseNumbers(str.substr(open + 1, close - open - 1));
+        Affine m;
+        if (name == "matrix" && n.size() >= 6) m = {n[0], n[1], n[2], n[3], n[4], n[5]};
+        else if (name == "translate" && !n.empty()) { m.e = n[0]; m.f = n.size() > 1 ? n[1] : 0; }
+        else if (name == "scale" && !n.empty()) { m.a = n[0]; m.d = n.size() > 1 ? n[1] : n[0]; }
+        else if (name == "rotate" && !n.empty())
+        {
+            double r = n[0] * M_PI / 180.0, cs = std::cos(r), sn = std::sin(r);
+            double cx = n.size() > 2 ? n[1] : 0, cy = n.size() > 2 ? n[2] : 0;
+            m = {cs, sn, -sn, cs, cx - cs * cx + sn * cy, cy - sn * cx - cs * cy};
+        }
+        t = t * m;
+        pos = close + 1;
+    }
+    return t;
+}
+
+double parseLength(const std::string& s, double def = 0.0)
+{
+    if (s.empty()) return def;
+    auto n = parseNumbers(s);
+    return n.empty() ? def : n[0];
+}
+
+// Drops XML character references for line breaks (Inkscape wraps base64 with
+// "&#10;"), which would otherwise leave stray digits in the base64 text.
+std::string stripLineEntities(std::string s)
+{
+    for (const char* ent : {"&#10;", "&#13;", "&#xA;", "&#xa;", "&#xD;", "&#xd;"})
+    {
+        size_t p;
+        const std::string e(ent);
+        while ((p = s.find(e)) != std::string::npos) s.erase(p, e.size());
+    }
+    return s;
+}
+
+bool decodeImageHref(std::string href, const std::string& absref, const std::string& svgFilename, QImage& out)
+{
+    href = stripLineEntities(href);
+    if (href.compare(0, 5, "data:") == 0)
+    {
+        size_t comma = href.find(',');
+        if (comma == std::string::npos) return false;
+        std::string meta = href.substr(5, comma - 5);
+        QByteArray payload(href.data() + comma + 1, static_cast<qsizetype>(href.size() - comma - 1));
+        QByteArray bytes = meta.find(";base64") != std::string::npos
+                               ? QByteArray::fromBase64(payload.simplified().replace(' ', ""))
+                               : QByteArray::fromPercentEncoding(payload);
+        return out.loadFromData(bytes);
+    }
+    // Candidate paths, in order: the href as written (resolved against the
+    // svg's directory), then percent-decoded, then Inkscape's absref.
+    const QString baseDir = QFileInfo(QString::fromStdString(svgFilename)).absolutePath();
+    auto resolve = [&](QString path)
+    {
+        if (path.startsWith("file:")) path = QUrl(path).toLocalFile();
+        if (QDir::isRelativePath(path)) path = baseDir + "/" + path;
+        return path;
+    };
+    const QString raw = QString::fromUtf8(href.c_str());
+    QStringList candidates{resolve(raw), resolve(QUrl::fromPercentEncoding(href.c_str()))};
+    if (!absref.empty()) candidates << resolve(QString::fromUtf8(absref.c_str()));
+    for (const QString& c : candidates)
+        if (QFileInfo::exists(c) && out.load(c)) return true;
+    return false;
+}
+
+void addSvgImages(const std::string& xml, const std::string& svgFilename, const NSVGimage* svg, SceneData& scene)
+{
+    // User units -> the pixel space nanosvg's shapes are in (see nsvgParse):
+    // the viewBox is mapped onto width/height, xMidYMid meet.
+    double scale = 1.0, offX = 0.0, offY = 0.0;
+    {
+        size_t t = xml.find("<svg");
+        size_t te = t == std::string::npos ? t : xml.find('>', t);
+        if (te != std::string::npos)
+        {
+            auto vb = parseNumbers(tagAttr(xml.substr(t, te - t + 1), "viewBox"));
+            if (vb.size() == 4 && vb[2] > 0 && vb[3] > 0 && svg->width > 0 && svg->height > 0)
+            {
+                scale = std::min(svg->width / vb[2], svg->height / vb[3]);
+                offX = -vb[0] * scale + (svg->width - vb[2] * scale) * 0.5;
+                offY = -vb[1] * scale + (svg->height - vb[3] * scale) * 0.5;
+            }
+        }
+    }
+    Affine root{scale, 0, 0, scale, offX, offY};
+
+    std::vector<Affine> stack{root};
+    size_t pos = 0;
+    int index = 0;
+    while ((pos = xml.find('<', pos)) != std::string::npos)
+    {
+        if (xml.compare(pos, 4, "<!--") == 0)
+        {
+            size_t e = xml.find("-->", pos);
+            if (e == std::string::npos) break;
+            pos = e + 3;
+            continue;
+        }
+        // Tag end: first '>' outside quotes (hrefs hold no '>').
+        size_t end = pos;
+        char quote = 0;
+        for (; end < xml.size(); ++end)
+        {
+            char ch = xml[end];
+            if (quote) { if (ch == quote) quote = 0; }
+            else if (ch == '"' || ch == '\'') quote = ch;
+            else if (ch == '>') break;
+        }
+        if (end >= xml.size()) break;
+        std::string tag = xml.substr(pos, end - pos + 1);
+        pos = end + 1;
+        if (tag.size() < 2 || tag[1] == '?' || tag[1] == '!') continue;
+
+        bool closing = tag[1] == '/';
+        bool selfClosing = tag[tag.size() - 2] == '/';
+        size_t ns = closing ? 2 : 1, ne = ns;
+        while (ne < tag.size() && !std::isspace(static_cast<unsigned char>(tag[ne])) && tag[ne] != '>' && tag[ne] != '/') ++ne;
+        std::string name = tag.substr(ns, ne - ns);
+
+        if (closing)
+        {
+            if ((name == "g" || name == "a" || name == "svg" || name == "switch") && stack.size() > 1) stack.pop_back();
+            continue;
+        }
+        if (name == "g" || name == "a" || name == "switch" || name == "svg")
+        {
+            if (name == "svg" && stack.size() == 1 && !selfClosing && index == 0 && xml.find("<svg") == pos - tag.size())
+            {
+                // The root element: its transform (if any) is not applied by nanosvg either.
+                stack.push_back(stack.back());
+                continue;
+            }
+            if (!selfClosing) stack.push_back(stack.back() * parseTransform(tagAttr(tag, "transform")));
+            continue;
+        }
+        if (name != "image") continue;
+
+        std::string href = tagAttr(tag, "xlink:href");
+        if (href.empty()) href = tagAttr(tag, "href");
+        std::string style = tagAttr(tag, "style");
+        if (style.find("display:none") != std::string::npos || tagAttr(tag, "display") == "none") continue;
+
+        QImage img;
+        if (href.empty() || !decodeImageHref(href, tagAttr(tag, "sodipodi:absref"), svgFilename, img) || img.isNull()) continue;
+        img = img.convertToFormat(QImage::Format_RGBA8888);
+
+        double x = parseLength(tagAttr(tag, "x")), y = parseLength(tagAttr(tag, "y"));
+        double w = parseLength(tagAttr(tag, "width"), img.width());
+        double h = parseLength(tagAttr(tag, "height"), img.height());
+        if (w <= 0 || h <= 0) continue;
+
+        std::string par = tagAttr(tag, "preserveAspectRatio");
+        if (par.find("none") == std::string::npos)
+        {
+            double s = std::min(w / img.width(), h / img.height());
+            double iw = img.width() * s, ih = img.height() * s;
+            bool slice = par.find("slice") != std::string::npos;
+            if (slice) { s = std::max(w / img.width(), h / img.height()); iw = img.width() * s; ih = img.height() * s; }
+            double fx = par.find("xMin") != std::string::npos ? 0.0 : par.find("xMax") != std::string::npos ? 1.0 : 0.5;
+            double fy = par.find("YMin") != std::string::npos ? 0.0 : par.find("YMax") != std::string::npos ? 1.0 : 0.5;
+            x += (w - iw) * fx;
+            y += (h - ih) * fy;
+            w = iw;
+            h = ih;
+            // slice would need clipping to the viewport; show the whole image instead.
+        }
+
+        Affine m = stack.back() * parseTransform(tagAttr(tag, "transform"));
+        double px[4] = {x, x + w, x, x + w}, py[4] = {y, y, y + h, y + h};
+        double minX = 1e300, minY = 1e300, maxX = -1e300, maxY = -1e300;
+        for (int i = 0; i < 4; ++i)
+        {
+            double tx = m.a * px[i] + m.c * py[i] + m.e;
+            double ty = m.b * px[i] + m.d * py[i] + m.f;
+            minX = std::min(minX, tx); maxX = std::max(maxX, tx);
+            minY = std::min(minY, ty); maxY = std::max(maxY, ty);
+        }
+
+        double opacity = parseLength(tagAttr(tag, "opacity"), 1.0);
+        size_t op = style.find("opacity:");
+        if (op != std::string::npos && (op == 0 || style[op - 1] == ';' || style[op - 1] == ' '))
+            opacity = parseLength(style.substr(op + 8), opacity);
+        if (opacity < 1.0)
+        {
+            for (int row = 0; row < img.height(); ++row)
+            {
+                uchar* line = img.scanLine(row);
+                for (int col = 0; col < img.width(); ++col)
+                    line[col * 4 + 3] = static_cast<uchar>(line[col * 4 + 3] * std::max(0.0, opacity));
+            }
+        }
+
+        scene.datasets.emplace_back();
+        Dataset& ds = scene.datasets.back();
+        std::string id = tagAttr(tag, "id");
+        ds.pathName = id.empty() ? "svg image " + std::to_string(index) : id;
+        ++index;
+        ds.doDrawLines = false;
+        ds.doDrawPolygon = false;
+        ds.doDrawMarks = false;
+        ds.isSprite = true;
+        ds.spriteWidth = img.width();
+        ds.spriteHeight = img.height();
+        ds.spriteRGBA.resize(static_cast<size_t>(img.width()) * img.height() * 4);
+        for (int row = 0; row < img.height(); ++row)
+            std::memcpy(ds.spriteRGBA.data() + static_cast<size_t>(row) * img.width() * 4, img.constScanLine(row),
+                        static_cast<size_t>(img.width()) * 4);
+        ds.spriteX = minX;
+        ds.spriteY = minY;
+        ds.spriteW = maxX - minX;
+        ds.spriteH = maxY - minY;
+        scene.updateBounds(minX, minY);
+        scene.updateBounds(maxX, maxY);
+    }
+}
+
 } // namespace
 
 bool loadSvgFile(const std::string& filename, SceneData& scene, std::string& error)
@@ -333,6 +637,8 @@ bool loadSvgFile(const std::string& filename, SceneData& scene, std::string& err
         return false;
     }
 
+    // nsvgParse() rewrites svgText in place, so re-read the pristine text.
+    std::string rawXml;
     std::unordered_map<std::string, float> elementBlur;
     {
         std::ifstream in(giv::utf8ToPath(filename), std::ios::binary);
@@ -340,9 +646,14 @@ bool loadSvgFile(const std::string& filename, SceneData& scene, std::string& err
         {
             std::ostringstream ss;
             ss << in.rdbuf();
-            elementBlur = parseElementBlurRadii(ss.str());
+            rawXml = ss.str();
+            elementBlur = parseElementBlurRadii(rawXml);
         }
     }
+
+    // Images first: nanosvg drops <image>, so their z-order relative to the
+    // shapes is lost; the usual case is a picture annotated with shapes.
+    addSvgImages(rawXml, filename, svg, scene);
 
     int shapeIndex = 0;
     for (NSVGshape* shape = svg->shapes; shape; shape = shape->next, ++shapeIndex)

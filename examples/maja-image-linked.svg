@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Same as maja-image-embedded.svg, but the picture is linked from a file
+     next to this one instead of being embedded as base64. -->
+<svg width="210mm" height="297mm" viewBox="0 0 210 297" version="1.1"
+   xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <image x="55.43" y="101.99" width="99.22" height="93.4" preserveAspectRatio="none"
+     xlink:href="maja.webp" />
+  <ellipse style="opacity:0.3;fill:#ff0000;stroke:#000000;stroke-width:0.5" cx="103.6" cy="149.3" rx="9.86" ry="10.01" />
+  <ellipse style="opacity:0.3;fill:#008000;stroke:#000000;stroke-width:0.5" cx="128.3" cy="146.5" rx="9.86" ry="10.01" />
+</svg>

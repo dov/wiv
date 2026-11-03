@@ -189,6 +189,13 @@ QImage rasterizeSvgThumbnail(const QString& path)
     return result;
 }
 
+// True if the svg contains an <image> element (cheap substring scan).
+bool svgHasImages(const QString& path)
+{
+    QFile f(path);
+    return f.open(QIODevice::ReadOnly) && f.readAll().contains("<image");
+}
+
 // Decodes any raster format wiv's plugin host can read into a thumbnail-
 // sized QImage.
 QImage decodeRasterThumbnail(const QString& path)
@@ -275,7 +282,12 @@ QImage decodeThumbnail(const QString& path)
 
     QImage image;
     if (path.endsWith(".giv", Qt::CaseInsensitive)) image = decodeGivThumbnail(path);
-    else if (path.endsWith(".svg", Qt::CaseInsensitive)) image = rasterizeSvgThumbnail(path);
+    else if (path.endsWith(".svg", Qt::CaseInsensitive))
+    {
+        // nanosvg ignores <image>; the scene renderer (SvgLoader) draws them.
+        image = svgHasImages(path) ? decodeGivThumbnail(path) : QImage();
+        if (image.isNull()) image = rasterizeSvgThumbnail(path);
+    }
     else image = decodeRasterThumbnail(path);
 
     if (!image.isNull()) saveCachedThumbnail(path, image);
