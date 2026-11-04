@@ -277,7 +277,12 @@ std::unique_ptr<SvgNode> parseSvgXml(const char* data, size_t size, std::string&
     if (!ok)
     {
         error = std::string(XML_ErrorString(XML_GetErrorCode(parser))) + " at line " +
-                std::to_string(XML_GetCurrentLineNumber(parser));
+                std::to_string(
+#if XML_MAJOR_VERSION > 2 || (XML_MAJOR_VERSION == 2 && XML_MINOR_VERSION >= 9)
+                    XML_GetCurrentLineNumber64(parser)); // the 32-bit variant is deprecated
+#else
+                    XML_GetCurrentLineNumber(parser));
+#endif
         XML_ParserFree(parser);
         return nullptr;
     }
