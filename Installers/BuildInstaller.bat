@@ -3,7 +3,7 @@ rem Builds the wiv Windows installer with NSIS (makensis).
 rem
 rem   BuildInstaller.bat [build-dir] [--copy-w]
 rem
-rem build-dir defaults to build\windows-RelWithDebInfo (see config-win.bat), so
+rem build-dir defaults to build\windows-release (windows-release preset, RelWithDebInfo), so
 rem that crash dumps from the installed exe can be matched to its wiv.pdb.
 rem --copy-w also copies the installer to w:\users\Dov\WinInstall.
 rem Steps: build -> cmake --install into Installers\tmp -> makensis.
@@ -18,7 +18,7 @@ if /i "%~1"=="--copy-w" (set "COPY_W=1") else set "BUILD=%~1"
 shift
 goto parseargs
 :argsdone
-if "%BUILD%"=="" set "BUILD=%ROOT%\build\windows-RelWithDebInfo"
+if "%BUILD%"=="" set "BUILD=%ROOT%\build\windows-release"
 
 set "VS_VCVARS=C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Auxiliary\Build\vcvars64.bat"
 set "VS_NINJA=C:\Program Files\Microsoft Visual Studio\18\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja"

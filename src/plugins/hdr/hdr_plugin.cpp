@@ -295,7 +295,7 @@ WivPluginImage* loadPfm(const char* filename, char** error_msg)
             {
                 uint32_t u;
                 std::memcpy(&u, &f, 4);
-                u = __builtin_bswap32(u);
+                u = (u >> 24) | ((u >> 8) & 0xff00u) | ((u << 8) & 0xff0000u) | (u << 24);
                 std::memcpy(&f, &u, 4);
             }
         const int y = h - 1 - fileRow;

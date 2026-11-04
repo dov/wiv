@@ -217,6 +217,11 @@ target_compile_definitions(wiv PRIVATE
   WIV_PLUGIN_DIR="${CMAKE_BINARY_DIR}/plugins"
 )
 
+if(MSVC)
+  # M_PI etc. from <cmath>
+  target_compile_definitions(wiv PRIVATE _USE_MATH_DEFINES)
+endif()
+
 if(UNIX AND NOT APPLE)
   target_link_libraries(wiv PRIVATE pthread ${CMAKE_DL_LIBS})
 endif()
