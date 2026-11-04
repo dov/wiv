@@ -24,6 +24,26 @@
 
 #include <string>
 
+#ifndef _WIN32
+#include <QSocketNotifier>
+#include <csignal>
+#include <sys/socket.h>
+#include <unistd.h>
+
+namespace
+{
+int g_sigFd[2] = {-1, -1};
+
+// Async-signal-safe: just poke the socketpair; the Qt side does the real work.
+void onTermSignal(int)
+{
+    const char c = 1;
+    const ssize_t n = ::write(g_sigFd[0], &c, 1);
+    (void)n;
+}
+} // namespace
+#endif
+
 namespace
 {
 class KeyLogger : public QObject
@@ -176,6 +196,27 @@ int main(int argc, char** argv)
         window.startWithoutFile();
 
     spdlog::info("Main window shown, entering event loop");
+#ifndef _WIN32
+    // Ctrl+C (SIGINT) / SIGTERM: quit through the event loop so windows close cleanly.
+    QSocketNotifier* sigNotifier = nullptr;
+    if (::socketpair(AF_UNIX, SOCK_STREAM, 0, g_sigFd) == 0)
+    {
+        sigNotifier = new QSocketNotifier(g_sigFd[1], QSocketNotifier::Read, &app);
+        QObject::connect(sigNotifier, &QSocketNotifier::activated, &app, [&]() {
+            char c;
+            const ssize_t n = ::read(g_sigFd[1], &c, 1);
+            (void)n;
+            spdlog::info("Termination signal received, quitting");
+            QApplication::quit();
+        });
+        struct sigaction sa = {};
+        sa.sa_handler = onTermSignal;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = SA_RESTART;
+        sigaction(SIGINT, &sa, nullptr);
+        sigaction(SIGTERM, &sa, nullptr);
+    }
+#endif
     int rc = app.exec();
     spdlog::info("Application exiting with code {}", rc);
     return rc;
