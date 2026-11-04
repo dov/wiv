@@ -12,7 +12,8 @@
 //    (half-width, dash-on, dash-off, cumulative-length) and (color),
 //    expanded in lines.vert, dashed in lines.frag.
 //  - Filled polygons and arrow/quiver heads are flat-shaded triangle soup
-//    in one more draw (fill.vert/fill.frag), fan-triangulated on the CPU.
+//    in one more draw (fill.vert/fill.frag), ear-clipped on the CPU
+//    (arrow/quiver heads are simple convex fans).
 //  - Text is shaped by TextLayout (HarfBuzz/FriBidi/fontconfig) and drawn as
 //    triangulated glyph outlines in the fill batch (see buildLabelTriangles).
 //
