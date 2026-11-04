@@ -20,7 +20,9 @@
 #include <QElapsedTimer>
 #include <functional>
 #include <initializer_list>
+#include <QImage>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -74,6 +76,17 @@ public:
     // viewer shouldn't open a listening socket by default. Returns false on
     // failure (e.g. the port is already in use).
     bool startRpcServer(int port);
+
+    // --- Remote driving (see RpcServer.h) ---
+    // Ids of every rebindable menu action (the action text reduced to alphanumerics).
+    QStringList actionIds() const;
+    // Triggers the action `id`. For a checkable action, `checked` (if given)
+    // sets its state instead of toggling it. Returns false with `error` set
+    // if there is no such action or it is disabled.
+    bool triggerAction(const QString& id, std::optional<bool> checked, QString& error);
+    // Grabs what is on screen: the whole window, or just the image viewport.
+    // Lets the render loop settle first. Null on failure.
+    QImage grabScreenshot(bool viewportOnly);
 
 protected:
     void showEvent(QShowEvent* event) override;

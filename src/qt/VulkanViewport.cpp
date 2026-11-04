@@ -2598,6 +2598,16 @@ void VulkanViewport::currentFitBoundsYDown(double& minX, double& minY, double& m
         minY = 0.0;
         maxY = 1.0;
     }
+    else if (!currentImageSize_)
+    {
+        // Pure vector content (a marks/.giv or .svg file with no image): keep a
+        // 3% margin on every side so marks don't touch the window borders.
+        // (With an image, the image's own edge is the natural border.)
+        constexpr double kMargin = 0.03;
+        const double mx = (maxX - minX) * kMargin, my = (maxY - minY) * kMargin;
+        minX -= mx; maxX += mx;
+        minY -= my; maxY += my;
+    }
 }
 
 void VulkanViewport::updateScrollBars()

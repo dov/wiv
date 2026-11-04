@@ -55,6 +55,10 @@
 #include <QSysInfo>
 #include <QDir>
 #include <QDockWidget>
+#include <QWindow>
+#include <QGuiApplication>
+#include <QScreen>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
 #include <QLabel>
@@ -332,6 +336,52 @@ bool MainWindow::startRpcServer(int port)
         return false;
     }
     return true;
+}
+
+QStringList MainWindow::actionIds() const
+{
+    QStringList ids;
+    for (QAction* a : bindableActions_) ids << a->objectName();
+    ids.sort();
+    return ids;
+}
+
+bool MainWindow::triggerAction(const QString& id, std::optional<bool> checked, QString& error)
+{
+    for (QAction* a : bindableActions_)
+    {
+        if (a->objectName().compare(id, Qt::CaseInsensitive) != 0) continue;
+        if (!a->isEnabled())
+        {
+            error = "action is disabled: " + id;
+            return false;
+        }
+        if (a->isCheckable() && checked.has_value())
+        {
+            if (a->isChecked() != *checked) a->trigger(); // trigger() flips it
+        }
+        else
+            a->trigger();
+        return true;
+    }
+    error = "unknown action: " + id + " (see list_actions)";
+    return false;
+}
+
+QImage MainWindow::grabScreenshot(bool viewportOnly)
+{
+    // Let pending layout / scene rebuilds and a few frames of the render loop run.
+    QEventLoop loop;
+    QTimer::singleShot(400, &loop, &QEventLoop::quit);
+    loop.exec();
+    QScreen* screen = windowHandle() ? windowHandle()->screen() : QGuiApplication::primaryScreen();
+    if (!screen) return {};
+    QWidget* target = viewportOnly ? static_cast<QWidget*>(viewport_) : static_cast<QWidget*>(this);
+    const QPoint topLeft = target->mapToGlobal(QPoint(0, 0));
+    const QRect r = viewportOnly ? QRect(topLeft, target->size()) : frameGeometry().isValid() ? geometry() : QRect();
+    // Grab from the root window (desktop coordinates) so the Vulkan surface is included.
+    return screen->grabWindow(0, r.x() - screen->geometry().x(), r.y() - screen->geometry().y(), r.width(), r.height())
+        .toImage();
 }
 
 QString MainWindow::statusLineText() const
