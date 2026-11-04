@@ -17,12 +17,13 @@ struct MouseSettings
     // Click of the wheel (middle button, without dragging).
     enum class MiddleClick { Nothing, FullScreen };
 
-    Wheel wheel = Wheel::Zoom;
+    Wheel wheel = Wheel::Navigate;
     MiddleClick middleClick = MiddleClick::Nothing;
     bool leftDragPans = false;       // left-drag pans too (not while measuring)
     SideButtons sideButtons = SideButtons::Navigate;
     bool swapSideButtons = false;    // back = next image / step zoom in
     bool tiltNavigates = true;       // horizontal wheel tilt pages through images
+    bool tiltZooms = true;           // horizontal wheel tilt zooms instead (takes precedence)
     bool doubleClickToggles = true;  // left/middle double-click: 1:1 <-> fit
 };
 

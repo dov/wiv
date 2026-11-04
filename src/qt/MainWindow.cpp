@@ -455,7 +455,7 @@ void MainWindow::buildMenus()
     thumbnailStripAction_->setShortcut(QKeySequence("T"));
     {
         QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
-        const bool show = settings.value("thumbnailStrip", false).toBool();
+        const bool show = settings.value("thumbnailStrip", true).toBool();
         thumbnailStripAction_->setChecked(show);
         bottomBar_->setVisible(show);
     }

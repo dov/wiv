@@ -49,7 +49,7 @@ MouseSettings PreferencesDialog::loadMouseSettings()
 {
     auto s = settings();
     MouseSettings m;
-    m.wheel = s.value("mouse/wheel", 0).toInt() == 1 ? MouseSettings::Wheel::Navigate : MouseSettings::Wheel::Zoom;
+    m.wheel = s.value("mouse/wheel", 1).toInt() == 1 ? MouseSettings::Wheel::Navigate : MouseSettings::Wheel::Zoom;
     const int sb = std::clamp(s.value("mouse/sideButtons", 0).toInt(), 0, 2);
     m.sideButtons = static_cast<MouseSettings::SideButtons>(sb);
     m.middleClick = s.value("mouse/middleClick", 0).toInt() == 1 ? MouseSettings::MiddleClick::FullScreen
@@ -57,6 +57,7 @@ MouseSettings PreferencesDialog::loadMouseSettings()
     m.leftDragPans = s.value("mouse/leftDragPans", false).toBool();
     m.swapSideButtons = s.value("mouse/swapSideButtons", false).toBool();
     m.tiltNavigates = s.value("mouse/tiltNavigates", true).toBool();
+    m.tiltZooms = s.value("mouse/tiltZooms", true).toBool();
     m.doubleClickToggles = s.value("mouse/doubleClickToggles", true).toBool();
     return m;
 }
@@ -319,6 +320,9 @@ QWidget* PreferencesDialog::buildMouseTab()
     tiltCheck_ = new QCheckBox("Tilt wheel left / right navigates images", page);
     tiltCheck_->setChecked(m.tiltNavigates);
     form->addRow("", tiltCheck_);
+    tiltZoomCheck_ = new QCheckBox("Tilt wheel left / right zooms instead (also a side button + wheel on some mice)", page);
+    tiltZoomCheck_->setChecked(m.tiltZooms);
+    form->addRow("", tiltZoomCheck_);
 
     dblClickCheck_ = new QCheckBox("Double-click toggles actual size and fit", page);
     dblClickCheck_->setChecked(m.doubleClickToggles);
@@ -604,6 +608,7 @@ void PreferencesDialog::save()
     s.setValue("mouse/leftDragPans", leftDragCheck_->isChecked());
     s.setValue("mouse/swapSideButtons", swapSideCheck_->isChecked());
     s.setValue("mouse/tiltNavigates", tiltCheck_->isChecked());
+    s.setValue("mouse/tiltZooms", tiltZoomCheck_->isChecked());
     s.setValue("mouse/doubleClickToggles", dblClickCheck_->isChecked());
     ExternalApps::Config apps;
     apps.defaultCommand = extDefaultEdit_->text().trimmed();

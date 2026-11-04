@@ -74,6 +74,7 @@ private:
     QComboBox* sideButtonsCombo_ = nullptr;
     QCheckBox* swapSideCheck_ = nullptr;
     QCheckBox* tiltCheck_ = nullptr;
+    QCheckBox* tiltZoomCheck_ = nullptr;
     QCheckBox* dblClickCheck_ = nullptr;
     QList<QAction*> bindable_;
     QTableWidget* keyTable_ = nullptr;

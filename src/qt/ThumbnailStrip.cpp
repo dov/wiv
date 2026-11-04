@@ -318,4 +318,10 @@ void ThumbnailStrip::showEvent(QShowEvent* event)
     loadVisibleThumbnails();
 }
 
+QSize ThumbnailStrip::sizeHint() const
+{
+    // One row of thumbnails: the pane opens just tall enough to fit them.
+    return QSize(QListWidget::sizeHint().width(), rowHeight());
+}
+
 } // namespace givqt

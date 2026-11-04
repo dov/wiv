@@ -550,8 +550,19 @@ void VulkanViewport::applyExtent(VkExtent2D extent)
     // vanishing as it starts changes the viewport size): aim it at the new one
     // rather than dropping it and stranding the view part-way.
     FitView retarget;
-    if (animating && computeFitView(retarget))
+    if (animating && viewAnim_.refit && computeFitView(retarget))
         viewAnim_.to = retarget;
+    else if (animating && !viewAnim_.refit && lastWidth_ > 0 && lastHeight_ > 0)
+    {
+        // A turn of a user's view (not a fit) keeps its scale: the half-extents
+        // follow the new viewport size instead of being aimed at a fit.
+        const double rx = static_cast<double>(extent.width) / lastWidth_;
+        const double ry = static_cast<double>(extent.height) / lastHeight_;
+        viewAnim_.from.halfW *= rx;
+        viewAnim_.to.halfW *= rx;
+        viewAnim_.from.halfH *= ry;
+        viewAnim_.to.halfH *= ry;
+    }
     else
         cancelViewAnimation();
 
@@ -1182,6 +1193,16 @@ bool VulkanViewport::eventFilter(QObject* watched, QEvent* event)
             if (handleSwipe(we)) return true;
             const QPoint d = we->angleDelta();
             // A tilt wheel reports horizontal steps; touchpads were handled above.
+            if (mouse_.tiltZooms && d.x() != 0 && d.y() == 0 && panZoom_ && window_->windowAdapter)
+            {
+                // Horizontal scroll left (+x) zooms in, right zooms out; a mouse that sends its
+                // wheel as horizontal scroll while a side button is held zooms with that button.
+                const double factor = std::pow(0.9, d.x() / 120.0 * (we->modifiers() & Qt::ShiftModifier ? 5.0 : 1.0));
+                const QPointF p = we->position() * window_->devicePixelRatio();
+                panZoom_->zoomAbout(factor, static_cast<int32_t>(p.x()), static_cast<int32_t>(p.y()), viewportExtent());
+                viewer_->request();
+                return true;
+            }
             if (mouse_.tiltNavigates && d.x() != 0 && d.y() == 0)
             {
                 tiltAccum_ += d.x();
@@ -1288,7 +1309,10 @@ bool VulkanViewport::eventFilter(QObject* watched, QEvent* event)
 // vertical component doesn't zoom.
 bool VulkanViewport::handleSwipe(QWheelEvent* we)
 {
-    const bool touchpad = we->phase() != Qt::NoScrollPhase || !we->pixelDelta().isNull();
+    // X11 fills pixelDelta with the angle delta for a plain mouse wheel, so a pixel
+    // delta only marks a touchpad when it differs from the angle delta.
+    const bool touchpad =
+        we->phase() != Qt::NoScrollPhase || (!we->pixelDelta().isNull() && we->pixelDelta() != we->angleDelta());
     if (!touchpad) return false;
     const QPoint d = !we->pixelDelta().isNull() ? we->pixelDelta() : we->angleDelta();
 
