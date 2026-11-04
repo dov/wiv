@@ -1,36 +1,138 @@
 # wiv
 
-A Vulkan-based, [giv](https://github.com/dov/giv)-format-compatible 2D vector
-viewer, built on [VulkanSceneGraph](https://vulkanscenegraph.org) (VSG).
-Phase 1: core vector rendering (paths, marks, polygons, text, dashes,
-arrows, quivers) with GPU-instanced rendering targeting interactive pan/zoom
-over millions of points..
+**wiv (vviv) - The Vulkan Vector Image Viewer. A high-performance, scientific successor to giv.**
+
+<p align="center">
+  <a href="docs/wiv-screenshot.png"><img src="docs/images/wiv-screenshot.png" alt="wiv screenshot" width="400"></a>
+</p>
+
+
+wiv opens your photos, camera RAW, HDR, FITS, DICOM, HDF5 and NumPy data like a
+fast image viewer, and it opens [giv](https://github.com/dov/giv)-format
+`.giv` files and SVGs as true vector graphics: millions of points, crisp at any
+zoom, with text, dashes, arrows and animation. It is a Vulkan/Qt 6 successor to
+giv, and reads existing `.giv` files unmodified.
+
+Full usage: **[docs/usage.md](docs/usage.md)**
+
+## Why wiv?
+
+- **Images and vectors in one viewer.** Overlay contours, quiver plots,
+  measurement marks and labels on top of a raster image (`$image` in a `.giv`
+  file), or just view a folder of photos. Most image viewers can't draw
+  vectors; most plotting tools can't browse a folder of RAW files.
+- **Built for big data.** Marks, line segments and dashes are drawn with
+  GPU instancing: one draw call for *all* marks and one for *all* line
+  segments in a file. A 10-million-point, 208 MB `.giv` file parses in about
+  0.3 s, builds its scene in about 0.2 s and pans and zooms interactively.
+- **Real dynamic range, not 8-bit RGBA.** 8/16-bit grayscale, float FITS,
+  DICOM, HDF5 and `.npy` data keep their raw samples. Contrast stretch (with a
+  histogram) and pseudo-colour tables run on the GPU, so you window the actual
+  data rather than a quantised copy.
+- **Measurement tools.** Caliper for distances, pixel-size calibration so the
+  caliper reads in real units, a pixel grid with sub-pixel coordinates.
+- **Every format through plugins.** Image decoders are runtime-loaded shared
+  libraries (`dlopen`/`LoadLibrary`), so optional formats (HEIF/AVIF, JPEG XL,
+  camera RAW, OpenEXR, HDF5) simply appear when their library is installed.
+- **Scriptable.** An optional JSON-RPC server (`--rpc-port`) speaks giv's wire
+  protocol, so existing giv client scripts can load files, push marks, read and
+  set the view, and wait for a click.
+- **Remembers your view.** Per-image contrast, colormap, pan/zoom and slice are
+  kept in a SQLite database and restored when you reopen the file.
+- **Fast browsing.** Thumbnail strip, background prefetch of neighbouring
+  images with cancellable decodes and low-resolution previews, so holding the
+  arrow key stays responsive.
+- **Animation.** GIF, APNG, animated WebP/JXL, AVIF sequences, animated SVG
+  (SMIL and CSS `@keyframes`) and `.giv` animation via `$frame`.
+- **Linux and Windows.** Native Linux build; Windows via MSVC/vcpkg or a MinGW
+  cross build with an NSIS installer.
+
+## Supported formats
+
+| Kind | Formats |
+| --- | --- |
+| Raster | PNG, JPEG, BMP, TGA, GIF, PSD, TIFF (multi-page), WebP, ICO/CUR, DDS, PGM/PPM |
+| Optional raster | HEIC/HEIF/AVIF (libheif), JPEG XL (libjxl), camera RAW (LibRaw), OpenEXR |
+| HDR / scientific | Radiance HDR, PFM, FITS, DICOM, HDF5, NumPy `.npy` |
+| Vector | `.giv`, SVG (shapes, `<image>`, shaped multilingual `<text>`, `<textPath>`, CSS, animation) |
+
+See [features.md](features.md) for the complete feature list.
+
+## Architecture
+
+wiv is a Qt 6 application whose central viewport renders with
+[VulkanSceneGraph](https://vulkanscenegraph.org) (VSG).
+
+- **Parsing** (`GivParser`): memory-mapped text parser with no line-length
+  limit, structure-of-arrays point storage and a `std::from_chars` fast path
+  for bare `x y` lines. `GivColor` supplies the X11 colour table and giv's
+  `name/alpha` syntax.
+- **Scene building** (`SceneBuilder`): turns datasets into a VSG scene graph.
+  - *Marks*: one instanced draw for the whole file. A shared unit quad plus
+    per-instance position/size/shape and colour buffers; circles and squares
+    are signed-distance-field shaded in `shaders/marks.*`.
+  - *Lines*: one instanced draw for every polyline, polygon outline, ellipse
+    outline and quiver shaft segment, expanded and dashed in the shaders
+    (`shaders/lines.*`).
+  - *Fills*: one triangle batch for filled polygons, arrowheads and text.
+  - *Text*: shaped by HarfBuzz and FriBidi (bidirectional text, ligatures,
+    kerning), fonts resolved through fontconfig with per-character fallback,
+    and drawn as triangulated glyph outlines. There is no glyph atlas, so text
+    scales, rotates and animates like any other geometry and a new font costs
+    nothing.
+  - *Images*: textured quads, nearest-neighbour when zoomed in and bilinear
+    when zoomed out.
+- **SVG**: nanosvg plus a DOM/CSS/animation layer (`SvgDom`, `SvgCss`,
+  `SvgAnimation`) that renders SVG through the same scene builder as `.giv`.
+- **Image plugins** (`src/plugins/`, `ImagePluginHost`): one shared library
+  per format family behind a small C interface (`wiv_plugin.h`). Optional
+  entry points provide animation frames, multi-page/slice access and
+  fast reduced-size previews. EXIF orientation is applied centrally.
+- **Qt shell** (`src/qt/`): menus, thumbnail strip, Open dialog with cached
+  thumbnails, contrast/colormap/calibration/info/mark-browser docks,
+  preferences, the JSON-RPC server, and a SQLite store for per-image state.
+
+Coordinates follow giv's image-viewer convention (Y grows downward);
+`SceneBuilder` flips Y so the camera stays a standard Y-up orthographic setup.
+
+## Limitations
+
+- `.giv` dash patterns use only the first on/off pair.
+- No image editing, saving/export, printing or ICC colour management.
+- Text depends on system fonts (fontconfig on Linux, the Fonts folder on
+  Windows); no font is bundled.
+- `$low_contrast` and the `$hflip`/`$vflip` directives are parsed but not
+  rendered; see the usage page.
 
 ## Build
 
 Requires [vcpkg](https://vcpkg.io) with `VCPKG_ROOT` set, CMake >= 3.21,
-Ninja, and `glslangValidator` (from the Vulkan SDK / LunarG tools, or your
-distro's `glslang` package) on `PATH`.
+Ninja and `glslangValidator` (Vulkan SDK or your distro's `glslang`) on `PATH`.
+On Linux only `vsg` and `vsgxchange` come from vcpkg (built into
+`build/<preset>/vcpkg_installed`, so no system-wide VSG install is used); Qt 6,
+SQLite and the other libraries come from the system package manager. On
+Windows vcpkg provides everything.
 
 ```sh
 export VCPKG_ROOT=/path/to/vcpkg
 cmake --preset linux-release
 cmake --build --preset linux-release
+build/linux-release/wiv examples/example.giv
 ```
 
-This pulls `vsg` (with its `windowing` feature, for native window creation)
-and `vsgxchange` (with its `freetype` feature, for font loading) via the
-vcpkg manifest (`vcpkg.json`) and builds `build/linux-release/wiv`. A
-`linux-debug` preset is also provided.
+vcpkg provides `vsg` (with the `windowing` feature) and `vsgxchange` (with
+`freetype`). A `linux-debug` preset is also available. For the optional
+formats install `libheif-devel libjxl-devel LibRaw-devel` (Fedora names);
+plugins whose libraries are found at configure time are built.
 
-### Windows
+Plugins are loaded from `WIV_PLUGIN_DIR` if set, otherwise from
+`<build-dir>/plugins` (or `<prefix>/lib/wiv/plugins` when installed). Set
+`WIV_PLUGIN_DIR` when running a binary copied out of its build tree.
 
-Requires Visual Studio (C++ workload), CMake, Ninja, the Vulkan SDK
-(`glslangValidator`) and a vcpkg checkout at `c:\vcpkg` (the `windows-release`
-preset points there). Qt6 comes from vcpkg (`qtbase`, Windows only). The
-manifest baseline is pinned to the same vcpkg commit the reference application uses, so Qt is
-restored from the shared binary cache (`%LOCALAPPDATA%\vcpkg\archives`) instead
-of being rebuilt. Run from a VS developer prompt:
+### Windows (MSVC)
+
+Needs Visual Studio (C++ workload), CMake, Ninja, the Vulkan SDK and vcpkg at
+`c:\vcpkg`. From a VS developer prompt:
 
 ```bat
 cmake --preset windows-release
@@ -38,217 +140,36 @@ cmake --build --preset windows-release
 build\windows-release\wiv.exe file.giv
 ```
 
+The vcpkg baseline is pinned so Qt is restored from the shared binary cache.
+
 ### Windows cross build from Linux (Fedora, MinGW)
 
 ```sh
-sudo ./install-mingw-deps.sh      # dnf packages (Qt6, vulkan, NSIS, ...)
-tools/build-mingw-deps.sh         # optional: also run automatically by cmake
-./windows-cross-compile.sh        # (= tools/build-mingw.sh --installer)  # build/mingw-release/stage + Installers/InstallWiv-*.exe
+sudo ./install-mingw-deps.sh
+./windows-cross-compile.sh        # build/mingw-release/stage + Installers/InstallWiv-*.exe
 ```
 
 `MINGW_DEPS_PREFIX` overrides the dependency prefix (default
-`/usr/local/mingw64`). The toolchain file is `cmake/mingw-w64-x86_64.cmake`.
+`/usr/local/mingw64`).
 
-## Usage
+## Quick start
 
 ```sh
-wiv file.giv [file2.giv ...]
-wiv --geometry 1024x768 file.giv
-wiv --zoom 2.0 0 0 file.giv       # 2x zoom, no shift
-wiv -n file.giv                   # skip auto-fit-to-bounds
+wiv photo.jpg                       # view an image; next/previous with the arrow keys
+wiv examples/example.giv            # a vector file
+wiv --geometry 1024x768 *.png
+wiv --rpc-port 8080 file.giv        # enable remote control
 ```
 
-Phase 1 CLI subset (see plan for the full flag list excluded from this
-phase - `--remote`, `--port`, `--export`, etc. are Phase 2):
+Keys, mouse bindings, the `.giv` format and the remote protocol are described
+in **[docs/usage.md](docs/usage.md)**.
 
-- positional `.giv` file(s) - datasets from all files are merged into one scene
-- `--geometry WxH` - initial window size
-- `--zoom scale shift_x shift_y` - initial zoom/pan applied on top of auto-fit
-- `-n` - disable auto-fit-to-bounds (uses a fixed default view instead)
+## Benchmarking
 
-Mouse: middle-drag pans, right-drag zooms, scroll wheel zooms at the cursor,
-double-click toggles 1:1 / fit. Edit > Preferences > Mouse changes the wheel
-(zoom or next/previous image; Ctrl+wheel always zooms), the back/forward
-buttons (navigate, step zoom or nothing), tilt-wheel navigation and
-double-click. Preferences > General > "When switching images" picks fit /
-remember per file / keep zoom and pan (the same as View > Auto Fit and
-Remember View Per File).
-Escape or the window close button exits.
+`tools/gen_test_giv.py` generates synthetic `.giv` files (point clouds, long
+polylines). `WIV_CONTINUOUS=1` renders every timer tick so the FPS figure is
+meaningful; `WIV_TIMING=1` also prints the per-stage cost of each frame.
 
-Animated images (GIF, APNG, animated WebP, AVIF image sequences; the last
-needs libheif 1.20+) play automatically once the file is on screen, honoring
-per-frame delays and the file's loop count. Frames are composited by the
-`stbimage`, `webp` and `heif` plugins through the optional
-`wiv_plugin_anim_*` exports (see `src/plugins/wiv_plugin.h`) and held in
-memory (768 MiB budget; a larger animation shows its first frame only). The
-status bar shows `Frame N/F`. Keys (all in the View menu, rebindable):
+## License
 
-| key | action |
-| --- | --- |
-| `K` / `Space` | play / pause (Space is "next image" for non-animated files) |
-| `X` / `Shift+X` | stop (pause on the first frame) / restart (rewind and play) |
-| `.` / `,` | next / previous frame (pauses) |
-| `]` / `[` | faster / slower (1/8x to 8x); `\` back to normal speed |
-| `Shift+K` | toggle looping (off: stops on the last frame) |
-
-Parse time, scene-build time and a once-a-second FPS figure are printed to
-stderr (the FPS figure also appears in the status bar).
-
-Two environment variables help when benchmarking the render path:
-
-- `WIV_CONTINUOUS=1` - render every timer tick instead of only when
-  something requests a frame. The FPS figure is meaningless without it,
-  since an idle viewer renders nothing.
-- `WIV_TIMING=1` - also print the average per-frame cost of each stage of
-  `GivViewer::render()` (view-scale update, `advanceToNextFrame`, `update`,
-  `recordAndSubmit`, `present`) alongside the FPS line.
-
-## Design summary
-
-- **`GivColor`** (`src/GivColor.h/.cpp`): X11 color name table (generated by
-  `tools/gen_color_table.py` from the authentic X11R6 `rgb.txt`, vendored at
-  `third_party/X11-rgb.txt`) plus giv's `name/alpha` suffix syntax
-  (`0xhh`, `0xhhhh`, float, int forms).
-- **`GivParser`** (`src/GivParser.h/.cpp`): mmap-based text parser, no fixed
-  line-buffer limit, structure-of-arrays point storage per dataset
-  (`GivScene.h`), `std::from_chars`-based fast path for bare `x y` lines,
-  full directive table (styles, marks, dashes, arrows, quivers, ellipses,
-  beziers, balloons, etc.).
-- **`SceneBuilder`** (`src/SceneBuilder.h/.cpp`): turns parsed datasets into
-  a VSG scene graph:
-  - **Marks**: one GPU-instanced draw for *all* marks in the file - a shared
-    unit quad plus per-instance (position, half-size, shape-mode) and
-    (color) vertex-rate-instance buffers, expanded in `shaders/marks.vert`
-    and shaded (filled/stroked circle or square SDF) in `shaders/marks.frag`.
-  - **Lines**: one GPU-instanced draw for all polyline/polygon-outline/
-    ellipse-outline/quiver-shaft segments in the file - per-instance
-    (p0, p1, half-width, dash-on, dash-off, cumulative length) and (color),
-    expanded in `shaders/lines.vert`, dashed in `shaders/lines.frag`.
-  - **Fills**: one plain (non-instanced) triangle-soup draw for filled
-    polygons (fan-triangulated - not a full earcut) and arrow/quiver-head
-    glyphs, in `shaders/fill.vert/frag`.
-  - **Text**: shaped by `TextLayout` (HarfBuzz + FriBidi, fonts via
-    fontconfig with per-character fallback) and drawn as triangulated glyph
-    outlines in the fill batch - no glyph atlas. Pixel-sized labels are stored
-    as anchor + pixel offset (like arrowheads); `$font` is a Pango-style
-    description, and giv's numeric-keypad `text_align` (1-9) anchors the
-    label's logical box.
-  - **Images**: `$image <filename>` references are rendered as a textured
-    quad (one image pixel = one world unit, top-left anchored at the
-    origin, matching giv's own convention). Texture filtering switches
-    between nearest-neighbor (zoomed in/at 1:1) and bilinear (zoomed out),
-    matching giv's `gtk_image_viewer` zoom-dependent filter. Multiple
-    `$image` lines in one file can be cycled with Shift+Up/Shift+Down (View
-    menu), matching giv's own image cycling.
-  - **Mark animation** (a wiv extension; original giv ignores these and
-    shows everything overlaid): `$frame [<N>ms|<N>s]` starts a new frame,
-    optionally with its own duration. Everything before the first `$frame` is
-    the static background, drawn in every frame; each frame's datasets are
-    drawn only in that frame, and styles do not carry across `$frame`.
-    `$fps N` sets the rate (default 24), `$loop N` the number of plays
-    (default 0 = forever). An `$image` inside a frame swaps the base image
-    from that frame on, and `$image f.gif frame=N` picks frame N of a
-    multi-frame file. The animation bar drives the frames. Scene bounds are
-    the union over all frames. If a file has `$frame`, an animated `$image`
-    is not played on its own.
-  - Camera: orthographic, auto-fit to the parsed scene bounds.
-- **Image plugins** (`src/plugins/`, `src/ImagePluginHost.h/.cpp`): image
-  formats are loaded via real runtime-`dlopen`ed `.so` plugins, mirroring
-  giv's own plugin architecture (`givplugin.h`/`.cc`) rather than a
-  compiled-in format table. Built-in plugins: `stbimage` (PNG/JPEG/BMP/
-  TGA/GIF/PSD via vendored `third_party/stb_image.h`), `pgm` (binary
-  PGM/PPM, no dependency), `tiff` (libtiff), `webp` (libwebp)), `dds` (BC1-BC5/BC7 and uncompressed, via vendored `third_party/bcdec.h`), `ico` (.ico/.cur, PNG and DIB entries), and, when their dev packages are found at configure time, `heif` (HEIC/HEIF/AVIF via libheif), `jxl` (JPEG XL via libjxl, first frame of an animation) and `raw` (camera RAW via LibRaw; install `libheif-devel libjxl-devel LibRaw-devel` on Fedora). Plugins are
-  discovered from `WIV_PLUGIN_DIR` (env var override) or else the
-  compile-time default `<build-dir>/plugins` - set `WIV_PLUGIN_DIR`
-  explicitly if running a `wiv` binary copied out of its build tree, or a
-  packaged/installed one (`<prefix>/lib/wiv/plugins`).
-- **`PanZoomHandler`** (`src/PanZoomHandler.h/.cpp`): a custom `vsg::Visitor`
-  for drag-to-pan and scroll-to-zoom-at-cursor against the `Orthographic` +
-  `LookAt` camera. No rotation.
-- **`tools/gen_test_giv.py`**: generates synthetic `.giv` files for perf
-  testing (scattered/clustered point clouds, long polylines).
-
-## Verification performed
-
-- Built cleanly against the vcpkg manifest (`vsg` 1.1.13, `vsgxchange` 1.1.9)
-  on Linux with an NVIDIA GPU + X11 (xcb) windowing.
-- Visually confirmed against `example.giv`, `style-ex.giv`, and
-  `text-align.giv` from `~/hd/github/giv/doc/`: paths, marks, filled/outlined
-  polygons, dashed lines, arrows, `$def_style`/`$style`, and numeric-keypad
-  text alignment all render correctly.
-- `tools/gen_test_giv.py points 10000000 --clusters 40` (a 208 MB file):
-  parses in ~0.3 s, builds the scene graph in ~0.2 s, and the actual GPU
-  `recordAndSubmit` cost per frame is well under 1 ms after the first frame
-  - i.e. the 10M-point draw call itself is effectively free; it renders
-  correctly as 40 distinct point clusters.
-
-## Known limitations / Phase 1 simplifications
-
-- No colormap/pseudo-color, calibration dialog, mark-tree sidebar, or remote
-  JSON-RPC control (all explicitly deferred to Phase 2 per the plan).
-- `$svg`/`$svgmarks`/`$marks_file`/`$low_contrast`/`$vflip`/`$hflip`/(their
-  `no*` counterparts)/`$pixelsize`/`$shadow_*` directives are accepted and
-  ignored (parsed for compatibility, not rendered).
-- Polygon fill uses a simple fan triangulation from vertex 0, not a full
-  earcut - concave polygons may triangulate incorrectly.
-- Dash patterns use only the first on/off pair; patterns with more than two
-  values are approximated by that pair.
-- `mark_size`/`lineWidth` are treated as constant world-space units;
-  giv's `$scale_marks 0` (screen-constant mark size under zoom) is not
-  distinguished from `$scale_marks 1` in Phase 1.
-- Text font *family* is resolved via `fc-match` (Linux-only mechanism);
-  there's no bundled/embedded font, so rendering depends on fontconfig and
-  the system's installed fonts. Per-distinct-family resolution costs
-  roughly 1-2s (subprocess + fontconfig cache scan) the first time each
-  family is used in a file - a known slow point worth revisiting (e.g.
-  caching resolved paths across runs, or linking `fontconfig` directly
-  instead of shelling out to `fc-match`) if startup time on
-  many-distinct-font files matters.
-- Ellipse rendering's rotation handedness may be mirrored relative to giv
-  for the (rarely used) `angle` parameter, as a side effect of how the
-  Y-down-to-Y-up coordinate flip (see below) is applied; not exercised by
-  the provided example files.
-
-## Notable implementation decisions / deviations from the plan
-
-- **Instancing mechanism**: the plan suggested `vsg::InstanceNode`/
-  `InstanceDraw`. No working example of that API pair could be found in the
-  local `vsgExamples` checkout, and its exact vertex-binding contract isn't
-  documented in the headers. To avoid an unverifiable guess, marks and lines
-  instead use plain `vsg::VertexInputState` bindings with
-  `VK_VERTEX_INPUT_RATE_INSTANCE` and a single `vsg::DrawIndexed` call with
-  `instanceCount` set to the mark/segment count - standard core-Vulkan
-  hardware instancing, functionally equivalent (one draw call for millions
-  of primitives) and built from patterns directly verified against
-  `vsgExamples/examples/commands/vsgdraw`.
-- **Coordinate convention**: giv treats `.giv` Y coordinates the way an
-  image viewer does (Y increases downward). `SceneBuilder` negates Y when
-  building world-space geometry (and `main.cpp` mirrors that in its bounds
-  computation) so the camera can stay a completely standard Y-up
-  orthographic setup; this was simpler and less error-prone than flipping
-  the camera's up vector (which was tried first and turned out to also
-  mirror X, since VSG's `LookAt` derives its right/side vector from
-  `cross(forward, up)`).
-- **Extra `fill.vert`/`fill.frag` shaders**: the plan's shader list was
-  `marks.*`/`lines.*` only; filled polygons and arrow/quiver-head glyphs
-  need a plain flat-shaded triangle pipeline, so a third shader pair was
-  added.
-- **vcpkg manifest**: `vsg`'s `windowing` feature (which provides the xcb
-  backend for `vsg::Window::create()` on Linux) is *not* enabled by default
-  in the port - it had to be requested explicitly in `vcpkg.json`, or window
-  creation silently fails.
-
-## Remaining TODOs
-
-- Real interactive pan/zoom testing (this was implemented and code-reviewed
-  against the math, but not exercised with a live mouse in this
-  environment - only verified structurally/via static screenshots).
-- A full earcut for concave polygon fill.
-- Multi-value dash pattern support (beyond the first on/off pair).
-- Embed/bundle a default font instead of depending on `fc-match` (also
-  needed for eventual Windows/mingw portability, since `fc-match` is a
-  Linux-specific mechanism).
-- mingw/Windows cross-build preset (explicitly deferred by the plan until
-  Phase 1 is solid on Linux).
-- Phase 2 scope, per the plan: remote JSON-RPC control, mark-tree/layer
-  sidebar UI, image overlay, auto-reload.
+GNU General Public License, version 2; see [COPYING](COPYING).
