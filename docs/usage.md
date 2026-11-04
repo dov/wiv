@@ -51,6 +51,8 @@ instancing, so files with millions of points stay interactive. A `.giv` file can
 reference an image with `$image`, which makes wiv an annotation viewer: draw
 contours, measurements or labels over a picture.
 
+<p align="center"><img src="images/big-fern.png" alt="barnsley_10M.giv: a Barnsley fern made of ten million points" width="560"><br><em>barnsley_10M.giv: ten million points (154&nbsp;MB), generated with <code>demo_generators/gen_barnsley.py -n 10000000</code>; pan and zoom stay interactive</em></p>
+
 Several images can be browsed from the folder of the current file, or from a
 single multi-image `.giv` file. A thumbnail strip, an Open dialog with cached
 thumbnails and background prefetching keep browsing fast.

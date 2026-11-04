@@ -7,3 +7,5 @@ compile_commands.json
 /barnsley_10M.giv
 /.thumbnails
 .thumbnails
+/barnsley_100M.giv
+__pycache__/
