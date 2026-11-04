@@ -11,19 +11,58 @@
       ]
     },
     "vsgxchange",
-    "tiff",
-    "libwebp",
-    "libheif",
-    "libjxl",
-    "libraw",
-    "openexr",
-    "hdf5",
-    "spdlog",
-    "cfitsio",
-    "sqlite3",
-    "expat",
-    "harfbuzz",
-    "fribidi",
+    {
+      "name": "tiff",
+      "platform": "windows"
+    },
+    {
+      "name": "libwebp",
+      "platform": "windows"
+    },
+    {
+      "name": "libheif",
+      "platform": "windows"
+    },
+    {
+      "name": "libjxl",
+      "platform": "windows"
+    },
+    {
+      "name": "libraw",
+      "platform": "windows"
+    },
+    {
+      "name": "openexr",
+      "platform": "windows"
+    },
+    {
+      "name": "hdf5",
+      "platform": "windows"
+    },
+    {
+      "name": "spdlog",
+      "platform": "windows"
+    },
+    {
+      "name": "cfitsio",
+      "platform": "windows"
+    },
+    {
+      "name": "sqlite3",
+      "platform": "windows"
+    },
+    {
+      "name": "expat",
+      "platform": "windows"
+    },
+    {
+      "name": "harfbuzz",
+      "platform": "windows"
+    },
+    {
+      "name": "fribidi",
+      "platform": "windows"
+    },
     {
       "name": "qtbase",
       "platform": "windows"
