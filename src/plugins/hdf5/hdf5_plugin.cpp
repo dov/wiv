@@ -189,13 +189,13 @@ Layout classify(const Candidate& c)
     return Layout::Slices;
 }
 
-struct OpenFile
+struct H5OpenFile
 {
     Handle file;
     std::vector<Candidate> candidates;
 };
 
-bool openFile(const char* filename, OpenFile& of)
+bool openFile(const char* filename, H5OpenFile& of)
 {
     static std::once_flag once;
     std::call_once(once, [] { H5Eset_auto2(H5E_DEFAULT, nullptr, nullptr); });
@@ -407,7 +407,7 @@ extern "C" bool wiv_plugin_sniff_file(const char* filename)
 extern "C" int wiv_plugin_page_count(const char* filename)
 {
     std::lock_guard<std::mutex> lock(g_h5Mutex);
-    OpenFile of;
+    H5OpenFile of;
     if (!openFile(filename, of))
         return 0;
     return static_cast<int>(of.candidates.size());
@@ -416,7 +416,7 @@ extern "C" int wiv_plugin_page_count(const char* filename)
 extern "C" WivPluginImage* wiv_plugin_load_page(const char* filename, int page, char** error_msg)
 {
     std::lock_guard<std::mutex> lock(g_h5Mutex);
-    OpenFile of;
+    H5OpenFile of;
     if (!openFile(filename, of))
     {
         if (error_msg)
