@@ -80,6 +80,9 @@ def shot_defs():
         ("image-info", "mri-orange.fits", (1100, 700), ["ImageInfo"], None),
         ("pixel-grid", "mri-orange.fits", (900, 650), ["PixelGrid"],
          lambda: [call("set_contrast", 0, 600) if a == "_contrast" else call("trigger_action", a) or settle(0.4) for a in ["ActualPixels11"] + ["ZoomIn"] * 14 + ["_contrast"]]),
+        # needs barnsley_10M.giv in the repo root:
+        #   demo_generators/gen_barnsley.py -n 10000000 -o barnsley_10M.giv
+        ("big-fern", "../barnsley_10M.giv", (900, 700), [], lambda: settle(4.0)),
         ("thumbnails", "alpha-example.giv", (1000, 700), ["ThumbnailStrip"], None),
     ]
 
@@ -130,7 +133,7 @@ def main():
             call("screenshot", path)
             try:
                 from PIL import Image
-                decorate(path, "wiv - " + example, width=args.width)
+                decorate(path, "wiv - " + os.path.basename(example), width=args.width)
             except ImportError:
                 pass
             print("wrote", os.path.relpath(path, ROOT))
