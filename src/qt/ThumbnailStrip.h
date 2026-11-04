@@ -47,6 +47,7 @@ signals:
     void thumbSizeChanged(int size);   // Ctrl+wheel zoom
 
 protected:
+    QSize sizeHint() const override;
     void wheelEvent(QWheelEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void showEvent(QShowEvent* event) override;
