@@ -3,9 +3,17 @@
 #include "MainWindow.h"
 #include "VulkanViewport.h"
 
+#include "../Colormaps.h"
+
 #include <spdlog/spdlog.h>
 
+#include <optional>
+
+#include <QCursor>
+#include <QEventLoop>
 #include <QHostAddress>
+#include <QTimer>
+#include <QImage>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTcpSocket>
@@ -118,7 +126,10 @@ QJsonValue RpcServer::dispatch(const QString& method, const QJsonArray& params, 
     if (method == "help")
         return QStringLiteral(
             "ping | help | load_file [filename] | giv_string [\"-append\",] text | "
-            "get_transformation | set_transformation [sx, sy, shx, shy] | pick_coordinate");
+            "get_transformation | set_transformation [sx, sy, shx, shy] | pick_coordinate | "
+            "list_actions | trigger_action id [checked] | resize_window [w, h] | "
+            "set_colormap [name] | set_contrast [min, max] | mouse_move [x, y] (default: viewport centre) | "
+            " screenshot filename [\"window\"|\"viewport\"]");
 
     if (method == "load_file")
     {
@@ -187,6 +198,99 @@ QJsonValue RpcServer::dispatch(const QString& method, const QJsonArray& params, 
         pendingPick_ = socket;
         pickHandled = true;
         return {};
+    }
+
+    if (method == "list_actions")
+    {
+        QJsonArray ids;
+        for (const QString& id : mainWindow_->actionIds()) ids.append(id);
+        return ids;
+    }
+
+    if (method == "trigger_action")
+    {
+        if (params.isEmpty() || !params[0].isString())
+        {
+            error = "trigger_action requires an action id string (see list_actions)";
+            return {};
+        }
+        std::optional<bool> checked;
+        if (params.size() >= 2 && params[1].isBool()) checked = params[1].toBool();
+        if (!mainWindow_->triggerAction(params[0].toString(), checked, error)) return {};
+        return true;
+    }
+
+    if (method == "resize_window")
+    {
+        if (params.size() < 2)
+        {
+            error = "resize_window requires [width, height]";
+            return {};
+        }
+        mainWindow_->resize(params[0].toInt(), params[1].toInt());
+        return true;
+    }
+
+    if (method == "set_colormap")
+    {
+        QString want = params.isEmpty() ? QString() : params[0].toString();
+        for (int i = 0; i < static_cast<int>(giv::colormaps::Id::Count); ++i)
+        {
+            auto id = static_cast<giv::colormaps::Id>(i);
+            if (want.compare(QString::fromUtf8(giv::colormaps::name(id)), Qt::CaseInsensitive) == 0 ||
+                (id == giv::colormaps::Id::None && want.isEmpty()))
+            {
+                viewport_->setColormap(id, id != giv::colormaps::Id::None);
+                return true;
+            }
+        }
+        error = "unknown colormap: " + want;
+        return {};
+    }
+
+    if (method == "set_contrast")
+    {
+        if (params.size() < 2)
+        {
+            error = "set_contrast requires [min, max]";
+            return {};
+        }
+        viewport_->setContrast(static_cast<float>(params[0].toDouble()), static_cast<float>(params[1].toDouble()));
+        return true;
+    }
+
+    if (method == "mouse_move")
+    {
+        // Moves the real pointer to (x, y), in the viewport's own coordinates
+        // (logical pixels from its top-left), so hover features (balloons) can be
+        // driven. Two small steps so the viewport sees motion even if the pointer
+        // was already there.
+        // No parameters: the centre of the viewport.
+        const QPoint target = params.size() >= 2 ? QPoint(params[0].toInt(), params[1].toInt())
+                                                 : QPoint(viewport_->width() / 2, viewport_->height() / 2);
+        QCursor::setPos(viewport_->mapToGlobal(target + QPoint(-6, -4)));
+        QEventLoop loop1;
+        QTimer::singleShot(150, &loop1, &QEventLoop::quit);
+        loop1.exec();
+        QCursor::setPos(viewport_->mapToGlobal(target));
+        return true;
+    }
+
+    if (method == "screenshot")
+    {
+        if (params.isEmpty() || !params[0].isString())
+        {
+            error = "screenshot requires a filename string";
+            return {};
+        }
+        const bool viewportOnly = params.size() >= 2 && params[1].toString() == QStringLiteral("viewport");
+        QImage img = mainWindow_->grabScreenshot(viewportOnly);
+        if (img.isNull() || !img.save(params[0].toString()))
+        {
+            error = "screenshot: could not grab or save " + params[0].toString();
+            return {};
+        }
+        return QJsonArray{img.width(), img.height()};
     }
 
     error = "unknown method: " + method;

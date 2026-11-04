@@ -524,7 +524,8 @@ void GivParser::parseLine(Dataset& ds, const char* line, size_t len, SceneData& 
         return;
     case 'z':
     case 'Z':
-        pushPoint(0, 0, Op::ClosePath);
+        // The (0,0) of a close-path marker is a placeholder, not a position: keep it out of the bounds.
+        ds.addPoint(0.0f, 0.0f, Op::ClosePath);
         return;
     case 'e':
     case 'E':
