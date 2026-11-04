@@ -75,7 +75,7 @@ vsg::ref_ptr<vsg::ShaderStage> loadShader(VkShaderStageFlagBits stage, const std
 // bindings/attributes, no descriptor sets, and the standard VSG-provided
 // {projection, modelview} push-constant matrices. No depth test (flat 2D
 // scene), no back-face culling (triangle winding isn't guaranteed by our
-// simple fan triangulation), alpha blending enabled.
+// triangulation), alpha blending enabled.
 //
 // Returns just the bind command (not a StateGroup) so callers can wrap it
 // in as many separate per-dataset StateGroups as they need - see the
