@@ -36,6 +36,12 @@ private:
     // Shared line-parsing loop over an in-memory buffer, used by both
     // parseFile() (mmap'd file contents) and parseString() (a caller-owned
     // buffer, e.g. from an RPC request).
+    // $marks_file / $svg / $svgmarks: loads `name` (relative to the including file).
+    bool includeFile(const std::string& name, SceneData& scene, std::string& error);
+    std::vector<std::string> pendingIncludes_;
+    std::string baseDir_;
+    int includeDepth_ = 0;
+
     void parseBuffer(const char* data, size_t size, SceneData& scene);
 
     // $def_style <name> <key value...> - definitions accumulate per key.

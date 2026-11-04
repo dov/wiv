@@ -454,7 +454,10 @@ void GivParser::parseLine(Dataset& ds, const char* line, size_t len, SceneData& 
         }
         else if (w0 == "$marks_file" || w0 == "$svg" || w0 == "$svgmarks")
         {
-            // Phase 1 scope excludes marks-file/SVG references; accept-and-ignore.
+            // Include another marks (.giv) or .svg file; loaded by parseBuffer once
+            // this line is done (loading appends datasets, invalidating `ds`).
+            std::string f = tok.getRest(1);
+            if (!f.empty()) pendingIncludes_.push_back(std::move(f));
         }
         else if (w0 == "$polygon") ds.doDrawPolygon = true;
         else if (w0 == "$low_contrast")
@@ -712,6 +715,25 @@ void GivParser::parseBuffer(const char* data, size_t size, SceneData& scene)
                 needNewDataset = false;
             }
             parseLine(*current, data + lineStart, len, scene);
+            if (!pendingIncludes_.empty())
+            {
+                std::vector<std::string> incs;
+                incs.swap(pendingIncludes_);
+                // End the (possibly header-only) dataset holding the directive.
+                if (current->pointCount() == 0 && current->texts.empty() && &*scene.datasets.rbegin() == current)
+                    scene.datasets.pop_back();
+                current = nullptr;
+                needNewDataset = true;
+                for (const std::string& inc : incs)
+                {
+                    const size_t before = scene.datasets.size();
+                    std::string err;
+                    includeFile(inc, scene, err);
+                    if (frame >= 0)
+                        for (size_t i = before; i < scene.datasets.size(); ++i)
+                            if (scene.datasets[i].frame < 0) scene.datasets[i].frame = frame;
+                }
+            }
         }
 
         pos = (nl < size) ? nl + 1 : nl;
@@ -726,19 +748,37 @@ void GivParser::parseBuffer(const char* data, size_t size, SceneData& scene)
     }
 }
 
+bool GivParser::includeFile(const std::string& name, SceneData& scene, std::string& error)
+{
+    if (includeDepth_ >= 8) return false; // runaway/cyclic include
+    std::string path = name;
+    const bool absolute = !path.empty() && (path[0] == '/' || path[0] == '\\' || (path.size() > 1 && path[1] == ':'));
+    if (!absolute) path = baseDir_ + path;
+    ++includeDepth_;
+    const bool ok = parseFile(path, scene, error);
+    --includeDepth_;
+    return ok;
+}
+
 bool GivParser::parseFile(const std::string& filename, SceneData& scene, std::string& error)
 {
     if (filename.size() >= 4 && toLower(filename.substr(filename.size() - 4)) == ".svg")
         return loadSvgFile(filename, scene, error);
 
+    const std::string savedDir = baseDir_;
+    const size_t slash = filename.find_last_of("/\\");
+    baseDir_ = slash == std::string::npos ? std::string() : filename.substr(0, slash + 1);
+
     MappedFile file;
     if (!file.load(filename))
     {
         error = "could not open file: " + filename;
+        baseDir_ = savedDir;
         return false;
     }
 
     parseBuffer(file.data, file.size, scene);
+    baseDir_ = savedDir;
     return true;
 }
 
