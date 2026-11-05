@@ -620,7 +620,7 @@ Toggles such as Auto Contrast and Pixel Grid are saved and restored at startup.
 | <kbd>c</kbd> | **Adjust Contrast**: histogram with draggable min/max handles, min/max and centre/window fields, auto contrast. Works on raw 8/16-bit and float samples. For volumes, optionally use the whole-volume histogram. |
 | <kbd>p</kbd> | **Color Table**: None, Invert, Low Contrast, Rainbow, Red Temperature, Blue-Green-Red-Yellow, Blue-White, Green-Red-Blue-White, plus Equalize (histogram-equalized gray) and Normalize, whose tables are computed from the displayed 8-bit image, as in giv. A colormap bar shows the min..max mapping. |
 | <kbd>z</kbd> | **Measure distance** with a caliper and draggable jaws. Tools > Measure Distance is a submenu with a Measure on/off item and a Diagonal / Horizontal / Vertical mode (remembered between sessions); horizontal and vertical constrain the second jaw to the first jaw's row or column. The hovered or dragged jaw is highlighted. |
-| <kbd>c</kbd> | **Count Marks** (Tools menu): a caliper mode whose jaws span a rectangle; the readout is the number of `.giv` marks inside it. Shares <kbd>c</kbd> with Adjust Contrast, so use the menu if the key opens the wrong tool. |
+| <kbd>n</kbd> | **Count Marks** (Tools menu): a caliper mode whose jaws span a rectangle; the readout is the number of `.giv` marks inside it. |
 | <kbd>s</kbd> | **Calibrate pixel size**: give a known distance, the last measurement or the image width/height; the caliper then reads in real units. |
 | <kbd>g</kbd> | Pixel grid; the status bar shows sub-pixel coordinates when enabled. |
 
