@@ -21,7 +21,8 @@ Contents
 ## 1. Command line
 
 ```
-wiv [--geometry WxH] [--rpc-port PORT] [file ...]
+wiv [options] [file ...]
+wiv --remote "command params" [--remote-host HOST] [--remote-port PORT]
 ```
 
 | Option | Description |
@@ -29,7 +30,20 @@ wiv [--geometry WxH] [--rpc-port PORT] [file ...]
 | `file ...` | Files to open. All `.giv` files given are merged into one scene. Wildcards are expanded by wiv itself, so `wiv *.png` also works in `cmd.exe`. With no file, wiv starts empty (use File > Open). |
 | `--geometry WxH` | Initial window size, e.g. `--geometry 1024x768`. |
 | `--rpc-port PORT` | Start the JSON-RPC server on `127.0.0.1:PORT` (see [section 8](#8-remote-access-protocol)). Off by default. |
+| `--port PORT` | Alias of `--rpc-port` (giv's name for it). |
+| `--join` | Merge all files on the command line into one scene. |
+| `--auto-reload` | Start with View > Auto Reload on. |
+| `-n` | Start at 1:1 zoom instead of fitting to the window. |
+| `--zoom scale shift_x shift_y` | Initial view: pixels per unit and the view centre. |
+| `--export FILE` | Render the scene off-screen to `FILE` (size from `--geometry`, default 800x600) and exit. With `--zoom` or `-n` the view is used, otherwise the scene is fitted. |
+| `--log_file FILE` | Also write the log to `FILE`. |
 | `--help` | Show the option summary. |
+
+**Remote client mode.** `--remote "method param1 param2"` (or
+`--json_method METHOD --json_params '[...]'`) sends one JSON-RPC command to a
+running wiv (`--remote-host`, default `localhost`; `--remote-port`, default
+8448), prints the reply and exits, like giv's client. Example:
+`wiv --remote "load_file photo.jpg" --remote-port 8080`.
 
 Files with an unrecognised suffix are tried against the plugins' content
 sniffers. Files can also be dropped onto the window.
@@ -97,7 +111,7 @@ original giv, so existing files work unchanged. Lines are of these kinds:
 | `z` | Close the current path. |
 | `c x1 y1 x2 y2 x3 y3` | Cubic Bezier from the last point with control points 1 and 2 and end point 3. |
 | `r x1 y1 x2 y2` | Quadratic Bezier from the last point with control point 1 and end point 2. |
-| `e x y rx ry angle` | An ellipse with centre `x y`, radii `rx ry`, rotated by `angle`. |
+| `e x y w h angle` | An ellipse with centre `x y`, full width `w` and height `h` (not radii), rotated by `angle` in radians; a positive angle rotates clockwise on screen (as in giv). |
 | `q dx dy` | A quiver vector attached to the preceding point. |
 | `t x y text`, `T5 x y text` | Text at `x y`. The digit after `T` is the anchor (see below). `\n` inserts a line break. |
 | `# ...` | Comment. |
@@ -117,7 +131,7 @@ Y coordinates follow image conventions: Y increases downwards.
 | `$lw` | `$lw 3` | Line width. |
 | `$ls` | `$ls 2` | Line style number (as in giv). |
 | `$linedash` | `$linedash 10,5` | Dash pattern, on/off lengths. Only the first on/off pair is used. |
-| `$line_cap` | `$line_cap round` | Line cap style. |
+| `$line_cap` | `$line_cap round` | Line cap style. Lines have round joins and anti-aliased edges; translucent overlapping segments of one dataset blend once. |
 | `$noline` | `$noline` | Draw marks only, no connecting lines. `$line` turns lines on again. |
 | `$nomark` | `$nomark` | Draw lines only. |
 | `$polygon` | `$polygon` | Fill the path as a polygon. Holes are supported.  |
@@ -136,8 +150,14 @@ Y coordinates follow image conventions: Y increases downwards.
 | `$vlock` | `$vlock` | Lock vertical zoom. |
 | `$frame`, `$fps`, `$loop` | `$frame 200ms` | Vector animation (a wiv extension, section 6). |
 
-`$svg`, `$svgmarks` and `$marks_file` include another `.svg` or marks file
-(path relative to the including file); `$pixelsize <value> [unit]` sets the
+`$background <color>` is a wiv extension that sets the viewport background colour
+while the file is loaded (a file without it restores the Preferences colour).
+
+`$svg` includes another `.svg` once at the origin. `$svgmarks` draws the SVG
+at every point of the dataset (control points included, as in giv), at native
+size with the SVG origin on the point, instead of the built-in mark shape; the
+copies do not affect the auto-fit bounds. `$marks_file` includes a marks file
+(paths relative to the including file). `$pixelsize <value> [unit]` sets the
 pixel calibration. Parsed for compatibility but not rendered: `$low_contrast`
 and `$hflip`/`$vflip` (and their `no*` forms).
 Unknown properties are ignored.
@@ -485,7 +505,7 @@ More examples are in the [`examples/`](../examples) directory (`example.giv`,
 
 Hovering over a dataset with balloon tooltips on (<kbd>b</kbd>) shows its `$balloon`
 text. The `$path` names form a tree shown in the **Mark Browser** (<kbd>o</kbd>):
-checkboxes show or hide a dataset or a whole group. <kbd>m</kbd> toggles all marks.
+checkboxes show or hide a dataset or a whole group. Each source file has its own top-level node (its basename), so a whole file can be hidden at once and same-named `$path`s from different files stay separate. <kbd>m</kbd> toggles all marks.
 A balloon can have several lines: write `\n` in the text.
 
 **Input**, [`multi-line-balloon.giv`](../examples/multi-line-balloon.giv) (first 4 of 12 lines; the rest is the outline of the balloon):
@@ -511,6 +531,8 @@ A balloon can have several lines: write `\n` in the text.
 | Middle-drag | Pan (left-drag too, if enabled in Preferences). The grabbed point stays under the cursor. |
 | Right-drag | Zoom. |
 | Wheel | Zoom at the cursor, or next/previous image (Preferences). <kbd>Ctrl</kbd>+wheel always zooms. |
+| <kbd>Ctrl</kbd>+left-drag | Scale marks (vertical drag) or quiver length (horizontal drag); the first movement picks the axis. |
+| <kbd>Ctrl</kbd>+right-drag | Scale line width (horizontal drag) or opacity (vertical drag). Force Opaque overrides opacity. |
 | <kbd>Alt</kbd>+wheel | Scale quivers. |
 | Double-click | Toggle 1:1 and fit (configurable). |
 | Back/forward buttons | Navigate, step zoom, or nothing. |
@@ -526,6 +548,8 @@ Defaults. Nearly all can be rebound in Edit > Preferences > Keyboard.
 | <kbd>Ctrl</kbd>+<kbd>o</kbd> | Open |
 | <kbd>Enter</kbd> | Reload |
 | <kbd>Ctrl</kbd>+<kbd>c</kbd> | Copy file |
+| <kbd>Ctrl</kbd>+<kbd>g</kbd> | Glyph Appearance panel (View menu) |
+| <kbd>Esc</kbd> | Abort a pending `pick_coordinate` request |
 | <kbd>F2</kbd> / <kbd>Del</kbd> | Rename / delete |
 | <kbd>w</kbd> | Open file location |
 | <kbd>e</kbd>, <kbd>Ctrl</kbd>+<kbd>1</kbd>..<kbd>Ctrl</kbd>+<kbd>9</kbd> | Open in external app / app N |
@@ -550,6 +574,16 @@ Defaults. Nearly all can be rebound in Edit > Preferences > Keyboard.
 | <kbd>Shift</kbd>+<kbd>Down</kbd>, <kbd>Backspace</kbd>, <kbd>Left</kbd> | Previous image |
 | <kbd>Home</kbd>, <kbd>End</kbd> | First / last image |
 | <kbd>PgUp</kbd>, <kbd>PgDn</kbd>, <kbd>Alt</kbd>+<kbd>Left</kbd>/<kbd>Right</kbd> | Previous / next page (multi-page TIFF, slices) |
+
+**Glyph Appearance** (View > Glyph Appearance, <kbd>Ctrl</kbd>+<kbd>g</kbd>)
+shows and edits four global, live factors: mark size, line width, quiver
+length and opacity (no scene rebuild). They are also changed with the
+<kbd>Ctrl</kbd>+drag gestures above. Rows the visible datasets don't use are
+hidden.
+
+**Export.** File > Export... renders the current view off-screen at the
+viewport size and saves it as PNG, JPEG, BMP, TIFF or WebP. The same is
+available from the command line (`--export`) and over RPC (`export_image`).
 
 Horizontal and vertical flip, Auto Fit, Remember View Per File, Auto Reload,
 Vertical Zoom Lock, Colormap Bar and Auto Contrast are in the View menu.
@@ -584,8 +618,9 @@ Toggles such as Auto Contrast and Pixel Grid are saved and restored at startup.
 | Key | Tool |
 | --- | --- |
 | <kbd>c</kbd> | **Adjust Contrast**: histogram with draggable min/max handles, min/max and centre/window fields, auto contrast. Works on raw 8/16-bit and float samples. For volumes, optionally use the whole-volume histogram. |
-| <kbd>p</kbd> | **Color Table**: None, Invert, Low Contrast, Rainbow, Red Temperature, Blue-Green-Red-Yellow, Blue-White, Green-Red-Blue-White. A colormap bar shows the min..max mapping. |
-| <kbd>z</kbd> | **Measure distance** with a caliper and draggable jaws. |
+| <kbd>p</kbd> | **Color Table**: None, Invert, Low Contrast, Rainbow, Red Temperature, Blue-Green-Red-Yellow, Blue-White, Green-Red-Blue-White, plus Equalize (histogram-equalized gray) and Normalize, whose tables are computed from the displayed 8-bit image, as in giv. A colormap bar shows the min..max mapping. |
+| <kbd>z</kbd> | **Measure distance** with a caliper and draggable jaws. Tools > Measure Distance is a submenu with a Measure on/off item and a Diagonal / Horizontal / Vertical mode (remembered between sessions); horizontal and vertical constrain the second jaw to the first jaw's row or column. The hovered or dragged jaw is highlighted. |
+| <kbd>c</kbd> | **Count Marks** (Tools menu): a caliper mode whose jaws span a rectangle; the readout is the number of `.giv` marks inside it. Shares <kbd>c</kbd> with Adjust Contrast, so use the menu if the key opens the wrong tool. |
 | <kbd>s</kbd> | **Calibrate pixel size**: give a known distance, the last measurement or the image width/height; the caliper then reads in real units. |
 | <kbd>g</kbd> | Pixel grid; the status bar shows sub-pixel coordinates when enabled. |
 
@@ -645,13 +680,15 @@ found at configure time.
 | `fits` | FITS, including cubes |
 | `dicom` | DICOM, multi-frame |
 | `npy` | NumPy `.npy`, 2D and 3D |
+| `nifti` | NIfTI-1 `.nii`, `.nii.gz`; 2D/3D volumes, slices along z, scl_slope/scl_inter applied |
+| `ora` | OpenRaster `.ora` and Krita `.kra`: the flattened merged image (layers are not composited) |
 | `heif` (optional) | HEIC, HEIF, AVIF, AVIF sequences |
 | `jxl` (optional) | JPEG XL, animated |
 | `raw` (optional) | Camera RAW (about 30 extensions) |
 | `exr` (optional) | OpenEXR |
 | `hdf5` (optional) | HDF5; every numeric 2D/3D dataset is a page |
 
-SVG and `.giv` are built in. EXIF orientation is applied to every format; EXIF,
+SVG and `.giv` are built in. SVG gradient fills and strokes are rendered (rasterized as sprites). EXIF orientation is applied to every format; EXIF,
 and header attributes of HDR/PFM/EXR, appear in the Image Info panel (<kbd>i</kbd>).
 
 ## 8. Remote access protocol
@@ -674,6 +711,7 @@ client scripts work unchanged. One request per connection.
 | `resize_window [w, h]` | Resize the main window. |
 | `set_colormap name` | Select a colour table by its name (`Rainbow`, `Invert`, ...); an empty name selects None. |
 | `set_contrast [min, max]` | Set the contrast window. |
+| `export_image [filename, width, height]` | Render the current view off-screen at the given size (default: the viewport size) and save it; format from the extension. Unlike `screenshot` it needs no visible window contents. |
 | `screenshot filename ["window"\|"viewport"]` | Save the window (default) or just the image viewport as an image (format from the extension). Returns `[width, height]`. Needs a desktop session: it reads the screen. |
 
 ```python
