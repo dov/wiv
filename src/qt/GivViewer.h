@@ -55,6 +55,11 @@ public:
     // VulkanViewport::onAnimationFrameHook()).
     std::function<bool()> beforeFrame;
 
+    // Number of frames recorded and submitted so far; lets an on-demand
+    // caller (VulkanViewport::exportImage) tell whether render() actually
+    // produced a frame or skipped it.
+    uint64_t framesSubmitted = 0;
+
     void render(double simulationTime = vsg::Viewer::UseTimeSinceStartPoint) override;
 
 private:

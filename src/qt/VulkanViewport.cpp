@@ -12,6 +12,7 @@
 #include "DisplayImage.h"
 #include "GivParser.h"
 #include "ImagePluginHost.h"
+#include "OffscreenTarget.h"
 #include "PreferencesDialog.h"
 #include "ViewFlip.h"
 
@@ -25,6 +26,7 @@
 #ifdef WIV_HAVE_XCB
 #include <xcb/xcb.h>
 #endif
+#include <QImage>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QMimeData>
@@ -168,6 +170,7 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
     viewer_->continuousUpdate = std::getenv("WIV_CONTINUOUS") != nullptr;
 
     viewer_->worldPerPixel = [this]() -> float {
+        if (exportWorldPerPixel_ > 0.0f) return exportWorldPerPixel_;
         if (!projection_ || !window_ || !window_->windowAdapter) return 1.0f;
         auto extent = viewportExtent();
         if (extent.width == 0) return 1.0f;
@@ -1102,6 +1105,8 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     renderGraph_ = vsg::RenderGraph::create(window_->windowAdapter, mainView_);
     auto commandGraph = vsg::CommandGraph::create(window_->windowAdapter);
     commandGraph->addChild(renderGraph_);
+    sceneGraph_ = sceneGraph;
+    mainCommandGraph_ = commandGraph;
 
     viewer_->assignRecordAndSubmitTaskAndPresentation({labelPicker_->commandGraph(), commandGraph});
     const double perfSetup = perfLap(); // handlers, camera, picker, caliper, render graph objects
@@ -2966,6 +2971,153 @@ void VulkanViewport::setTransformation(double scaleX, double scaleY, double shif
 
     viewer_->request();
     updateScrollBars();
+}
+
+bool VulkanViewport::exportImage(const QString& path, int width, int height, const ExportView& view, QString* error)
+{
+    auto fail = [&](const QString& message) {
+        spdlog::error("Export failed: {}", message.toStdString());
+        if (error) *error = message;
+        return false;
+    };
+    if (!hasScene_ || !sceneGraph_ || !mainCommandGraph_ || !camera_ || !projection_ || !window_ || !window_->windowAdapter)
+        return fail("nothing to export");
+    if (width <= 0 || height <= 0 || width > 16384 || height > 16384) return fail("invalid export size");
+    auto lookAt = camera_->viewMatrix.cast<vsg::LookAt>();
+    auto windowExtent = window_->windowAdapter->extent2D();
+    if (!lookAt || windowExtent.width == 0) return fail("window is not ready");
+
+    // Scale (pixels per world unit) and center of the exported view.
+    double scale = 1.0, centerX = 0.0, centerY = 0.0;
+    if (view.kind == ExportView::Kind::Current)
+    {
+        scale = windowExtent.width / (projection_->right - projection_->left);
+        centerX = lookAt->center.x;
+        centerY = lookAt->center.y;
+    }
+    else if (view.kind == ExportView::Kind::Explicit)
+    {
+        scale = view.scale;
+        centerX = view.centerX;
+        centerY = view.centerY;
+    }
+    else
+    {
+        double minXyd, minYyd, maxXyd, maxYyd;
+        currentFitBoundsYDown(minXyd, minYyd, maxXyd, maxYyd);
+        // Y-down content bounds -> the camera's Y-up world, as in fitContentToWindow().
+        double minX = minXyd, maxX = maxXyd, minY = -maxYyd, maxY = -minYyd;
+        centerX = (minX + maxX) * 0.5;
+        centerY = (minY + maxY) * 0.5;
+        scale = view.kind == ExportView::Kind::ActualPixels
+                    ? 1.0
+                    : std::min(width / std::max(maxX - minX, 2e-3), height / std::max(maxY - minY, 2e-3));
+    }
+    if (!(scale > 0.0)) return fail("invalid export scale");
+
+    const VkExtent2D extent{static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
+    const double halfW = width / (2.0 * scale);
+    const double halfH = height / (2.0 * scale);
+
+    // A throwaway camera, so the on-screen view is untouched. Same flips as
+    // the window's, since they are part of what the user sees.
+    auto exportLookAt = vsg::LookAt::create(vsg::dvec3(centerX, centerY, 1.0), vsg::dvec3(centerX, centerY, 0.0), lookAt->up);
+    auto exportProjection =
+        giv::FlipOrthographic::create(-halfW, halfW, -halfH, halfH, projection_->nearDistance, projection_->farDistance);
+    exportProjection->flipX = flipHorizontal_;
+    exportProjection->flipY = flipVertical_;
+    auto exportCamera = vsg::Camera::create(exportProjection, exportLookAt, vsg::ViewportState::create(extent));
+
+    // render() skips frames while a window resize is still settling (see
+    // GivViewer::isResizeSettling), e.g. right after the first show or a
+    // fit, and the export frame must not be one of them: let ordinary frames
+    // run until it has.
+    for (int i = 0; i < 200 && resizeSettling_; ++i)
+    {
+        viewer_->request();
+        viewer_->render();
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+        QThread::msleep(5);
+    }
+
+    if (!waitForGpuIdle()) return fail("GPU is not responding; try again");
+
+    std::vector<uint8_t> pixels;
+    bool rendered = false;
+    try
+    {
+        auto device = window_->windowAdapter->getOrCreateDevice();
+        auto target = giv::OffscreenTarget::create(device, extent);
+
+        auto exportRenderGraph = vsg::RenderGraph::create();
+        exportRenderGraph->framebuffer = target.framebuffer;
+        exportRenderGraph->renderArea.offset = {0, 0};
+        exportRenderGraph->renderArea.extent = extent;
+        exportRenderGraph->setClearValues(window_->windowAdapter->clearColor());
+
+        auto exportView = vsg::View::create(exportCamera);
+        exportView->addChild(vsg::createHeadlight());
+        exportView->addChild(sceneGraph_);
+        exportRenderGraph->addChild(exportView);
+
+        auto exportCommandGraph = vsg::CommandGraph::create(window_->windowAdapter);
+        exportCommandGraph->submitOrder = -2; // before the label picker's (-1) and the window's (0)
+        exportCommandGraph->addChild(exportRenderGraph);
+        exportCommandGraph->addChild(target.captureCommands);
+
+        // The shaders size pixel-constant marks and lines from one shared
+        // per-frame uniform (world units per pixel), so the same frame has
+        // to carry the export's scale: GivViewer::render() reads it through
+        // viewer_->worldPerPixel. The window shows that scale for this one
+        // frame, then the next regular frame restores it.
+        exportWorldPerPixel_ = static_cast<float>(1.0 / scale);
+        viewer_->recordAndSubmitTasks.clear();
+        viewer_->presentations.clear();
+        viewer_->assignRecordAndSubmitTaskAndPresentation({exportCommandGraph, labelPicker_->commandGraph(), mainCommandGraph_});
+        viewer_->compile();
+
+        const uint64_t framesBefore = viewer_->framesSubmitted;
+        viewer_->request();
+        viewer_->render();
+        rendered = viewer_->framesSubmitted > framesBefore;
+        if (rendered)
+        {
+            constexpr uint64_t kFenceTimeoutNs = 5'000'000'000;
+            if (viewer_->waitForFences(0, kFenceTimeoutNs) != VK_SUCCESS)
+                rendered = false;
+            else
+                pixels = target.readPixels(device);
+        }
+    }
+    catch (const vsg::Exception& e)
+    {
+        spdlog::error("Export render failed: {} (VkResult {})", e.message, e.result);
+        rendered = false;
+    }
+
+    // Put the window's own tasks back (the export's graph and target are
+    // released once nothing in flight uses them).
+    exportWorldPerPixel_ = 0.0f;
+    try
+    {
+        waitForGpuIdle();
+        viewer_->recordAndSubmitTasks.clear();
+        viewer_->presentations.clear();
+        viewer_->assignRecordAndSubmitTaskAndPresentation({labelPicker_->commandGraph(), mainCommandGraph_});
+        viewer_->compile();
+    }
+    catch (const vsg::Exception& e)
+    {
+        spdlog::error("Restoring the window's render tasks after export failed: {} (VkResult {})", e.message, e.result);
+    }
+    viewer_->request();
+
+    if (!rendered) return fail("could not render a frame (is the window shown?)");
+
+    QImage image(pixels.data(), width, height, width * 4, QImage::Format_RGBA8888);
+    if (!image.copy().save(path)) return fail(QString("could not write %1").arg(path));
+    spdlog::info("Exported {}x{} image to {}", width, height, path.toStdString());
+    return true;
 }
 
 void VulkanViewport::toggleBalloon()

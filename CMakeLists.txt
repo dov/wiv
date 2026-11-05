@@ -135,6 +135,7 @@ add_executable(wiv
   src/CaliperTool.cpp
   src/PanZoomHandler.cpp
   src/LabelPicker.cpp
+  src/OffscreenTarget.cpp
   src/BalloonController.cpp
   src/ImagePluginHost.cpp
   src/Colormaps.cpp
