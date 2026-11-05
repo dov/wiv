@@ -350,7 +350,9 @@ void CaliperTool::rebuildGeometry()
     // hot-spot line).
     vsg::dvec2 barSize = perp * (2.0 * kBarWidthPx * wpp);
     vsg::dvec2 barCenter = (p0_ + p1) * 0.5 + barSize * 0.5;
-    addQuad(barCenter, d, barSize, highlightedPart() == kBar ? kHighlightColor : kBarColor);
+    // Count Marks draws only its rectangle - no bar or jaws.
+    if (mode_ != MeasureMode::CountMarks)
+        addQuad(barCenter, d, barSize, highlightedPart() == kBar ? kHighlightColor : kBarColor);
 
     // Count Marks: the rectangle the jaws span, outlined in the bar's color.
     if (mode_ == MeasureMode::CountMarks)
@@ -440,8 +442,11 @@ void CaliperTool::rebuildGeometry()
         };
 
         jawStateGroup_->children.clear();
-        jawStateGroup_->addChild(makeJaw(p0_, dir, highlightedPart() == kJaw0 ? kHighlightColor : kJawColor));
-        jawStateGroup_->addChild(makeJaw(p1, -dir, highlightedPart() == kJaw1 ? kHighlightColor : kJawColor));
+        if (mode_ != MeasureMode::CountMarks)
+        {
+            jawStateGroup_->addChild(makeJaw(p0_, dir, highlightedPart() == kJaw0 ? kHighlightColor : kJawColor));
+            jawStateGroup_->addChild(makeJaw(p1, -dir, highlightedPart() == kJaw1 ? kHighlightColor : kJawColor));
+        }
     }
     newRoot->addChild(jawStateGroup_);
 
