@@ -202,6 +202,13 @@ public:
     void setGlyphScale(GlyphScale which, float scale);
     void scaleGlyph(GlyphScale which, double factor) { setGlyphScale(which, glyphScale(which) * static_cast<float>(factor)); }
     void resetGlyphScales();
+    // Which glyph kinds the currently visible datasets actually use (Glyph
+    // Appearance hides controls for kinds that are absent).
+    struct GlyphUsage
+    {
+        bool marks = false, lines = false, quivers = false;
+    };
+    GlyphUsage glyphUsage() const;
 
     bool eventFilter(QObject* watched, QEvent* event) override;
 
@@ -415,6 +422,8 @@ signals:
     void clicked(double x, double y, int button, int modifiers);
     // Any glyph size factor changed (see GlyphScale).
     void glyphScalesChanged();
+    // The scene graph was rebuilt (load, visibility change, giv_string): glyphUsage() may differ.
+    void glyphUsageChanged();
 
     // Emitted whenever the current slice changes: on nextSlice()/
     // previousSlice(), and whenever decodeImageAt() (re)selects an image
