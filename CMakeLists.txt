@@ -71,7 +71,9 @@ FetchContent_MakeAvailable(vsgQt)
 # ---------------------------------------------------------------------------
 # Shader compilation (GLSL -> SPIR-V) via glslangValidator
 # ---------------------------------------------------------------------------
-find_program(GLSLANG_VALIDATOR NAMES glslangValidator)
+# With vcpkg, glslang is a host dependency; its tools land in the host triplet.
+find_program(GLSLANG_VALIDATOR NAMES glslangValidator
+  HINTS "${VCPKG_INSTALLED_DIR}/${VCPKG_HOST_TRIPLET}/tools/glslang")
 if(NOT GLSLANG_VALIDATOR)
   message(FATAL_ERROR "glslangValidator not found - required to compile shaders/*.vert/*.frag to SPIR-V")
 endif()

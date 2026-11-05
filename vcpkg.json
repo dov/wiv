@@ -66,6 +66,19 @@
     {
       "name": "qtbase",
       "platform": "windows"
+    },
+    "tiff",
+    "libjpeg-turbo",
+    "libwebp",
+    "zlib",
+    "spdlog",
+    "cfitsio",
+    {
+      "name": "glslang",
+      "host": true,
+      "features": [
+        "tools"
+      ]
     }
   ]
 }
