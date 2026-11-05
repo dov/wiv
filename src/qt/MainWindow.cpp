@@ -767,6 +767,7 @@ void MainWindow::buildMenus()
     countMarksAction_ = toolsMenu->addAction(
         "Count Marks", this, [this]() { viewport_->toggleMeasureMode(giv::MeasureMode::CountMarks); });
     countMarksAction_->setCheckable(true);
+    countMarksAction_->setShortcut(QKeySequence("C"));
     connect(viewport_, &VulkanViewport::measureModeChanged, this, [this](bool enabled, int mode) {
         const auto m = static_cast<giv::MeasureMode>(mode);
         const bool isDistance = m != giv::MeasureMode::CountMarks;
