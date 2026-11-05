@@ -82,6 +82,7 @@ set(WIV_SHADER_SOURCES
   ${CMAKE_SOURCE_DIR}/shaders/marks_label.frag
   ${CMAKE_SOURCE_DIR}/shaders/lines.vert
   ${CMAKE_SOURCE_DIR}/shaders/lines.frag
+  ${CMAKE_SOURCE_DIR}/shaders/lines_label.frag
   ${CMAKE_SOURCE_DIR}/shaders/fill.vert
   ${CMAKE_SOURCE_DIR}/shaders/fill.frag
   ${CMAKE_SOURCE_DIR}/shaders/image.vert
@@ -104,6 +105,19 @@ foreach(shader ${WIV_SHADER_SOURCES})
   )
   list(APPEND WIV_SPIRV_BINARIES ${spirv})
 endforeach()
+
+# lines.frag is compiled twice: the default build draws the fully covered
+# core of every line, the FRINGE_PASS build the anti-aliased edge pixels, in
+# a second draw (see lines.frag).
+set(fringe_spirv "${CMAKE_BINARY_DIR}/shaders/lines_fringe.frag.spv")
+add_custom_command(
+  OUTPUT ${fringe_spirv}
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/shaders
+  COMMAND ${GLSLANG_VALIDATOR} -V -DFRINGE_PASS ${CMAKE_SOURCE_DIR}/shaders/lines.frag -o ${fringe_spirv}
+  DEPENDS ${CMAKE_SOURCE_DIR}/shaders/lines.frag
+  COMMENT "Compiling SPIR-V shader lines_fringe.frag"
+)
+list(APPEND WIV_SPIRV_BINARIES ${fringe_spirv})
 
 add_custom_target(wiv_shaders DEPENDS ${WIV_SPIRV_BINARIES})
 

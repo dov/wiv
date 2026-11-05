@@ -21,11 +21,14 @@ struct OffscreenTarget
     vsg::ref_ptr<vsg::Image> captureImage;        // linear-tiled, host-visible copy destination
     vsg::ref_ptr<vsg::Commands> captureCommands;  // copies renderImageView -> captureImage; record after the render graph
     vsg::ref_ptr<vsg::Framebuffer> framebuffer;   // for the RenderGraph that draws into renderImageView
+    vsg::ref_ptr<vsg::ImageView> depthImageView;  // only with withDepth
 
-    // Single-sample color-only target (no depth: the scene's pipelines
-    // disable depth test/write).
+    // Single-sample target. Color-only by default (the label pass's
+    // pipelines disable depth test/write); withDepth adds a depth buffer,
+    // which the lines pipeline uses to draw translucent lines once per pixel
+    // (see lines.frag) - needed for image export to match the window.
     static OffscreenTarget create(vsg::ref_ptr<vsg::Device> device, const VkExtent2D& extent,
-                                  VkFormat format = VK_FORMAT_R8G8B8A8_UNORM);
+                                  VkFormat format = VK_FORMAT_R8G8B8A8_UNORM, bool withDepth = false);
 
     // Maps captureImage and returns its pixels tightly packed (4 bytes per
     // pixel, row-major). Only valid once the frame that rendered into the

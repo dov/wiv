@@ -8,6 +8,8 @@ namespace giv
 namespace
 {
 
+constexpr VkFormat kDepthFormat = VK_FORMAT_D32_SFLOAT;
+
 bool supportsBlit(vsg::ref_ptr<vsg::Device> device, VkFormat format, VkFormat dstFormat)
 {
     auto physicalDevice = device->getPhysicalDevice();
@@ -119,12 +121,13 @@ vsg::ref_ptr<vsg::Commands> createCaptureCommands(vsg::ref_ptr<vsg::Device> devi
 // Color-attachment-only render pass (no depth - the label batches disable
 // depth test/write, same as the main scene) whose final layout leaves the
 // image ready to be used as a copy source with no extra barrier needed.
-vsg::ref_ptr<vsg::RenderPass> createRenderPass(vsg::ref_ptr<vsg::Device> device, VkFormat format)
+vsg::ref_ptr<vsg::RenderPass> createRenderPass(vsg::ref_ptr<vsg::Device> device, VkFormat format, bool withDepth)
 {
     auto colorAttachment = vsg::defaultColorAttachment(format);
     colorAttachment.finalLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 
     vsg::RenderPass::Attachments attachments{colorAttachment};
+    if (withDepth) attachments.push_back(vsg::defaultDepthAttachment(kDepthFormat));
 
     vsg::AttachmentReference colorAttachmentRef{};
     colorAttachmentRef.attachment = 0;
@@ -133,6 +136,13 @@ vsg::ref_ptr<vsg::RenderPass> createRenderPass(vsg::ref_ptr<vsg::Device> device,
     vsg::SubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachments.emplace_back(colorAttachmentRef);
+    if (withDepth)
+    {
+        vsg::AttachmentReference depthRef{};
+        depthRef.attachment = 1;
+        depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        subpass.depthStencilAttachments.emplace_back(depthRef);
+    }
 
     vsg::RenderPass::Subpasses subpasses{subpass};
 
@@ -143,6 +153,13 @@ vsg::ref_ptr<vsg::RenderPass> createRenderPass(vsg::ref_ptr<vsg::Device> device,
     dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     dependency.srcAccessMask = 0;
     dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    if (withDepth)
+    {
+        const VkPipelineStageFlags depthStages = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        dependency.srcStageMask |= depthStages;
+        dependency.dstStageMask |= depthStages;
+        dependency.dstAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    }
     dependency.dependencyFlags = 0;
 
     vsg::RenderPass::Dependencies dependencies{dependency};
@@ -150,22 +167,37 @@ vsg::ref_ptr<vsg::RenderPass> createRenderPass(vsg::ref_ptr<vsg::Device> device,
     return vsg::RenderPass::create(device, attachments, subpasses, dependencies);
 }
 
-vsg::ref_ptr<vsg::Framebuffer> createFramebuffer(vsg::ref_ptr<vsg::Device> device, vsg::ref_ptr<vsg::ImageView> imageView)
+vsg::ref_ptr<vsg::ImageView> createDepthImageView(vsg::ref_ptr<vsg::Device> device, const VkExtent2D& extent)
 {
-    auto renderPass = createRenderPass(device, imageView->image->format);
+    auto image = vsg::Image::create();
+    image->format = kDepthFormat;
+    image->extent = VkExtent3D{extent.width, extent.height, 1};
+    image->mipLevels = 1;
+    image->arrayLayers = 1;
+    image->samples = VK_SAMPLE_COUNT_1_BIT;
+    image->usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    return vsg::createImageView(device, image, VK_IMAGE_ASPECT_DEPTH_BIT);
+}
+
+vsg::ref_ptr<vsg::Framebuffer> createFramebuffer(vsg::ref_ptr<vsg::Device> device, vsg::ref_ptr<vsg::ImageView> imageView,
+                                                  vsg::ref_ptr<vsg::ImageView> depthImageView)
+{
+    auto renderPass = createRenderPass(device, imageView->image->format, depthImageView != nullptr);
     vsg::ImageViews imageViews{imageView};
+    if (depthImageView) imageViews.push_back(depthImageView);
     return vsg::Framebuffer::create(renderPass, imageViews, imageView->image->extent.width, imageView->image->extent.height, 1);
 }
 
 } // namespace
 
-OffscreenTarget OffscreenTarget::create(vsg::ref_ptr<vsg::Device> device, const VkExtent2D& extent, VkFormat format)
+OffscreenTarget OffscreenTarget::create(vsg::ref_ptr<vsg::Device> device, const VkExtent2D& extent, VkFormat format, bool withDepth)
 {
     OffscreenTarget t;
     t.renderImageView = createRenderImageView(device, extent, format);
     t.captureImage = createCaptureImage(device, extent, format);
     t.captureCommands = createCaptureCommands(device, t.renderImageView->image, t.captureImage);
-    t.framebuffer = createFramebuffer(device, t.renderImageView);
+    if (withDepth) t.depthImageView = createDepthImageView(device, extent);
+    t.framebuffer = createFramebuffer(device, t.renderImageView, t.depthImageView);
     return t;
 }
 

@@ -3100,7 +3100,7 @@ bool VulkanViewport::exportImage(const QString& path, int width, int height, con
     try
     {
         auto device = window_->windowAdapter->getOrCreateDevice();
-        auto target = giv::OffscreenTarget::create(device, extent);
+        auto target = giv::OffscreenTarget::create(device, extent, VK_FORMAT_R8G8B8A8_UNORM, /*withDepth=*/true);
 
         auto exportRenderGraph = vsg::RenderGraph::create();
         exportRenderGraph->framebuffer = target.framebuffer;
