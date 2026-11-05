@@ -32,6 +32,12 @@ void renderDisplayRgba(const LoadedImage& src, float contrastMin, float contrast
                         colormaps::Id colormapId, bool colormapEnabled, PixelBuffer& outRgba,
                         int slice = 0);
 
+// The 256*3 RGB table applied after the contrast stretch, or empty for a plain
+// gray ramp. Equalize/Normalize have no fixed table: like giv, theirs comes from
+// the contrast-stretched 8-bit image of `slice`, so it depends on the samples.
+std::vector<uint8_t> displayLut(const LoadedImage& src, float contrastMin, float contrastMax, colormaps::Id colormapId,
+                                bool colormapEnabled, int slice);
+
 // The colour the display shows for sample `sampleIndex` of src.samples (an
 // index into the whole slice-major buffer): the same stretch as
 // renderDisplayRgba() and the GPU shader, for one sample. Packed so the low

@@ -1041,6 +1041,25 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     };
     caliperTool_->viewportExtent = [this]() { return viewportExtent(); };
     caliperTool_->waitForGpuIdle = [this]() { return waitForGpuIdle(); };
+    // Count Marks: the scene's points are stored in giv's Y-down space, the
+    // caliper works in the mirrored Y-up world (see SceneBuilder).
+    caliperTool_->countMarks = [this](const vsg::dvec2& a, const vsg::dvec2& b) {
+        const double minX = std::min(a.x, b.x), maxX = std::max(a.x, b.x);
+        const double minY = std::min(-a.y, -b.y), maxY = std::max(-a.y, -b.y);
+        int count = 0;
+        for (const auto& ds : scene_.datasets)
+        {
+            if (!ds.isVisible) continue;
+            for (size_t i = 0; i < ds.x.size(); ++i)
+            {
+                // Only actual positions: not bezier/ellipse parameters, quiver vectors or close-path markers.
+                const giv::Op op = ds.op[i];
+                if (op == giv::Op::Cont || op == giv::Op::Quiver || op == giv::Op::ClosePath) continue;
+                if (ds.x[i] >= minX && ds.x[i] <= maxX && ds.y[i] >= minY && ds.y[i] <= maxY) ++count;
+            }
+        }
+        return count;
+    };
     caliperTool_->onMeasurementText = [this](const std::string& text) { emit measurementChanged(QString::fromStdString(text)); };
     caliperTool_->setPixelSize(pixelSize_, pixelSizeUnit_);
     caliperTool_->setMode(measureMode_);

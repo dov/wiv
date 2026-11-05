@@ -170,6 +170,7 @@ private:
     QAction* measureDistanceAction_ = nullptr;           // diagonal
     QAction* measureDistanceHorizontalAction_ = nullptr;
     QAction* measureDistanceVerticalAction_ = nullptr;
+    QAction* countMarksAction_ = nullptr;
     QAction* contrastAction_ = nullptr;
     QAction* colorTableAction_ = nullptr;
     QMenu* recentFilesMenu_ = nullptr;

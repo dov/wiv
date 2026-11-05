@@ -1606,6 +1606,10 @@ const char* name(Id id)
     {
         case Id::None:
             return "None";
+        case Id::Equalize:
+            return "Equalize";
+        case Id::Normalize:
+            return "Normalize";
         case Id::Invert:
             return "Invert";
         case Id::LowContrast:
@@ -1623,6 +1627,11 @@ const char* name(Id id)
         default:
             return "?";
     }
+}
+
+bool isAdaptive(Id id)
+{
+    return id == Id::Equalize || id == Id::Normalize;
 }
 
 const uint8_t* lut(Id id)

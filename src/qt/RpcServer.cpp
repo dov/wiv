@@ -340,6 +340,25 @@ void RpcServer::onViewportClicked(double x, double y, int button, int modifiers)
     buffers_.remove(socket);
 }
 
+void RpcServer::abortPick()
+{
+    if (!pendingPick_) return;
+    QTcpSocket* socket = pendingPick_;
+    pendingPick_ = nullptr;
+
+    QJsonObject errorObj;
+    errorObj["code"] = -32000;
+    errorObj["message"] = QStringLiteral("Aborted");
+    QJsonObject response;
+    response["jsonrpc"] = QStringLiteral("2.0");
+    response["id"] = QJsonValue();
+    response["error"] = errorObj;
+
+    writeHttpJson(socket, QJsonDocument(response).toJson(QJsonDocument::Compact));
+    socket->disconnectFromHost();
+    buffers_.remove(socket);
+}
+
 void RpcServer::writeHttpJson(QTcpSocket* socket, const QByteArray& jsonBody)
 {
     QByteArray httpResponse = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
