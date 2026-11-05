@@ -1197,6 +1197,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
                  "scrollbars {:.1f} (initial={}, texture {}x{})",
                  std::chrono::duration<double, std::milli>(PerfClock::now() - perfStart).count(), perfWait, perfBuild, perfSetup,
                  perfCompile, perfRender, perfScrollBars, isInitialLoad, perfImg ? perfImg->width : 0, perfImg ? perfImg->height : 0);
+    emit glyphUsageChanged();
     return true;
 }
 
@@ -1400,6 +1401,21 @@ void VulkanViewport::setGlyphScale(GlyphScale which, float scale)
     applyGlyphScales();
     if (viewer_) viewer_->request();
     emit glyphScalesChanged();
+}
+
+VulkanViewport::GlyphUsage VulkanViewport::glyphUsage() const
+{
+    GlyphUsage u;
+    if (!hasScene_ || !globalShowMarks_) return u;
+    for (const auto& ds : scene_.datasets)
+    {
+        if (!ds.isVisible || ds.isSprite || ds.pointCount() == 0) continue;
+        if (ds.doDrawMarks) u.marks = true;
+        if (ds.doDrawLines || ds.doDrawPolygonOutline) u.lines = true;
+        if (!u.quivers)
+            u.quivers = std::find(ds.op.begin(), ds.op.end(), giv::Op::Quiver) != ds.op.end();
+    }
+    return u;
 }
 
 void VulkanViewport::resetGlyphScales()

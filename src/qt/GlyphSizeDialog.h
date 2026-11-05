@@ -11,6 +11,10 @@
 #include <QDialog>
 
 class QDoubleSpinBox;
+class QLabel;
+class QPushButton;
+class QShowEvent;
+class QWidget;
 class QSlider;
 
 namespace givqt
@@ -25,13 +29,22 @@ class GlyphSizeDialog final : public QDialog
 public:
     explicit GlyphSizeDialog(VulkanViewport* viewport, QWidget* parent = nullptr);
 
+protected:
+    void showEvent(QShowEvent* e) override;
+
 private:
     static constexpr int kRows = 4;
     VulkanViewport* viewport_ = nullptr;
     QSlider* sliders_[kRows] = {};
     QDoubleSpinBox* spins_[kRows] = {};
+    QLabel* labels_[kRows] = {};
+    QPushButton* resets_[kRows] = {};
+    QWidget* help_ = nullptr; // static table of mouse gestures; rows hidden along with their controls
+    QLabel* helpRows_[kRows][2] = {};
+    QLabel* emptyNote_ = nullptr;
 
     void refresh();
+    void updateVisibleRows(); // hides rows for glyph kinds absent from the view; rebuilds the help table
 };
 
 } // namespace givqt
