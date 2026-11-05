@@ -4,6 +4,8 @@
 // a central VulkanViewport. Deliberately no toolbar or side panel - wiv
 // aims to match giv's own look/behavior, which has neither.
 //
+#include "CaliperTool.h"
+
 #include <QMainWindow>
 #include <QSlider>
 #include <QToolButton>
@@ -167,9 +169,9 @@ private:
     QAction* firstImageAction_ = nullptr;
     QAction* lastImageAction_ = nullptr;
     QAction* showMarksAction_ = nullptr;
-    QAction* measureDistanceAction_ = nullptr;           // diagonal
-    QAction* measureDistanceHorizontalAction_ = nullptr;
-    QAction* measureDistanceVerticalAction_ = nullptr;
+    QAction* measureEnabledAction_ = nullptr;     // Tools > Measure Distance > Measure (Z)
+    QAction* measureModeActions_[3] = {};         // radio items: Diagonal, Horizontal, Vertical
+    giv::MeasureMode measureDistanceMode_ = giv::MeasureMode::Diagonal; // last used distance mode, persisted
     QAction* countMarksAction_ = nullptr;
     QAction* contrastAction_ = nullptr;
     QAction* colorTableAction_ = nullptr;

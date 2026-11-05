@@ -29,6 +29,8 @@ constexpr double kLabelFillFrac = 0.9; // label glyph height, as a fraction of t
 // draw_caliper() cairo colors (0x50,0x2d,0x16 / 0xff,0xaa,0x00).
 const vsg::vec4 kJawColor{0.314f, 0.176f, 0.086f, 0.8f};
 const vsg::vec4 kBarColor{1.0f, 0.666f, 0.0f, 0.6f};
+// the reference application's caliperColorHighlight: the part being hovered or dragged.
+const vsg::vec4 kHighlightColor{1.0f, 0.82f, 0.38f, 0.80f};
 const vsg::vec4 kLabelColor{0.0f, 0.0f, 0.0f, 1.0f}; // matches giv's own black caliper label text
 
 inline vsg::vec3 toVec3(const vsg::dvec2& v, float z = 0.0f)
@@ -59,9 +61,36 @@ void CaliperTool::setEnabled(bool enabled)
     enabled_ = enabled;
     haveCaliper_ = false;
     draggingPart_ = kNoPart;
+    hoverPart_ = kNoPart;
     builder_ = vsg::Builder::create(); // drop the per-move quad cache
     clearGeometry();
+    updateCursor();
     if (onMeasurementText) onMeasurementText(std::string());
+}
+
+void CaliperTool::updateCursor()
+{
+    Cursor wanted = Cursor::Default;
+    if (enabled_)
+    {
+        if (draggingPart_ != kNoPart) wanted = haveCaliper_ ? Cursor::ClosedHand : Cursor::Crosshair;
+        else if (haveCaliper_ && hoverPart_ != kNoPart) wanted = Cursor::OpenHand;
+        else wanted = Cursor::Crosshair;
+    }
+    if (wanted == cursor_) return;
+    cursor_ = wanted;
+    if (onCursorChanged) onCursorChanged(cursor_);
+}
+
+void CaliperTool::updateHover(const vsg::dvec2& world)
+{
+    const int part = haveCaliper_ ? hitTest(world) : kNoPart;
+    if (part != hoverPart_)
+    {
+        hoverPart_ = part;
+        rebuildGeometry();
+    }
+    updateCursor();
 }
 
 void CaliperTool::setMode(MeasureMode mode)
@@ -167,6 +196,7 @@ void CaliperTool::apply(vsg::ButtonPressEvent& event)
             dragStartMouse_ = world;
             dragStartP0_ = p0_;
             dragStartP1_ = p1_;
+            updateCursor();
             event.handled = true;
             return;
         }
@@ -177,9 +207,11 @@ void CaliperTool::apply(vsg::ButtonPressEvent& event)
     p0_ = p1_ = world;
     haveCaliper_ = false;
     draggingPart_ = kJaw1;
+    hoverPart_ = kNoPart;
     dragStartMouse_ = world;
     dragStartP0_ = world;
     dragStartP1_ = world;
+    updateCursor();
     rebuildGeometry();
     event.handled = true;
 }
@@ -189,6 +221,7 @@ void CaliperTool::apply(vsg::ButtonReleaseEvent& event)
     if (event.button != 1 || draggingPart_ == kNoPart) return;
 
     bool wasNewPlacement = !haveCaliper_;
+    const int releasedPart = draggingPart_;
     draggingPart_ = kNoPart;
 
     if (wasNewPlacement)
@@ -199,12 +232,19 @@ void CaliperTool::apply(vsg::ButtonReleaseEvent& event)
             // A press with no real drag - discard the degenerate 0-length
             // caliper (matches CaliperView::isDegenerateCaliper()).
             haveCaliper_ = false;
+            hoverPart_ = kNoPart;
             clearGeometry();
+            updateCursor();
             if (onMeasurementText) onMeasurementText(std::string());
             return;
         }
         haveCaliper_ = true;
     }
+
+    // The cursor is still over the part that was just dragged (the drag keeps
+    // its grab offset), so it stays highlighted until the cursor leaves it.
+    hoverPart_ = releasedPart;
+    updateCursor();
 
     const vsg::dvec2 p1 = effectiveP1();
     double dist = vsg::length(p1 - p0_);
@@ -215,11 +255,16 @@ void CaliperTool::apply(vsg::ButtonReleaseEvent& event)
 
 void CaliperTool::apply(vsg::MoveEvent& event)
 {
-    if (!enabled_ || draggingPart_ == kNoPart) return;
+    if (!enabled_) return;
     auto window = event.window.ref_ptr();
     if (!window) return;
     lastExtent_ = window->extent2D();
     vsg::dvec2 world = windowToWorld(event.x, event.y);
+    if (draggingPart_ == kNoPart)
+    {
+        updateHover(world);
+        return;
+    }
 
     // Offset-preserving drag for every part: the point of the jaw/bar under
     // the cursor at press time stays under the cursor, rather than snapping
@@ -305,7 +350,7 @@ void CaliperTool::rebuildGeometry()
     // hot-spot line).
     vsg::dvec2 barSize = perp * (2.0 * kBarWidthPx * wpp);
     vsg::dvec2 barCenter = (p0_ + p1) * 0.5 + barSize * 0.5;
-    addQuad(barCenter, d, barSize, kBarColor);
+    addQuad(barCenter, d, barSize, highlightedPart() == kBar ? kHighlightColor : kBarColor);
 
     // Count Marks: the rectangle the jaws span, outlined in the bar's color.
     if (mode_ == MeasureMode::CountMarks)
@@ -348,23 +393,25 @@ void CaliperTool::rebuildGeometry()
         }
     }
 
-    // Both jaws' filled triangle mesh (hardcoded shape - see
-    // CaliperJawShape.h), rebuilt as one combined vsg::VertexIndexDraw and
-    // swapped into the persistent jawStateGroup_ (see its doc comment in the
-    // header for why this doesn't go through addQuad()/builder_).
+    // Both jaws' filled triangle meshes (hardcoded shape - see
+    // CaliperJawShape.h), one vsg::VertexIndexDraw each so that either can be
+    // drawn in the highlight color, swapped into the persistent
+    // jawStateGroup_ (see its doc comment in the header for why this doesn't
+    // go through addQuad()/builder_).
     {
         constexpr size_t kTrisPerJaw = kJawShapeTriangles.size();
-        constexpr size_t kVertCount = kTrisPerJaw * 3 * 2; // two jaws
-        auto vertices = vsg::vec3Array::create(kVertCount);
-        auto normals = vsg::vec3Array::create(kVertCount);
-        auto texcoords = vsg::vec2Array::create(kVertCount);
-        auto indices = vsg::uintArray::create(kVertCount);
+        constexpr size_t kVertCount = kTrisPerJaw * 3;
 
-        size_t vi = 0;
         // Jaw at `endpoint` points outward along `localX`, away from the
         // other jaw - its flat attachment edge (local x=0) sits exactly on
         // `endpoint` - see CaliperJawShape.h's doc comment.
-        auto addJawMesh = [&](const vsg::dvec2& endpoint, const vsg::dvec2& localX) {
+        auto makeJaw = [&](const vsg::dvec2& endpoint, const vsg::dvec2& localX, const vsg::vec4& color) {
+            auto vertices = vsg::vec3Array::create(kVertCount);
+            auto normals = vsg::vec3Array::create(kVertCount);
+            auto texcoords = vsg::vec2Array::create(kVertCount);
+            auto indices = vsg::uintArray::create(kVertCount);
+
+            size_t vi = 0;
             double scale = kJawSizePx * wpp;
             // Flipped in y relative to the raw STL data (see
             // CaliperJawShape.h) - the source mesh's hook faces the wrong
@@ -381,20 +428,20 @@ void CaliperTool::rebuildGeometry()
                     indices->set(vi, static_cast<uint32_t>(vi));
                     ++vi;
                 }
-        };
-        addJawMesh(p0_, dir);
-        addJawMesh(p1, -dir);
 
-        auto colors = vsg::vec4Array::create(1, kJawColor);
-        auto vid = vsg::VertexIndexDraw::create();
-        vsg::DataList arrays{vertices, normals, texcoords, colors};
-        vid->assignArrays(arrays);
-        vid->assignIndices(indices);
-        vid->indexCount = static_cast<uint32_t>(kVertCount);
-        vid->instanceCount = 1;
+            auto colors = vsg::vec4Array::create(1, color);
+            auto vid = vsg::VertexIndexDraw::create();
+            vsg::DataList arrays{vertices, normals, texcoords, colors};
+            vid->assignArrays(arrays);
+            vid->assignIndices(indices);
+            vid->indexCount = static_cast<uint32_t>(kVertCount);
+            vid->instanceCount = 1;
+            return vid;
+        };
 
         jawStateGroup_->children.clear();
-        jawStateGroup_->addChild(vid);
+        jawStateGroup_->addChild(makeJaw(p0_, dir, highlightedPart() == kJaw0 ? kHighlightColor : kJawColor));
+        jawStateGroup_->addChild(makeJaw(p1, -dir, highlightedPart() == kJaw1 ? kHighlightColor : kJawColor));
     }
     newRoot->addChild(jawStateGroup_);
 

@@ -1060,6 +1060,16 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
         }
         return count;
     };
+    caliperTool_->onCursorChanged = [this](giv::CaliperTool::Cursor cursor) {
+        if (!window_) return;
+        switch (cursor)
+        {
+            case giv::CaliperTool::Cursor::Crosshair: window_->setCursor(Qt::CrossCursor); break;
+            case giv::CaliperTool::Cursor::OpenHand: window_->setCursor(Qt::OpenHandCursor); break;
+            case giv::CaliperTool::Cursor::ClosedHand: window_->setCursor(Qt::ClosedHandCursor); break;
+            default: window_->unsetCursor(); break;
+        }
+    };
     caliperTool_->onMeasurementText = [this](const std::string& text) { emit measurementChanged(QString::fromStdString(text)); };
     caliperTool_->setPixelSize(pixelSize_, pixelSizeUnit_);
     caliperTool_->setMode(measureMode_);
@@ -3169,25 +3179,38 @@ void VulkanViewport::toggleShowPixelGrid()
     viewer_->request();
 }
 
-void VulkanViewport::toggleMeasureDistance()
-{
-    toggleMeasureMode(giv::MeasureMode::Diagonal);
-}
-
 void VulkanViewport::toggleMeasureMode(giv::MeasureMode mode)
 {
     // Picking the active mode again switches the tool off; picking another
     // one switches the mode and leaves the tool on.
-    bool turnOff = measureEnabled_ && measureMode_ == mode;
-    measureEnabled_ = !turnOff;
+    if (measureEnabled_ && measureMode_ == mode)
+        setMeasureEnabled(false);
+    else
+        setMeasureMode(mode);
+}
+
+void VulkanViewport::setMeasureMode(giv::MeasureMode mode)
+{
     measureMode_ = mode;
-    spdlog::info("Measure Distance mode {} set to {}", static_cast<int>(mode), measureEnabled_);
+    measureEnabled_ = true;
+    applyMeasureState();
+}
+
+void VulkanViewport::setMeasureEnabled(bool enabled)
+{
+    measureEnabled_ = enabled;
+    applyMeasureState();
+}
+
+void VulkanViewport::applyMeasureState()
+{
+    spdlog::info("Measure Distance mode {} set to {}", static_cast<int>(measureMode_), measureEnabled_);
     if (caliperTool_)
     {
-        caliperTool_->setMode(mode);
+        caliperTool_->setMode(measureMode_);
         caliperTool_->setEnabled(measureEnabled_);
     }
-    emit measureModeChanged(measureEnabled_, static_cast<int>(mode));
+    emit measureModeChanged(measureEnabled_, static_cast<int>(measureMode_));
     viewer_->request();
 }
 

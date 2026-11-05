@@ -64,6 +64,7 @@
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
+#include <QActionGroup>
 #include <QCoreApplication>
 #include <QFileDialog>
 #include <QMessageBox>
@@ -730,26 +731,71 @@ void MainWindow::buildMenus()
 
 
     auto toolsMenu = menuBar()->addMenu("&Tools");
-    // giv's three Measure Distance tools. Mutually exclusive like giv's menu:
-    // the viewport owns the state (picking the active one again switches the
-    // tool off) and measureModeChanged() below keeps the check marks in sync.
-    measureDistanceAction_ = toolsMenu->addAction("Measure Distance Diagonal", viewport_, &VulkanViewport::toggleMeasureDistance);
-    measureDistanceAction_->setCheckable(true);
-    measureDistanceAction_->setShortcut(QKeySequence("Z"));
-    measureDistanceHorizontalAction_ = toolsMenu->addAction(
-        "Measure Distance Horizontal", this, [this]() { viewport_->toggleMeasureMode(giv::MeasureMode::Horizontal); });
-    measureDistanceHorizontalAction_->setCheckable(true);
-    measureDistanceVerticalAction_ = toolsMenu->addAction(
-        "Measure Distance Vertical", this, [this]() { viewport_->toggleMeasureMode(giv::MeasureMode::Vertical); });
-    measureDistanceVerticalAction_->setCheckable(true);
+    // Measure Distance, laid out like the reference application's caliper button and mode
+    // dropdown: one on/off item (Z) plus an exclusive Diagonal / Horizontal /
+    // Vertical choice that is remembered between sessions. Choosing a mode
+    // also switches the tool on. The viewport owns the state;
+    // measureModeChanged() below keeps the check marks in sync.
+    auto* measureMenu = toolsMenu->addMenu("Measure Distance");
+    measureEnabledAction_ = measureMenu->addAction("Measure", this, [this]() {
+        if (viewport_->measureDistanceEnabled() && viewport_->measureMode() == measureDistanceMode_)
+            viewport_->setMeasureEnabled(false);
+        else
+            viewport_->setMeasureMode(measureDistanceMode_); // also leaves Count Marks
+    });
+    measureEnabledAction_->setCheckable(true);
+    measureEnabledAction_->setShortcut(QKeySequence("Z"));
+    measureMenu->addSeparator();
+
+    {
+        QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+        const int saved = std::clamp(settings.value("Measure/Mode", 0).toInt(), 0, 2);
+        measureDistanceMode_ = static_cast<giv::MeasureMode>(saved);
+    }
+    auto* modeGroup = new QActionGroup(measureMenu);
+    modeGroup->setExclusive(true);
+    const char* modeNames[3] = {"Diagonal", "Horizontal", "Vertical"};
+    for (int i = 0; i < 3; ++i)
+    {
+        measureModeActions_[i] = measureMenu->addAction(modeNames[i]);
+        measureModeActions_[i]->setCheckable(true);
+        measureModeActions_[i]->setChecked(i == static_cast<int>(measureDistanceMode_));
+        modeGroup->addAction(measureModeActions_[i]);
+        connect(measureModeActions_[i], &QAction::triggered, this,
+                [this, i]() { viewport_->setMeasureMode(static_cast<giv::MeasureMode>(i)); });
+    }
     countMarksAction_ = toolsMenu->addAction(
         "Count Marks", this, [this]() { viewport_->toggleMeasureMode(giv::MeasureMode::CountMarks); });
     countMarksAction_->setCheckable(true);
     connect(viewport_, &VulkanViewport::measureModeChanged, this, [this](bool enabled, int mode) {
         const auto m = static_cast<giv::MeasureMode>(mode);
-        measureDistanceAction_->setChecked(enabled && m == giv::MeasureMode::Diagonal);
-        measureDistanceHorizontalAction_->setChecked(enabled && m == giv::MeasureMode::Horizontal);
-        measureDistanceVerticalAction_->setChecked(enabled && m == giv::MeasureMode::Vertical);
+        const bool isDistance = m != giv::MeasureMode::CountMarks;
+        if (isDistance && enabled && m != measureDistanceMode_)
+        {
+            // Remember the distance mode for next time.
+            measureDistanceMode_ = m;
+            measureModeActions_[static_cast<int>(m)]->setChecked(true);
+            QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+            settings.setValue("Measure/Mode", static_cast<int>(m));
+        }
+        measureEnabledAction_->setChecked(enabled && isDistance);
+
+        // A transient message in place of the cursor readout, so toggling
+        // the tool is acknowledged and its use is spelled out.
+        QString text;
+        switch (m)
+        {
+            case giv::MeasureMode::Diagonal: text = "Measure distance (diagonal)"; break;
+            case giv::MeasureMode::Horizontal: text = "Measure distance (horizontal)"; break;
+            case giv::MeasureMode::Vertical: text = "Measure distance (vertical)"; break;
+            case giv::MeasureMode::CountMarks: text = "Count marks"; break;
+        }
+        if (enabled)
+            text += isDistance ? ": drag to measure, drag a jaw or the bar to adjust, Z to stop"
+                               : ": drag a rectangle over the marks to count";
+        else
+            text += " off";
+        statusBar()->showMessage(text, 5000);
         countMarksAction_->setChecked(enabled && m == giv::MeasureMode::CountMarks);
     });
 
@@ -1258,9 +1304,7 @@ void MainWindow::loadFilesInternal(const std::vector<std::string>& paths)
     }
     lastPaths_ = paths;
     balloonAction_->setChecked(false);
-    measureDistanceAction_->setChecked(false);
-    measureDistanceHorizontalAction_->setChecked(false);
-    measureDistanceVerticalAction_->setChecked(false);
+    measureEnabledAction_->setChecked(false);
     countMarksAction_->setChecked(false);
     spdlog::info("Loaded {} file(s) successfully", paths.size());
     const auto perfLoaded = std::chrono::steady_clock::now();
