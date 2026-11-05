@@ -50,7 +50,7 @@ Color colorFromSvg(unsigned int packed, float shapeOpacity)
 // shape's color" rather than leaving it unfilled, which is how this looked
 // before (bottle body etc. all used gradients and rendered as empty outlines).
 // (Gradient shapes that also carry a blur filter skip this entirely - see
-// rasterizeBlurredShape, which rasterizes the true gradient via nanosvgrast.)
+// rasterizeShapeSprite, which rasterizes the true gradient via nanosvgrast.)
 Color averageGradientColor(const NSVGgradient* grad, float shapeOpacity)
 {
     Color c;
@@ -218,7 +218,7 @@ void appendDashedPath(Dataset& ds, SceneData& scene, const NSVGpath* path, const
 // stdDeviation="D"/>, referenced by some element's own style="...
 // filter:url(#X)...") to resolve elementId -> blur stdDeviation, so
 // loadSvgFile can rasterize+blur just those shapes (see
-// rasterizeBlurredShape) instead of silently dropping the effect.
+// rasterizeShapeSprite) instead of silently dropping the effect.
 const SvgNode* findDescendant(const SvgNode& n, const char* name)
 {
     for (const auto& c : n.children)
@@ -357,22 +357,22 @@ void gaussianBlurRGBA(std::vector<unsigned char>& buf, int w, int h, float sigma
 }
 
 // Rasterizes just `shape` (temporarily detached from the rest of the
-// shape list) at 1:1 scale into an RGBA8 buffer sized to its bounds plus a
-// 3-sigma margin, then Gaussian-blurs it - the path taken for any shape
-// whose SVG filter wiv's flat-triangle vector renderer can't otherwise
-// express. Uses nanosvgrast rather than the flat-average-color
-// approximation elsewhere in this file, so a blurred *gradient* shape (the
-// bottle glass highlight, here) still renders its true gradient, not just
-// its blur.
-bool rasterizeBlurredShape(NSVGshape* shape, float stdDev, Dataset& out)
+// shape list), fill and stroke together, into an RGBA8 sprite covering its
+// bounds plus a margin (room for the stroke and, if stdDev > 0, 3 sigma of
+// Gaussian blur). Used for any shape the flat-triangle vector renderer
+// can't express: SVG blur filters and gradient paints. nanosvgrast renders
+// the true gradient. `pixelsPerUnit` oversamples the sprite so it stays
+// reasonably sharp when zoomed in; the sprite's world size is unaffected.
+bool rasterizeShapeSprite(NSVGshape* shape, float stdDev, float pixelsPerUnit, Dataset& out)
 {
-    const float margin = std::max(4.0f, stdDev * 3.0f);
+    const float margin = std::max(2.0f + 0.5f * shape->strokeWidth, stdDev * 3.0f);
     float x0 = shape->bounds[0] - margin;
     float y0 = shape->bounds[1] - margin;
     float x1 = shape->bounds[2] + margin;
     float y1 = shape->bounds[3] + margin;
-    int w = static_cast<int>(std::ceil(x1 - x0));
-    int h = static_cast<int>(std::ceil(y1 - y0));
+    float worldW = x1 - x0, worldH = y1 - y0;
+    int w = static_cast<int>(std::ceil(worldW * pixelsPerUnit));
+    int h = static_cast<int>(std::ceil(worldH * pixelsPerUnit));
     if (w <= 0 || h <= 0 || w > 4096 || h > 4096) return false;
 
     NSVGshape* savedNext = shape->next;
@@ -384,17 +384,17 @@ bool rasterizeBlurredShape(NSVGshape* shape, float stdDev, Dataset& out)
     tmpImage.height = static_cast<float>(h);
     tmpImage.shapes = shape;
 
-    std::vector<unsigned char> buf(static_cast<size_t>(w) * static_cast<size_t>(h) * 4, 0);
+    auto buf = std::make_shared<std::vector<unsigned char>>(static_cast<size_t>(w) * static_cast<size_t>(h) * 4, 0);
 
     NSVGrasterizer* rast = nsvgCreateRasterizer();
     bool ok = rast != nullptr;
-    if (ok) nsvgRasterize(rast, &tmpImage, -x0, -y0, 1.0f, buf.data(), w, h, w * 4);
+    if (ok) nsvgRasterize(rast, &tmpImage, -x0 * pixelsPerUnit, -y0 * pixelsPerUnit, pixelsPerUnit, buf->data(), w, h, w * 4);
     if (rast) nsvgDeleteRasterizer(rast);
 
     shape->next = savedNext;
     if (!ok) return false;
 
-    gaussianBlurRGBA(buf, w, h, stdDev);
+    gaussianBlurRGBA(*buf, w, h, stdDev * pixelsPerUnit);
 
     out.isSprite = true;
     out.spriteRGBA = std::move(buf);
@@ -402,9 +402,18 @@ bool rasterizeBlurredShape(NSVGshape* shape, float stdDev, Dataset& out)
     out.spriteHeight = h;
     out.spriteX = x0;
     out.spriteY = y0;
-    out.spriteW = w;
-    out.spriteH = h;
+    out.spriteW = worldW;
+    out.spriteH = worldH;
     return true;
+}
+
+// Oversampling for gradient sprites: up to 4x, but keeping the larger side
+// of the sprite within ~1024 pixels so memory stays modest.
+float spriteOversampling(const NSVGshape* shape)
+{
+    float extent = std::max(shape->bounds[2] - shape->bounds[0], shape->bounds[3] - shape->bounds[1]);
+    if (extent <= 0.0f) return 1.0f;
+    return std::clamp(1024.0f / extent, 1.0f, 4.0f);
 }
 
 // ---------------------------------------------------------------------------
@@ -698,7 +707,7 @@ struct ImageWalker
         ds.isSprite = true;
         ds.spriteWidth = img.width;
         ds.spriteHeight = img.height;
-        ds.spriteRGBA = std::move(img.rgba);
+        ds.spriteRGBA = std::make_shared<const std::vector<unsigned char>>(std::move(img.rgba));
         ds.spriteX = minX;
         ds.spriteY = minY;
         ds.spriteW = maxX - minX;
@@ -1276,7 +1285,7 @@ void populateScene(const NSVGimage* svgConst, const SvgNode* dom, const std::str
             ds.doDrawLines = false;
             ds.doDrawPolygon = false;
             ds.doDrawMarks = false;
-            if (rasterizeBlurredShape(shape, blurIt->second, ds))
+            if (rasterizeShapeSprite(shape, blurIt->second, 1.0f, ds))
             {
                 scene.updateBounds(ds.spriteX, ds.spriteY);
                 scene.updateBounds(ds.spriteX + ds.spriteW, ds.spriteY + ds.spriteH);
@@ -1286,6 +1295,26 @@ void populateScene(const NSVGimage* svgConst, const SvgNode* dom, const std::str
                 scene.datasets.pop_back(); // rasterization failed - drop rather than leave an empty dataset
             }
             continue;
+        }
+
+        // A gradient fill or stroke can't be drawn by the flat-color vector
+        // path (it would be reduced to an average color); rasterize the whole
+        // shape so the gradient is rendered for real.
+        if (isGradient(shape->fill.type) || isGradient(shape->stroke.type))
+        {
+            scene.datasets.emplace_back();
+            Dataset& ds = scene.datasets.back();
+            ds.pathName = shape->id[0] ? shape->id : ("svg shape " + std::to_string(shapeIndex));
+            ds.doDrawLines = false;
+            ds.doDrawPolygon = false;
+            ds.doDrawMarks = false;
+            if (rasterizeShapeSprite(shape, 0.0f, spriteOversampling(shape), ds))
+            {
+                scene.updateBounds(ds.spriteX, ds.spriteY);
+                scene.updateBounds(ds.spriteX + ds.spriteW, ds.spriteY + ds.spriteH);
+                continue;
+            }
+            scene.datasets.pop_back(); // too large to rasterize: fall back to the flat average color below
         }
 
         const bool hasFill = shape->fill.type == NSVG_PAINT_COLOR || isGradient(shape->fill.type);
