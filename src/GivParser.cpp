@@ -508,6 +508,12 @@ void GivParser::parseLine(Dataset& ds, const char* line, size_t len, SceneData& 
                 scene.pixelSizeUnit = tok.size() > 2 ? tok.getRest(2) : std::string();
             }
         }
+        else if (w0 == "$background")
+        {
+            // wiv extension: whole-file background color, see SceneData::background.
+            Color c;
+            if (parseGivColor(tok.get(1), c) && !c.isNone) scene.background = c;
+        }
         else if (w0 == "$name" || w0 == "$title")
         {
             // Documented as dead/no-op in giv itself.

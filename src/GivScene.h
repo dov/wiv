@@ -218,6 +218,10 @@ struct SceneData
         bool scaled;
     };
     std::vector<TextExtent> textExtents;
+    // $background <color> - wiv extension (giv has no such directive):
+    // whole-file viewport background color. std::nullopt if the file never
+    // sets it, in which case the Preferences background color is used.
+    std::optional<Color> background;
 
     double minX = 1e30, minY = 1e30;
     double maxX = -1e30, maxY = -1e30;
