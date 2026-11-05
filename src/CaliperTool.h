@@ -100,6 +100,19 @@ public:
     // these two opposite corners (world coordinates, either order).
     std::function<int(const vsg::dvec2&, const vsg::dvec2&)> countMarks;
 
+    // Mouse cursor the owner should show over the view; reported only when
+    // it changes. Crosshair while the tool is armed (placing points), an open
+    // hand over a part that can be grabbed, a closed hand while one is being
+    // dragged, Default once the tool is off.
+    enum class Cursor
+    {
+        Default,
+        Crosshair,
+        OpenHand,
+        ClosedHand
+    };
+    std::function<void(Cursor)> onCursorChanged;
+
     // Fired whenever the live/fixed measurement text changes (empty once
     // disabled or before any caliper exists) - for a status-bar readout.
     std::function<void(const std::string&)> onMeasurementText;
@@ -171,6 +184,8 @@ private:
     bool enabled_ = false;
     bool haveCaliper_ = false;    // a *completed* (released) diagonal exists
     int draggingPart_ = kNoPart;  // part being dragged, or kNoPart
+    int hoverPart_ = kNoPart;     // part under the cursor while not dragging, or kNoPart
+    Cursor cursor_ = Cursor::Default;
     vsg::dvec2 p0_{0.0, 0.0};
     vsg::dvec2 p1_{0.0, 0.0};
     vsg::dvec2 dragStartMouse_{0.0, 0.0};
@@ -197,6 +212,15 @@ private:
 
     void rebuildGeometry();
     void clearGeometry();
+
+    // The part drawn in the highlight color: the one being dragged, else the
+    // one under the cursor (the reference application's hover highlight).
+    int highlightedPart() const { return draggingPart_ != kNoPart ? draggingPart_ : hoverPart_; }
+    // Re-derives the cursor from the current state and reports a change.
+    void updateCursor();
+    // Re-hit-tests the cursor position `world`, redrawing and updating the
+    // cursor only if the part under it changed.
+    void updateHover(const vsg::dvec2& world);
 };
 
 } // namespace giv

@@ -230,12 +230,14 @@ public:
 
     // Tools > Measure Distance Diagonal (giv's caliper tool) - see
     // CaliperTool.h.
-    void toggleMeasureDistance();
     bool measureDistanceEnabled() const { return measureEnabled_; }
     // Diagonal / Horizontal / Vertical (giv's three Measure Distance tools).
     // Selecting a mode turns the caliper on in it; selecting the active mode
     // again turns it off, as in giv's menu_measure_distance().
     void toggleMeasureMode(giv::MeasureMode mode);
+    // Switches the tool on in `mode` (or just changes the mode if already on).
+    void setMeasureMode(giv::MeasureMode mode);
+    void setMeasureEnabled(bool enabled); // keeps the current mode
     giv::MeasureMode measureMode() const { return measureMode_; }
 
     // Tools > Calibrate Pixel Size - see CalibratePanel.h. Reapplied to
@@ -513,6 +515,7 @@ private:
 
     vsg::ref_ptr<giv::CaliperTool> caliperTool_;
     giv::MeasureMode measureMode_ = giv::MeasureMode::Diagonal;
+    void applyMeasureState(); // pushes measureEnabled_/measureMode_ to the caliper tool and signals
     bool measureEnabled_ = false;
     double pixelSize_ = 1.0; // see setPixelCalibration()
     std::string pixelSizeUnit_;
