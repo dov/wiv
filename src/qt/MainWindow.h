@@ -139,7 +139,9 @@ private:
     QAction* firstImageAction_ = nullptr;
     QAction* lastImageAction_ = nullptr;
     QAction* showMarksAction_ = nullptr;
-    QAction* measureDistanceAction_ = nullptr;
+    QAction* measureDistanceAction_ = nullptr;           // diagonal
+    QAction* measureDistanceHorizontalAction_ = nullptr;
+    QAction* measureDistanceVerticalAction_ = nullptr;
     QAction* contrastAction_ = nullptr;
     QAction* colorTableAction_ = nullptr;
     QMenu* recentFilesMenu_ = nullptr;

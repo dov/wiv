@@ -232,6 +232,11 @@ public:
     // CaliperTool.h.
     void toggleMeasureDistance();
     bool measureDistanceEnabled() const { return measureEnabled_; }
+    // Diagonal / Horizontal / Vertical (giv's three Measure Distance tools).
+    // Selecting a mode turns the caliper on in it; selecting the active mode
+    // again turns it off, as in giv's menu_measure_distance().
+    void toggleMeasureMode(giv::MeasureMode mode);
+    giv::MeasureMode measureMode() const { return measureMode_; }
 
     // Tools > Calibrate Pixel Size - see CalibratePanel.h. Reapplied to
     // caliperTool_ on every scene rebuild (it's recreated each time - see
@@ -365,6 +370,8 @@ signals:
     void cursorWorldPosition(double x, double y);
     void imageChanged(int index, int count, QString filename);
     void measurementChanged(QString text);
+    // The Measure Distance tool was switched on/off or changed mode (`mode` is a giv::MeasureMode).
+    void measureModeChanged(bool enabled, int mode);
 
     // Emitted on every left/middle/right button press, with the click's
     // world-space (x,y), the vsg button number (1/2/3), and Qt keyboard
@@ -480,6 +487,7 @@ private:
     vsg::ref_ptr<giv::BalloonController> balloonController_;
 
     vsg::ref_ptr<giv::CaliperTool> caliperTool_;
+    giv::MeasureMode measureMode_ = giv::MeasureMode::Diagonal;
     bool measureEnabled_ = false;
     double pixelSize_ = 1.0; // see setPixelCalibration()
     std::string pixelSizeUnit_;

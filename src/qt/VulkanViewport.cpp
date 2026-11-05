@@ -1040,6 +1040,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     caliperTool_->waitForGpuIdle = [this]() { return waitForGpuIdle(); };
     caliperTool_->onMeasurementText = [this](const std::string& text) { emit measurementChanged(QString::fromStdString(text)); };
     caliperTool_->setPixelSize(pixelSize_, pixelSizeUnit_);
+    caliperTool_->setMode(measureMode_);
     caliperTool_->setEnabled(wasMeasureEnabled);
     viewer_->addEventHandler(caliperTool_);
     measureEnabled_ = wasMeasureEnabled;
@@ -2999,9 +3000,23 @@ void VulkanViewport::toggleShowPixelGrid()
 
 void VulkanViewport::toggleMeasureDistance()
 {
-    measureEnabled_ = !measureEnabled_;
-    spdlog::info("Measure Distance Diagonal set to {}", measureEnabled_);
-    if (caliperTool_) caliperTool_->setEnabled(measureEnabled_);
+    toggleMeasureMode(giv::MeasureMode::Diagonal);
+}
+
+void VulkanViewport::toggleMeasureMode(giv::MeasureMode mode)
+{
+    // Picking the active mode again switches the tool off; picking another
+    // one switches the mode and leaves the tool on.
+    bool turnOff = measureEnabled_ && measureMode_ == mode;
+    measureEnabled_ = !turnOff;
+    measureMode_ = mode;
+    spdlog::info("Measure Distance mode {} set to {}", static_cast<int>(mode), measureEnabled_);
+    if (caliperTool_)
+    {
+        caliperTool_->setMode(mode);
+        caliperTool_->setEnabled(measureEnabled_);
+    }
+    emit measureModeChanged(measureEnabled_, static_cast<int>(mode));
     viewer_->request();
 }
 

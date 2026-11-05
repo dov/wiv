@@ -32,6 +32,20 @@
 namespace giv
 {
 
+// Which distance the caliper reports, as in giv's Tools > Measure Distance
+// Diagonal/Horizontal/Vertical and the reference application's ECaliperMode. In Horizontal /
+// Vertical mode the second jaw is constrained to the first jaw's row / column
+// (the raw, unconstrained position is kept, so switching back to Diagonal
+// restores the free caliper) and an axis marker line is drawn through each
+// jaw, perpendicular to the measuring direction, plus a thin guide from the
+// constrained jaw to where the cursor actually is.
+enum class MeasureMode
+{
+    Diagonal,
+    Horizontal,
+    Vertical
+};
+
 class CaliperTool : public vsg::Inherit<vsg::Visitor, CaliperTool>
 {
 public:
@@ -47,6 +61,10 @@ public:
 
     void setEnabled(bool enabled);
     bool enabled() const { return enabled_; }
+
+    // Switches the measuring mode, redrawing an existing caliper in it.
+    void setMode(MeasureMode mode);
+    MeasureMode mode() const { return mode_; }
 
     void apply(vsg::ButtonPressEvent& event) override;
     void apply(vsg::ButtonReleaseEvent& event) override;
@@ -141,6 +159,7 @@ private:
     // the same way as the jaws' mesh and for the same reason.
     vsg::ref_ptr<vsg::StateGroup> labelStateGroup_;
 
+    MeasureMode mode_ = MeasureMode::Diagonal;
     bool enabled_ = false;
     bool haveCaliper_ = false;    // a *completed* (released) diagonal exists
     int draggingPart_ = kNoPart;  // part being dragged, or kNoPart
@@ -154,6 +173,10 @@ private:
     double pixelSize_ = 1.0; // real-world units per image pixel - see setPixelSize()
     std::string unit_;
     double lastDistPx_ = 0.0; // see lastDistancePixels()
+
+    // p1_ with the Horizontal/Vertical constraint applied (p1_ itself is the
+    // raw jaw position, which may differ from it).
+    vsg::dvec2 effectiveP1() const;
 
     vsg::dvec2 windowToWorld(int32_t x, int32_t y) const;
     VkExtent2D currentExtent() const;
