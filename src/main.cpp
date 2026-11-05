@@ -112,6 +112,8 @@ int main(int argc, char** argv)
     // which QCommandLineParser can't express: pull them out of argv first.
     std::vector<char*> filteredArgv;
     bool hasZoom = false;
+    bool hasGeometryArg = false;
+    QString geometryArg;
     double zoomValues[3] = {1, 0, 0};
     for (int i = 0; i < argc; ++i)
     {
@@ -120,6 +122,16 @@ int main(int argc, char** argv)
             hasZoom = true;
             for (int k = 0; k < 3; ++k) zoomValues[k] = QString(argv[i + 1 + k]).toDouble();
             i += 3;
+            continue;
+        }
+        // Qt's xcb platform plugin consumes -geometry/--geometry itself (as
+        // an X11 window geometry, which the window ignores here), so take
+        // it out of argv before QApplication sees it.
+        if (i > 0 && std::string(argv[i]) == "--geometry" && i + 1 < argc)
+        {
+            geometryArg = argv[i + 1];
+            hasGeometryArg = true;
+            ++i;
             continue;
         }
         filteredArgv.push_back(argv[i]);
@@ -194,6 +206,8 @@ int main(int argc, char** argv)
     parser.addOption(autoReloadOption);
     QCommandLineOption actualPixelsOption("n", "Initially use 1:1 zoom instead of fitting to the window.");
     parser.addOption(actualPixelsOption);
+    QCommandLineOption exportOption("export", "Render to this image file (size from --geometry, default 800x600) and exit.", "file");
+    parser.addOption(exportOption);
     QCommandLineOption logFileOption("log_file", "Also log to this file.", "file");
     parser.addOption(logFileOption);
     // Handled above, before QApplication; declared so --help lists them and
@@ -221,9 +235,9 @@ int main(int argc, char** argv)
 
     givqt::MainWindow window;
 
-    if (parser.isSet(geometryOption))
+    if (hasGeometryArg)
     {
-        QString geom = parser.value(geometryOption);
+        QString geom = geometryArg;
         auto xpos = geom.indexOf('x', 0, Qt::CaseInsensitive);
         if (xpos > 0)
         {
@@ -253,6 +267,19 @@ int main(int argc, char** argv)
     // visible (empty-canvas) main window, instead of over one that's not
     // shown yet - which otherwise left the dialog an orphaned, unresponsive
     // top-level with no visible parent underneath it.
+    if (parser.isSet(exportOption))
+    {
+        int w = 800, h = 600;
+        const QString geom = geometryArg;
+        const int xpos = geom.indexOf('x', 0, Qt::CaseInsensitive);
+        if (hasGeometryArg && xpos > 0)
+        {
+            w = geom.left(xpos).toInt();
+            h = geom.mid(xpos + 1).toInt();
+        }
+        window.setStartupExport(parser.value(exportOption), w, h);
+    }
+
     window.show();
 
     if (parser.isSet(autoReloadOption)) window.enableAutoReload();

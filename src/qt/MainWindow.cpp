@@ -64,6 +64,8 @@
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
+#include <QCoreApplication>
+#include <QFileDialog>
 #include <QMessageBox>
 #include <QSettings>
 #include <QShowEvent>
@@ -412,6 +414,9 @@ void MainWindow::buildMenus()
     updateRecentFilesMenu();
 
     fileMenu->addSeparator();
+    auto exportAction = fileMenu->addAction("&Export...", this, &MainWindow::exportImage);
+    exportAction->setShortcut(QKeySequence("Ctrl+E"));
+
     auto reloadAction = fileMenu->addAction("&Reload", this, &MainWindow::reloadFiles);
     reloadAction->setShortcuts({QKeySequence(Qt::Key_Return), QKeySequence(Qt::Key_Enter)});
 
@@ -1065,6 +1070,27 @@ void MainWindow::loadFiles(const std::vector<std::string>& paths)
     addRecentFile(expanded.first());
 }
 
+void MainWindow::exportImage()
+{
+    spdlog::info("User invoked File > Export...");
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+    QString lastDir = settings.value("lastExportDir", QDir::currentPath()).toString();
+    QString suggested = QDir(lastDir).filePath(QFileInfo(loadedBaseName_.section(", ", 0, 0)).completeBaseName() + ".png");
+    QString path = QFileDialog::getSaveFileName(this, "Export Image", suggested,
+                                                "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp)");
+    if (path.isEmpty()) return;
+    if (QFileInfo(path).suffix().isEmpty()) path += ".png";
+    settings.setValue("lastExportDir", QFileInfo(path).absolutePath());
+
+    // What is on screen, at the size of the view.
+    QSize size = viewport_->size() * viewport_->devicePixelRatioF();
+    VulkanViewport::ExportView view;
+    view.kind = VulkanViewport::ExportView::Kind::Current;
+    QString error;
+    if (!viewport_->exportImage(path, size.width(), size.height(), view, &error))
+        QMessageBox::critical(this, "Export", QString("Could not export the image: %1").arg(error));
+}
+
 void MainWindow::loadFilesJoined(const std::vector<std::string>& paths)
 {
     if (paths.empty()) return;
@@ -1129,6 +1155,25 @@ void MainWindow::showEvent(QShowEvent* event)
                 viewport_->zoomActualPixels();
             else
                 viewport_->fitToWindow();
+
+            if (!startupExportPath_.isEmpty())
+            {
+                VulkanViewport::ExportView exportView;
+                if (startupZoom_)
+                {
+                    exportView.kind = VulkanViewport::ExportView::Kind::Explicit;
+                    exportView.scale = startupZoomValues_[0];
+                    exportView.centerX = startupZoomValues_[1];
+                    exportView.centerY = startupZoomValues_[2];
+                }
+                else if (startupActualPixels_)
+                    exportView.kind = VulkanViewport::ExportView::Kind::ActualPixels;
+                QString error;
+                bool ok = viewport_->exportImage(startupExportPath_, startupExportSize_.width(),
+                                                  startupExportSize_.height(), exportView, &error);
+                if (!ok) std::fprintf(stderr, "Export failed: %s\n", qPrintable(error));
+                QCoreApplication::exit(ok ? 0 : 1);
+            }
         },
         Qt::QueuedConnection);
 }

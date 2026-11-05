@@ -85,6 +85,16 @@ public:
         startupZoomValues_[2] = shiftY;
     }
 
+    // giv's --export: once the window has settled after the first show,
+    // render the scene off-screen at width x height (the view follows the
+    // startup view options: fit by default) to `path`, then exit the
+    // application (status 1 if that failed).
+    void setStartupExport(const QString& path, int width, int height)
+    {
+        startupExportPath_ = path;
+        startupExportSize_ = QSize(width, height);
+    }
+
     // giv's --auto-reload: same as ticking View > Auto Reload.
     void enableAutoReload();
 
@@ -232,6 +242,8 @@ private:
     // doc comment.
     bool firstShow_ = true;
     bool startupActualPixels_ = false;
+    QString startupExportPath_;
+    QSize startupExportSize_;
     bool startupZoom_ = false;
     double startupZoomValues_[3] = {1, 0, 0};
 
@@ -245,6 +257,7 @@ private:
     void addRecentFile(const QString& path);
     void loadFilesInternal(const std::vector<std::string>& paths);
     void reloadFiles();
+    void exportImage(); // File > Export...
     void setAutoReload(bool enable);
 
     // Rescans the directory of `loadedPath` for giv-compatible files (see

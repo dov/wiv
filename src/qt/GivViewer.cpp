@@ -62,6 +62,7 @@ void GivViewer::renderFrame(double simulationTime)
         update();
         if (kTiming) { tUpdate_ += msSince(tPhase); tPhase = Clock::now(); }
         recordAndSubmit();
+        ++framesSubmitted;
         if (kTiming) { tRecord_ += msSince(tPhase); tPhase = Clock::now(); }
         present();
         if (kTiming) { tPresent_ += msSince(tPhase); tPhase = Clock::now(); }

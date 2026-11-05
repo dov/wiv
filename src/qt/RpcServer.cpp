@@ -129,7 +129,7 @@ QJsonValue RpcServer::dispatch(const QString& method, const QJsonArray& params, 
             "get_transformation | set_transformation [sx, sy, shx, shy] | pick_coordinate | "
             "list_actions | trigger_action id [checked] | resize_window [w, h] | "
             "set_colormap [name] | set_contrast [min, max] | mouse_move [x, y] (default: viewport centre) | "
-            " screenshot filename [\"window\"|\"viewport\"]");
+            "export_image [filename, width, height] | screenshot filename [\"window\"|\"viewport\"]");
 
     if (method == "load_file")
     {
@@ -185,6 +185,28 @@ QJsonValue RpcServer::dispatch(const QString& method, const QJsonArray& params, 
         }
         viewport_->setTransformation(params[0].toDouble(), params[1].toDouble(), params[2].toDouble(),
                                       params[3].toDouble());
+        return true;
+    }
+
+    if (method == "export_image")
+    {
+        if (params.isEmpty() || !params[0].isString())
+        {
+            error = "export_image requires a filename string parameter";
+            return {};
+        }
+        // The current view (scale and center) at the given size, by default
+        // the size of the viewport.
+        QSize size = viewport_->size() * viewport_->devicePixelRatioF();
+        if (params.size() >= 3) size = QSize(params[1].toInt(), params[2].toInt());
+        VulkanViewport::ExportView view;
+        view.kind = VulkanViewport::ExportView::Kind::Current;
+        QString exportError;
+        if (!viewport_->exportImage(params[0].toString(), size.width(), size.height(), view, &exportError))
+        {
+            error = exportError;
+            return {};
+        }
         return true;
     }
 

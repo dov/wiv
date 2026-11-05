@@ -358,6 +358,28 @@ public:
     void getTransformation(double& scaleX, double& scaleY, double& shiftX, double& shiftY) const;
     void setTransformation(double scaleX, double scaleY, double shiftX, double shiftY);
 
+    // View to render in exportImage(). Kinds that don't carry their own scale
+    // and center derive them from the content or the on-screen view.
+    struct ExportView
+    {
+        enum class Kind
+        {
+            Fit,          // whole content, fit into the export size
+            Current,      // the on-screen view's scale (pixels per unit) and center
+            ActualPixels, // 1 pixel per world unit, centered on the content
+            Explicit,     // `scale` pixels per world unit centered on world (centerX, centerY), as set_transformation
+        };
+        Kind kind = Kind::Fit;
+        double scale = 1.0, centerX = 0.0, centerY = 0.0;
+    };
+
+    // Renders the scene off-screen at width x height pixels (independent of
+    // the window size) and saves it to `path`; the format follows the file
+    // extension (whatever QImage can write: png, jpg, bmp, ...). The
+    // Measure Distance overlay is not included. Must run on the GUI thread
+    // with the window shown. Returns false and sets *error on failure.
+    bool exportImage(const QString& path, int width, int height, const ExportView& view, QString* error = nullptr);
+
 signals:
     void sceneLoaded();
     // The animation's state changed (frame shown, play/pause, speed, or one
@@ -480,6 +502,9 @@ private:
     // rescale run (which is what was producing a non-isotropic stretch no
     // amount of camera-side fixing could touch).
     vsg::ref_ptr<vsg::RenderGraph> renderGraph_;
+    vsg::ref_ptr<vsg::Group> sceneGraph_;               // the display scene; also drawn off-screen by exportImage()
+    vsg::ref_ptr<vsg::CommandGraph> mainCommandGraph_;  // the window's command graph
+    float exportWorldPerPixel_ = 0.0f;                  // >0 only while exportImage() renders its frame
     vsg::ref_ptr<giv::PanZoomHandler> panZoom_;
     QTimer* zoomTimer_ = nullptr; // ticks panZoom_->advance() during a wheel-zoom motion
     vsg::ref_ptr<giv::LabelPicker> labelPicker_;
