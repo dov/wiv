@@ -63,6 +63,7 @@ struct TextItem
 struct Dataset
 {
     std::string pathName;
+    std::string sourceFile; // file the dataset was parsed from ("string" for parseString); shown as the Mark Browser's top-level node
     std::string balloon;
 
     Color color = Color::opaque(1, 0, 0, 1);

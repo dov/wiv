@@ -2,6 +2,7 @@
 
 #include "VulkanViewport.h"
 
+#include <QFileInfo>
 #include <QHeaderView>
 #include <QTreeWidget>
 #include <QVBoxLayout>
@@ -78,13 +79,25 @@ void MarkTreeView::rebuildFromScene()
             }
         }
 
-        QTreeWidgetItem* parentItem = nullptr;
-        std::string cumulative;
+        // Top-level node named after the dataset's source file, so a whole
+        // file can be shown or hidden at once. giv keys its tree nodes by
+        // "basename///path" too (so same-named $paths from different files
+        // stay apart) but doesn't show the file as a node; we do.
+        const std::string& source = ds.sourceFile;
+        std::string fileLabel = source.empty() ? std::string("(unnamed)")
+                                               : QFileInfo(QString::fromStdString(source)).fileName().toStdString();
+        Node* fileNode = getOrCreateNode(source + "///", nullptr, fileLabel);
+        fileNode->datasetIndices.push_back(i);
+        fileNode->pointCount += static_cast<long long>(ds.pointCount());
+        if (ds.isVisible) fileNode->anyVisible = true;
+
+        QTreeWidgetItem* parentItem = fileNode->item;
+        std::string cumulative; // path below the file node
         Node* leafNode = nullptr;
         for (const auto& segment : segments)
         {
             cumulative = cumulative.empty() ? segment : cumulative + "/" + segment;
-            Node* node = getOrCreateNode(cumulative, parentItem, segment);
+            Node* node = getOrCreateNode(source + "///" + cumulative, parentItem, segment);
             node->datasetIndices.push_back(i);
             node->pointCount += static_cast<long long>(ds.pointCount());
             parentItem = node->item;
@@ -94,6 +107,9 @@ void MarkTreeView::rebuildFromScene()
     }
 
     for (auto& node : nodes_) node->item->setText(2, QString::number(node->pointCount));
+    // A file node is unchecked only if every dataset in it starts hidden ($hide).
+    for (auto& node : nodes_)
+        if (!node->item->parent() && !node->anyVisible) node->item->setCheckState(1, Qt::Unchecked);
 
     tree_->expandAll();
     updatingCheckState_ = false;
