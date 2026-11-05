@@ -171,7 +171,7 @@ in Edit > Preferences > Keyboard.
 - Multi-slice volumes (FITS cubes, DICOM multi-frame, 3D npy): slice
   stepping, `Slice N/M` in status bar, per-slice histogram.
 - Tools > Measure Distance submenu (`Z` toggles): Diagonal, Horizontal and Vertical caliper modes (mode remembered), draggable jaws with highlight and crosshair/hand cursors, status-bar messages.
-- Count Marks (`C`): caliper rectangle that counts the `.giv` marks inside it.
+- Count Marks (`N`): caliper rectangle that counts the `.giv` marks inside it.
 - Calibrate Pixel Size panel (`S`): set real-world units per pixel from a
   known value, last measurement, or image width/height; caliper then reads in
   real units.
