@@ -125,7 +125,9 @@ struct Dataset
     // the point arrays above). When isSprite is set, the x/y/op arrays
     // above are empty and doDrawMarks/doDrawLines/doDrawPolygon are moot.
     bool isSprite = false;
-    std::vector<unsigned char> spriteRGBA; // spriteWidth*spriteHeight*4, top-to-bottom
+    // spriteWidth*spriteHeight*4, top-to-bottom. Shared (immutable) so that
+    // $svgmarks copies of one sprite reuse one buffer and one GPU texture.
+    std::shared_ptr<const std::vector<unsigned char>> spriteRGBA;
     int spriteWidth = 0;
     int spriteHeight = 0;
     double spriteX = 0.0, spriteY = 0.0;

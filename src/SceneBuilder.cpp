@@ -3,6 +3,7 @@
 
 
 #include <algorithm>
+#include <map>
 #include <array>
 #include <cctype>
 #include <chrono>
@@ -1805,10 +1806,11 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
         lastEnd = r.start + r.count;
     };
 
+    std::map<const void*, vsg::ref_ptr<vsg::DescriptorSet>> spriteDescriptorSets;
     for (size_t dsIdx = 0; dsIdx < scene.datasets.size(); ++dsIdx)
     {
         const Dataset& spriteDs = scene.datasets[dsIdx];
-        if (spriteDs.isSprite && spriteDs.isVisible && spriteBind && !spriteDs.spriteRGBA.empty())
+        if (spriteDs.isSprite && spriteDs.isVisible && spriteBind && spriteDs.spriteRGBA && !spriteDs.spriteRGBA->empty())
         {
             const float x0 = static_cast<float>(spriteDs.spriteX);
             const float y0 = static_cast<float>(spriteDs.spriteY);
@@ -1819,15 +1821,21 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             auto positions = vsg::vec2Array::create({{x0, -y0}, {x0 + w, -y0}, {x0 + w, -(y0 + h)}, {x0, -(y0 + h)}});
             auto uvs = vsg::vec2Array::create({{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}});
 
-            auto textureData = vsg::ubvec4Array2D::create(static_cast<uint32_t>(spriteDs.spriteWidth),
-                                                             static_cast<uint32_t>(spriteDs.spriteHeight),
-                                                             vsg::Data::Properties{VK_FORMAT_R8G8B8A8_UNORM});
-            std::memcpy(textureData->dataPointer(), spriteDs.spriteRGBA.data(), spriteDs.spriteRGBA.size());
+            // $svgmarks copies of one sprite share their pixel buffer; share
+            // the GPU texture/descriptor set too.
+            auto& descriptorSet = spriteDescriptorSets[spriteDs.spriteRGBA.get()];
+            if (!descriptorSet)
+            {
+                auto textureData = vsg::ubvec4Array2D::create(static_cast<uint32_t>(spriteDs.spriteWidth),
+                                                                 static_cast<uint32_t>(spriteDs.spriteHeight),
+                                                                 vsg::Data::Properties{VK_FORMAT_R8G8B8A8_UNORM});
+                std::memcpy(textureData->dataPointer(), spriteDs.spriteRGBA->data(), spriteDs.spriteRGBA->size());
 
-            auto descriptorImage =
-                vsg::DescriptorImage::create(spriteSampler, textureData, 0, 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-            auto descriptorSet =
-                vsg::DescriptorSet::create(spritePipelineLayout->setLayouts[0], vsg::Descriptors{descriptorImage});
+                auto descriptorImage =
+                    vsg::DescriptorImage::create(spriteSampler, textureData, 0, 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+                descriptorSet =
+                    vsg::DescriptorSet::create(spritePipelineLayout->setLayouts[0], vsg::Descriptors{descriptorImage});
+            }
             auto bindDescriptorSet =
                 vsg::BindDescriptorSet::create(VK_PIPELINE_BIND_POINT_GRAPHICS, spritePipelineLayout, 0, descriptorSet);
 

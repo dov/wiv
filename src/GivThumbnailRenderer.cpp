@@ -188,9 +188,9 @@ void renderDataset(QPainter& painter, const Dataset& ds, const RenderContext& ct
     if (ds.isSprite)
     {
         if (ds.spriteWidth > 0 && ds.spriteHeight > 0 &&
-            ds.spriteRGBA.size() >= static_cast<size_t>(ds.spriteWidth) * static_cast<size_t>(ds.spriteHeight) * 4)
+            ds.spriteRGBA && ds.spriteRGBA->size() >= static_cast<size_t>(ds.spriteWidth) * static_cast<size_t>(ds.spriteHeight) * 4)
         {
-            QImage sprite(ds.spriteRGBA.data(), ds.spriteWidth, ds.spriteHeight, ds.spriteWidth * 4, QImage::Format_RGBA8888);
+            QImage sprite(ds.spriteRGBA->data(), ds.spriteWidth, ds.spriteHeight, ds.spriteWidth * 4, QImage::Format_RGBA8888);
             const QPointF topLeft = ctx.toPixel(ds.spriteX, ds.spriteY);
             const QPointF bottomRight = ctx.toPixel(ds.spriteX + ds.spriteW, ds.spriteY + ds.spriteH);
             painter.drawImage(QRectF(topLeft, bottomRight), sprite);
