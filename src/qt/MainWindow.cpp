@@ -537,7 +537,7 @@ void MainWindow::buildMenus()
     pixelGridAction_->setCheckable(true);
     pixelGridAction_->setShortcut(QKeySequence("G"));
 
-    auto glyphSizesAction = viewMenu->addAction("Glyph Sizes...", this, &MainWindow::showGlyphSizeDialog);
+    auto glyphSizesAction = viewMenu->addAction("Glyph Appearance...", this, &MainWindow::showGlyphSizeDialog);
     glyphSizesAction->setShortcut(QKeySequence("Ctrl+G"));
 
     subPixelAction_ = viewMenu->addAction("Sub-pixel Coordinates");
@@ -2066,7 +2066,7 @@ void MainWindow::buildContrastDock()
 
 void MainWindow::showGlyphSizeDialog()
 {
-    spdlog::info("User opened Glyph Sizes panel");
+    spdlog::info("User opened Glyph Appearance panel");
     if (!glyphSizeDialog_) glyphSizeDialog_ = new GlyphSizeDialog(viewport_, this);
     glyphSizeDialog_->show();
     glyphSizeDialog_->raise();

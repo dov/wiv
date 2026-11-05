@@ -33,25 +33,23 @@ constexpr RowInfo kRowInfo[] = {
     {"Mark size", VulkanViewport::GlyphScale::Marks},
     {"Line width", VulkanViewport::GlyphScale::Lines},
     {"Quiver length", VulkanViewport::GlyphScale::Quivers},
+    {"Opacity", VulkanViewport::GlyphScale::Alpha},
 };
 } // namespace
 
 GlyphSizeDialog::GlyphSizeDialog(VulkanViewport* viewport, QWidget* parent) : QDialog(parent), viewport_(viewport)
 {
-    setWindowTitle("Glyph Sizes");
-
-    const int lo = scaleToSlider(VulkanViewport::kGlyphScaleMin);
-    const int hi = scaleToSlider(VulkanViewport::kGlyphScaleMax);
+    setWindowTitle("Glyph Appearance");
 
     auto* grid = new QGridLayout();
     for (int i = 0; i < kRows; ++i)
     {
         const auto which = kRowInfo[i].which;
         sliders_[i] = new QSlider(Qt::Horizontal, this);
-        sliders_[i]->setRange(lo, hi);
+        sliders_[i]->setRange(scaleToSlider(VulkanViewport::glyphScaleMin(which)), scaleToSlider(VulkanViewport::glyphScaleMax(which)));
         sliders_[i]->setMinimumWidth(220);
         spins_[i] = new QDoubleSpinBox(this);
-        spins_[i]->setRange(VulkanViewport::kGlyphScaleMin, VulkanViewport::kGlyphScaleMax);
+        spins_[i]->setRange(VulkanViewport::glyphScaleMin(which), VulkanViewport::glyphScaleMax(which));
         spins_[i]->setDecimals(2);
         spins_[i]->setSingleStep(0.1);
         spins_[i]->setPrefix(QString::fromUtf8("×"));
@@ -71,8 +69,9 @@ GlyphSizeDialog::GlyphSizeDialog(VulkanViewport* viewport, QWidget* parent) : QD
 
     auto* hint = new QLabel(
         "Mouse: Ctrl+left-drag up/down = mark size, left/right = quiver length;\n"
-        "Ctrl+right-drag left/right = line width; Alt+wheel = quiver length.\n"
-        "Shift speeds the drags up. Sizes apply to the whole view and are not saved in the file.",
+        "Ctrl+right-drag left/right = line width, up/down = opacity; Alt+wheel = quiver length.\n"
+        "Opacity multiplies marks, lines and fills (Force Opaque overrides it).\n"
+        "Shift speeds the drags up. Settings apply to the whole view and are not saved in the file.",
         this);
     hint->setWordWrap(true);
 

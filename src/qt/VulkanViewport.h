@@ -191,10 +191,13 @@ public:
     // fixed lengths. All three are shader uniforms (see giv::ViewParams), so
     // changing them never rebuilds the scene. They persist across file loads
     // until reset. Driven by Ctrl+LMB/RMB drags, Alt+wheel (quiver) and the
-    // View > Glyph Sizes panel.
-    enum class GlyphScale { Marks = 0, Lines = 1, Quivers = 2 };
-    static constexpr float kGlyphScaleMin = 0.05f;
-    static constexpr float kGlyphScaleMax = 50.0f;
+    // View > Glyph Appearance panel. (Alpha multiplies marks/lines/fills alpha.)
+    enum class GlyphScale { Marks = 0, Lines = 1, Quivers = 2, Alpha = 3 };
+    static constexpr int kGlyphScaleCount = 4;
+    // Alpha is a multiplier on the file's alpha (the result is clamped to 1 in
+    // the shaders), so it needs far less headroom than the size factors.
+    static constexpr float glyphScaleMin(GlyphScale) { return 0.05f; }
+    static constexpr float glyphScaleMax(GlyphScale which) { return which == GlyphScale::Alpha ? 4.0f : 50.0f; }
     float glyphScale(GlyphScale which) const { return glyphScale_[static_cast<int>(which)]; }
     void setGlyphScale(GlyphScale which, float scale);
     void scaleGlyph(GlyphScale which, double factor) { setGlyphScale(which, glyphScale(which) * static_cast<float>(factor)); }
@@ -481,7 +484,7 @@ private:
     bool globalShowMarks_ = true;
     bool forceOpaque_ = false;
     bool showPixelGrid_ = false;
-    float glyphScale_[3] = {1.0f, 1.0f, 1.0f}; // see GlyphScale
+    float glyphScale_[kGlyphScaleCount] = {1.0f, 1.0f, 1.0f, 1.0f}; // see GlyphScale
     bool flipHorizontal_ = false;
     bool flipVertical_ = false;
     int quarterTurns_ = 0; // counter-clockwise, 0..3
