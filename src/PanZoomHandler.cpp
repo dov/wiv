@@ -16,12 +16,28 @@ void PanZoomHandler::apply(vsg::ButtonPressEvent& event)
     // giv uses middle-mouse-button-drag to pan (standard image-viewer
     // convention); button 2 is the middle button in vsg's raw button
     // numbering (1=left, 2=middle, 3=right), matching vsg::BUTTON_MASK_2.
-    if (event.button == 2 || (event.button == 1 && leftDragPans && leftDragPans()))
+    if (event.button == 1 && onMarkZoom && (QGuiApplication::keyboardModifiers() & Qt::ControlModifier))
+    {
+        // Ctrl+left-drag scales the pixel-sized marks.
+        markZoomDragging_ = true;
+        markZoomStartX_ = markZoomLastX_ = event.x;
+        markZoomStartY_ = markZoomLastY_ = event.y;
+        markZoomAxis_ = MarkZoomAxis::Undecided;
+        event.handled = true; // keep other tools (caliper) from starting a gesture
+    }
+    else if (event.button == 2 || (event.button == 1 && leftDragPans && leftDragPans()))
     {
         dragging_ = true;
         dragButton_ = event.button;
         lastX_ = event.x;
         lastY_ = event.y;
+    }
+    else if (event.button == 3 && onLineWidthZoom && (QGuiApplication::keyboardModifiers() & Qt::ControlModifier))
+    {
+        // Ctrl+right-drag scales line widths instead of zooming the canvas.
+        lineWidthDragging_ = true;
+        lineWidthLastX_ = event.x;
+        event.handled = true;
     }
     else if (event.button == 3)
     {
@@ -46,6 +62,8 @@ void PanZoomHandler::apply(vsg::ButtonReleaseEvent& event)
 {
     if (event.button == dragButton_) dragging_ = false;
     if (event.button == 3) zoomDragging_ = false;
+    if (event.button == 3) lineWidthDragging_ = false;
+    if (event.button == 1) markZoomDragging_ = false;
 }
 
 void PanZoomHandler::apply(vsg::MoveEvent& event)
@@ -69,6 +87,55 @@ void PanZoomHandler::apply(vsg::MoveEvent& event)
     // resync against it rather than trusting the flags alone.
     if (dragging_ && !(event.mask & (dragButton_ == 1 ? vsg::BUTTON_MASK_1 : vsg::BUTTON_MASK_2))) dragging_ = false;
     if (zoomDragging_ && !(event.mask & vsg::BUTTON_MASK_3)) zoomDragging_ = false;
+
+    if (markZoomDragging_ && !(event.mask & vsg::BUTTON_MASK_1)) markZoomDragging_ = false;
+    if (lineWidthDragging_ && !(event.mask & vsg::BUTTON_MASK_3)) lineWidthDragging_ = false;
+
+    if (lineWidthDragging_)
+    {
+        int32_t widthDx = event.x - lineWidthLastX_;
+        lineWidthLastX_ = event.x;
+        if (widthDx != 0 && onLineWidthZoom)
+            onLineWidthZoom(std::pow(1.01, static_cast<double>(widthDx) * (shiftHeld() ? 5.0 : 1.0)));
+    }
+
+
+    if (markZoomDragging_)
+    {
+        // Axis lock: the first kAxisLockPixels of motion pick vertical (mark
+        // size) or horizontal (quiver length); the other axis is then ignored
+        // until the button is released, so a sloppy diagonal drag changes
+        // only one thing.
+        constexpr int32_t kAxisLockPixels = 5;
+        if (markZoomAxis_ == MarkZoomAxis::Undecided)
+        {
+            int32_t totalDx = event.x - markZoomStartX_;
+            int32_t totalDy = event.y - markZoomStartY_;
+            if (std::max(std::abs(totalDx), std::abs(totalDy)) >= kAxisLockPixels)
+            {
+                markZoomAxis_ = std::abs(totalDy) >= std::abs(totalDx) ? MarkZoomAxis::Vertical : MarkZoomAxis::Horizontal;
+                // Count the motion so far, so the drag doesn't lose its first pixels.
+                markZoomLastX_ = markZoomStartX_;
+                markZoomLastY_ = markZoomStartY_;
+            }
+        }
+        if (markZoomAxis_ != MarkZoomAxis::Undecided)
+        {
+            const double speed = shiftHeld() ? 5.0 : 1.0;
+            if (markZoomAxis_ == MarkZoomAxis::Vertical)
+            {
+                int32_t markDy = event.y - markZoomLastY_;
+                markZoomLastY_ = event.y;
+                if (markDy != 0 && onMarkZoom) onMarkZoom(std::pow(1.01, -static_cast<double>(markDy) * speed));
+            }
+            else
+            {
+                int32_t markDx = event.x - markZoomLastX_;
+                markZoomLastX_ = event.x;
+                if (markDx != 0 && onQuiverZoom) onQuiverZoom(std::pow(1.01, static_cast<double>(markDx) * speed));
+            }
+        }
+    }
 
     int32_t dx = event.x - lastX_;
     int32_t dy = event.y - lastY_;

@@ -47,6 +47,18 @@ public:
     // drag slides away from the cursor. Defaults to the window's extent.
     std::function<VkExtent2D()> viewportExtent;
 
+    // Called (if set) with a multiplicative size factor while Ctrl+left-drag
+    // scales the non-scalable marks (up = bigger).
+    std::function<void(double)> onMarkZoom;
+
+    // Called (if set) with a multiplicative factor while Ctrl+left-drag moves
+    // horizontally (right = longer arrows). See onMarkZoom for the vertical axis.
+    std::function<void(double)> onQuiverZoom;
+
+    // Called (if set) with a multiplicative factor while Ctrl+right-drag moves
+    // horizontally (right = wider lines).
+    std::function<void(double)> onLineWidthZoom;
+
     // Called (if set) when a wheel step starts or retargets a zoom motion, so
     // the owner can call advance() every frame until it returns false.
     std::function<void()> onZoomStarted;
@@ -95,6 +107,20 @@ private:
     int32_t zoomAnchorX_ = 0;
     int32_t zoomAnchorY_ = 0;
     int32_t zoomLastY_ = 0;
+
+    // Ctrl+left-button drag: vertical motion scales the pixel-sized marks, horizontal
+    // motion the quiver arrows (axis chosen by the first few pixels).
+    bool markZoomDragging_ = false;
+    int32_t markZoomLastY_ = 0;
+    int32_t markZoomLastX_ = 0;
+    int32_t markZoomStartX_ = 0;
+    int32_t markZoomStartY_ = 0;
+    enum class MarkZoomAxis { Undecided, Vertical, Horizontal };
+    MarkZoomAxis markZoomAxis_ = MarkZoomAxis::Undecided;
+
+    // Ctrl+right-button drag: horizontal motion scales line widths.
+    bool lineWidthDragging_ = false;
+    int32_t lineWidthLastX_ = 0;
 
     // The zoom motion: the view moves from where it was at zoomStart_ by the
     // factor zoomTotal_ (a power of the profile) about the screen point

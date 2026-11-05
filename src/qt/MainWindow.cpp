@@ -8,6 +8,7 @@
 #include "ColorTablePanel.h"
 #include "ContrastPanel.h"
 #include "ExternalApps.h"
+#include "GlyphSizeDialog.h"
 #include "ImagePluginHost.h"
 #include "InstalledApps.h"
 #include "InfoPanel.h"
@@ -535,6 +536,9 @@ void MainWindow::buildMenus()
     pixelGridAction_ = viewMenu->addAction("Pixel Grid", viewport_, &VulkanViewport::toggleShowPixelGrid);
     pixelGridAction_->setCheckable(true);
     pixelGridAction_->setShortcut(QKeySequence("G"));
+
+    auto glyphSizesAction = viewMenu->addAction("Glyph Sizes...", this, &MainWindow::showGlyphSizeDialog);
+    glyphSizesAction->setShortcut(QKeySequence("Ctrl+G"));
 
     subPixelAction_ = viewMenu->addAction("Sub-pixel Coordinates");
     subPixelAction_->setCheckable(true);
@@ -2058,6 +2062,15 @@ void MainWindow::buildContrastDock()
     connect(contrastDock_, &QDockWidget::visibilityChanged, this, [this](bool visible) {
         if (visible) contrastPanel_->refreshForImage();
     });
+}
+
+void MainWindow::showGlyphSizeDialog()
+{
+    spdlog::info("User opened Glyph Sizes panel");
+    if (!glyphSizeDialog_) glyphSizeDialog_ = new GlyphSizeDialog(viewport_, this);
+    glyphSizeDialog_->show();
+    glyphSizeDialog_->raise();
+    glyphSizeDialog_->activateWindow();
 }
 
 void MainWindow::refreshInfoPanel()

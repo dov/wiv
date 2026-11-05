@@ -26,6 +26,7 @@ layout(set = 0, binding = 0) uniform ViewParams
 {
     vec4 params; // x = world units per screen pixel; y = force-opaque (giv's
                  // 'a' toggle, do_no_transparency); zw unused
+    vec4 params2; // x = live quiver length factor, y = live line width factor
 } vp;
 
 layout(location = 0) out vec4 fragColor;
@@ -36,9 +37,12 @@ void main()
 {
     vec2 p0 = inP0P1.xy;
     vec2 p1 = inP0P1.zw;
+    // dashOff < 0 flags a quiver shaft, built at ds.quiverScale: stretch it by
+    // the live quiver zoom so a drag needs no scene rebuild.
+    if (inWidthDash.z < 0.0) p1 = p0 + (p1 - p0) * vp.params2.x;
     // giv draws every line/outline/quiver shaft at a constant device-pixel
     // width regardless of zoom, so inWidthDash.x is a *pixel* half-width.
-    float halfWidth = inWidthDash.x * vp.params.x;
+    float halfWidth = inWidthDash.x * vp.params.x * vp.params2.y;
 
     vec2 dir = p1 - p0;
     float segLen = length(dir);

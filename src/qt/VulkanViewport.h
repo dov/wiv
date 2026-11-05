@@ -187,9 +187,18 @@ public:
     // own isVisible state (which the Mark Browser tree controls) - the two
     // are combined (AND) only at scene-build time, so toggling this back on
     // restores whatever the tree had set. Camera/pan state is preserved.
-    // Multiplies every dataset's quiverScale by `factor` and rebuilds the
-    // scene (giv's Alt+wheel quiver-arrow zoom).
-    void scaleQuivers(double factor);
+    // Global, live size factors for the glyphs a file sizes in pixels or
+    // fixed lengths. All three are shader uniforms (see giv::ViewParams), so
+    // changing them never rebuilds the scene. They persist across file loads
+    // until reset. Driven by Ctrl+LMB/RMB drags, Alt+wheel (quiver) and the
+    // View > Glyph Sizes panel.
+    enum class GlyphScale { Marks = 0, Lines = 1, Quivers = 2 };
+    static constexpr float kGlyphScaleMin = 0.05f;
+    static constexpr float kGlyphScaleMax = 50.0f;
+    float glyphScale(GlyphScale which) const { return glyphScale_[static_cast<int>(which)]; }
+    void setGlyphScale(GlyphScale which, float scale);
+    void scaleGlyph(GlyphScale which, double factor) { setGlyphScale(which, glyphScale(which) * static_cast<float>(factor)); }
+    void resetGlyphScales();
 
     bool eventFilter(QObject* watched, QEvent* event) override;
 
@@ -401,6 +410,8 @@ signals:
     // world-space (x,y), the vsg button number (1/2/3), and Qt keyboard
     // modifiers - feeds the json-rpc pick_coordinate command (RpcServer).
     void clicked(double x, double y, int button, int modifiers);
+    // Any glyph size factor changed (see GlyphScale).
+    void glyphScalesChanged();
 
     // Emitted whenever the current slice changes: on nextSlice()/
     // previousSlice(), and whenever decodeImageAt() (re)selects an image
@@ -422,6 +433,7 @@ signals:
     void toggleFullScreenRequested();
 
 private:
+    void applyGlyphScales(); // pushes glyphScale_ to the shader uniforms
     vsg::ref_ptr<vsg::WindowTraits> traits_;
     vsg::ref_ptr<GivViewer> viewer_;
     vsgQt::Window* window_ = nullptr; // owned by Qt (child of the container widget)
@@ -469,6 +481,7 @@ private:
     bool globalShowMarks_ = true;
     bool forceOpaque_ = false;
     bool showPixelGrid_ = false;
+    float glyphScale_[3] = {1.0f, 1.0f, 1.0f}; // see GlyphScale
     bool flipHorizontal_ = false;
     bool flipVertical_ = false;
     int quarterTurns_ = 0; // counter-clockwise, 0..3

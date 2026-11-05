@@ -982,6 +982,9 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
             updateScrollBars();
         };
         panZoom_->onClick = [this](double x, double y, int button, int modifiers) { emit clicked(x, y, button, modifiers); };
+        panZoom_->onMarkZoom = [this](double factor) { scaleGlyph(GlyphScale::Marks, factor); };
+        panZoom_->onQuiverZoom = [this](double factor) { scaleGlyph(GlyphScale::Quivers, factor); };
+        panZoom_->onLineWidthZoom = [this](double factor) { scaleGlyph(GlyphScale::Lines, factor); };
         panZoom_->verticalLock = verticalZoomLock_;
         // A wheel step zooms over a short motion: tick it from a timer (the
         // render loop is on demand) until it ends.
@@ -1080,6 +1083,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     viewer_->viewParams = builder.viewParams();
     viewer_->viewParams->setForceOpaque(forceOpaque_);
     viewer_->viewParams->setShowPixelGrid(showPixelGrid_);
+    applyGlyphScales();
     viewer_->imageFilterAnimator = builder.imageFilterAnimator();
 
     // loadedImages_ only ever holds the single currently-displayed image (see
@@ -1229,7 +1233,7 @@ bool VulkanViewport::eventFilter(QObject* watched, QEvent* event)
             {
                 QPoint d = we->angleDelta();
                 int amount = d.y() != 0 ? d.y() : d.x();
-                if (amount != 0) scaleQuivers(amount > 0 ? 1.2 : 0.8);
+                if (amount != 0) scaleGlyph(GlyphScale::Quivers, amount > 0 ? 1.2 : 0.8);
                 return true;
             }
             if (handleSwipe(we)) return true;
@@ -1377,13 +1381,31 @@ bool VulkanViewport::handleSwipe(QWheelEvent* we)
     return true;
 }
 
-void VulkanViewport::scaleQuivers(double factor)
+void VulkanViewport::applyGlyphScales()
 {
-    if (!hasScene_) return;
-    for (auto& ds : scene_.datasets) ds.quiverScale *= factor;
-    QString error;
-    if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
-        spdlog::error("{}", error.toStdString());
+    if (!viewer_ || !viewer_->viewParams) return;
+    viewer_->viewParams->setMarkZoom(glyphScale(GlyphScale::Marks));
+    viewer_->viewParams->setLineWidthZoom(glyphScale(GlyphScale::Lines));
+    viewer_->viewParams->setQuiverZoom(glyphScale(GlyphScale::Quivers));
+}
+
+void VulkanViewport::setGlyphScale(GlyphScale which, float scale)
+{
+    scale = std::clamp(scale, kGlyphScaleMin, kGlyphScaleMax);
+    float& slot = glyphScale_[static_cast<int>(which)];
+    if (slot == scale) return;
+    slot = scale;
+    applyGlyphScales();
+    if (viewer_) viewer_->request();
+    emit glyphScalesChanged();
+}
+
+void VulkanViewport::resetGlyphScales()
+{
+    for (float& s : glyphScale_) s = 1.0f;
+    applyGlyphScales();
+    if (viewer_) viewer_->request();
+    emit glyphScalesChanged();
 }
 
 void VulkanViewport::setShowMarks(bool show)
