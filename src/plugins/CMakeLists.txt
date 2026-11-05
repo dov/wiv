@@ -45,6 +45,15 @@ target_link_libraries(wiv_plugin_webp PRIVATE WebP::webp WebP::webpdemux)
 
 wiv_add_plugin(npy npy/npy_plugin.cpp)
 
+# NIfTI (.nii/.nii.gz) and OpenRaster/Krita (.ora/.kra): small self-contained
+# readers that only need zlib (already pulled in by libtiff/freetype).
+find_package(ZLIB REQUIRED)
+wiv_add_plugin(nifti nifti/nifti_plugin.cpp)
+target_link_libraries(wiv_plugin_nifti PRIVATE ZLIB::ZLIB)
+wiv_add_plugin(ora ora/ora_plugin.cpp)
+target_include_directories(wiv_plugin_ora PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
+target_link_libraries(wiv_plugin_ora PRIVATE ZLIB::ZLIB)
+
 wiv_add_plugin(dicom dicom/dicom_plugin.cpp)
 
 # cfitsio ships a CMake config (CFITSIO::cfitsio) via vcpkg, but Fedora's
