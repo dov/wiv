@@ -104,6 +104,11 @@ struct Dataset
     bool doDrawPolygonOutline = false;
     bool isVisible = true;
 
+    // $svgmarks reference as written in the file: the SVG is drawn at every
+    // point of this dataset. Expanded into ordinary vector datasets right after
+    // parsing (GivParser's expandSvgMarks), so SceneBuilder never sees it.
+    std::string svgMarkFile;
+
     // Animation frame this dataset belongs to ($frame), or -1 for the static
     // background drawn in every frame (everything before the first $frame).
     int frame = -1;

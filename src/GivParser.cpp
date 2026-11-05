@@ -7,6 +7,8 @@
 #include <charconv>
 #include <cctype>
 #include <cmath>
+#include <filesystem>
+#include <map>
 #include <cstdio>
 #include <cstring>
 
@@ -452,7 +454,14 @@ void GivParser::parseLine(Dataset& ds, const char* line, size_t len, SceneData& 
                 }
             }
         }
-        else if (w0 == "$marks_file" || w0 == "$svg" || w0 == "$svgmarks")
+        else if (w0 == "$svgmarks")
+        {
+            // Draw an SVG at every point of this dataset; expanded after parsing
+            // (see expandSvgMarks), once the dataset's points are known.
+            ds.svgMarkFile = tok.getRest(1);
+            ds.doDrawMarks = true;
+        }
+        else if (w0 == "$marks_file" || w0 == "$svg")
         {
             // Include another marks (.giv) or .svg file; loaded by parseBuffer once
             // this line is done (loading appends datasets, invalidating `ds`).
@@ -755,6 +764,106 @@ void GivParser::parseBuffer(const char* data, size_t size, SceneData& scene)
     }
 }
 
+namespace
+{
+
+// Resolves a $svgmarks reference: as given if it exists, else relative to the
+// directory of the .giv file (giv's own resolve_path behavior).
+std::string resolveSvgPath(const std::string& ref, const std::filesystem::path& baseDir)
+{
+    auto p = utf8ToPath(ref);
+    if (!p.is_absolute() && !std::filesystem::exists(p) && !baseDir.empty())
+    {
+        auto q = baseDir / p;
+        if (std::filesystem::exists(q)) return pathToUtf8(q);
+    }
+    return ref;
+}
+
+// Replaces $svgmarks references in datasets[startIdx..] by ordinary vector
+// datasets loaded through SvgLoader: the file is drawn at every point of the
+// owning dataset (SVG origin at the point, native size in world units, like
+// giv). The copies are merged into one dataset per SVG shape layer, not one
+// per point. Like giv, the SVGs do not take part in the auto-fit bounds (only
+// the dataset's own points do). A file that fails to load is skipped.
+void expandSvgMarks(SceneData& scene, size_t startIdx, const std::filesystem::path& baseDir)
+{
+    bool any = false;
+    for (size_t i = startIdx; i < scene.datasets.size(); ++i) any = any || !scene.datasets[i].svgMarkFile.empty();
+    if (!any) return;
+
+    std::map<std::string, SceneData> cache;
+    auto load = [&](const std::string& ref) -> const SceneData*
+    {
+        std::string path = resolveSvgPath(ref, baseDir);
+        auto it = cache.find(path);
+        if (it == cache.end())
+        {
+            SceneData tmp;
+            std::string err;
+            if (!loadSvgFile(path, tmp, err)) tmp = SceneData();
+            it = cache.emplace(path, std::move(tmp)).first;
+        }
+        return it->second.datasets.empty() ? nullptr : &it->second;
+    };
+
+    std::vector<Dataset> out;
+    out.reserve(scene.datasets.size());
+    for (size_t i = 0; i < startIdx; ++i) out.push_back(std::move(scene.datasets[i]));
+
+    for (size_t i = startIdx; i < scene.datasets.size(); ++i)
+    {
+        Dataset ds = std::move(scene.datasets[i]);
+        if (!ds.svgMarkFile.empty())
+        {
+            if (const SceneData* svg = load(ds.svgMarkFile))
+            {
+                // Like giv's mark loop, every point gets a copy except quiver
+                // vectors and text anchors - so bezier control points and
+                // ellipse size/angle points are marked too. (ClosePath has no
+                // position of its own.)
+                std::vector<size_t> anchors;
+                for (size_t k = 0; k < ds.pointCount(); ++k)
+                    if (ds.op[k] != Op::Quiver && ds.op[k] != Op::Text && ds.op[k] != Op::ClosePath) anchors.push_back(k);
+
+                for (const Dataset& d : svg->datasets)
+                {
+                    if (d.isSprite)
+                    {
+                        for (size_t k : anchors)
+                        {
+                            Dataset c = d;
+                            c.spriteX += ds.x[k];
+                            c.spriteY += ds.y[k];
+                            c.isVisible = ds.isVisible;
+                            c.frame = ds.frame;
+                            out.push_back(std::move(c));
+                        }
+                        continue;
+                    }
+                    Dataset merged = d;
+                    merged.x.clear();
+                    merged.y.clear();
+                    merged.op.clear();
+                    merged.isVisible = ds.isVisible;
+                    merged.frame = ds.frame;
+                    merged.reserve(d.pointCount() * anchors.size());
+                    for (size_t k : anchors)
+                        for (size_t j = 0; j < d.pointCount(); ++j)
+                            merged.addPoint(d.x[j] + ds.x[k], d.y[j] + ds.y[k], d.op[j]);
+                    out.push_back(std::move(merged));
+                }
+            }
+            ds.doDrawMarks = false; // the SVG replaces the built-in mark shape
+        }
+        ds.svgMarkFile.clear();
+        out.push_back(std::move(ds));
+    }
+    scene.datasets = std::move(out);
+}
+
+} // namespace
+
 bool GivParser::includeFile(const std::string& name, SceneData& scene, std::string& error)
 {
     if (includeDepth_ >= 8) return false; // runaway/cyclic include
@@ -795,6 +904,7 @@ bool GivParser::parseFile(const std::string& filename, SceneData& scene, std::st
     }
 
     parseBuffer(file.data, file.size, scene);
+    expandSvgMarks(scene, startIdx, utf8ToPath(filename).parent_path());
     baseDir_ = savedDir;
     tagSource(filename);
     return true;
@@ -805,6 +915,7 @@ bool GivParser::parseString(const std::string& text, SceneData& scene, std::stri
     (void)error;
     const size_t startIdx = scene.datasets.size();
     parseBuffer(text.data(), text.size(), scene);
+    expandSvgMarks(scene, startIdx, std::filesystem::path());
     for (size_t i = startIdx; i < scene.datasets.size(); ++i) scene.datasets[i].sourceFile = "string"; // giv's name for string input
     return true;
 }
