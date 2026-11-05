@@ -310,7 +310,9 @@ void tessellateCubic(const vsg::vec2& p0, const vsg::vec2& p1, const vsg::vec2& 
     tessellateCubic(p0123, p123, p23, p3, out, tolerance, depth + 1);
 }
 
-std::vector<vsg::vec2> tessellateEllipse(const vsg::vec2& center, float rx, float ry, float angleDeg)
+// rx/ry are radii; angleRad rotates in giv's Y-down space (positive =
+// clockwise on screen), so the sign is flipped for the Y-up coordinates.
+std::vector<vsg::vec2> tessellateEllipse(const vsg::vec2& center, float rx, float ry, float angleRad)
 {
     // Segment count from the same flatness tolerance as tessellateCubic:
     // for a regular n-gon approximating a circle of radius r, the sagitta
@@ -323,8 +325,7 @@ std::vector<vsg::vec2> tessellateEllipse(const vsg::vec2& center, float rx, floa
 
     std::vector<vsg::vec2> out;
     out.reserve(segments + 1);
-    float angleRad = angleDeg * kPi / 180.0f;
-    float ca = std::cos(angleRad), sa = std::sin(angleRad);
+    float ca = std::cos(angleRad), sa = -std::sin(angleRad);
     for (int i = 0; i <= segments; ++i)
     {
         float t = 2.0f * kPi * static_cast<float>(i) / static_cast<float>(segments);
@@ -1429,7 +1430,9 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
                         subpathClosed.push_back(false);
                         cur.clear();
                     }
-                    subpaths.push_back(tessellateEllipse(center, wh.x, wh.y, angle));
+                    // As in giv, the two sizes are full width/height and the
+                    // angle is in radians.
+                    subpaths.push_back(tessellateEllipse(center, wh.x / 2.0f, wh.y / 2.0f, angle));
                     subpathClosed.push_back(true); // tessellated ellipse loop has no "real" last point to special-case
                 }
                 currentPoint = center;

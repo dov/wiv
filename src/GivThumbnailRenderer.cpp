@@ -67,7 +67,7 @@ void tessellateCubic(QPointF p0, QPointF p1, QPointF p2, QPointF p3, std::vector
 
 // Ported from SceneBuilder.cpp's tessellateEllipse - returns a closed
 // polyline (first == last point) approximating a rotated ellipse.
-std::vector<QPointF> tessellateEllipsePoints(QPointF center, double rx, double ry, double angleDeg)
+std::vector<QPointF> tessellateEllipsePoints(QPointF center, double rx, double ry, double angleRad)
 {
     double maxR = std::max(rx, ry);
     int segments = (maxR > 0.0) ? static_cast<int>(std::ceil(kPi * std::sqrt(maxR / (2.0 * kCurveFlatness)))) : 24;
@@ -75,7 +75,6 @@ std::vector<QPointF> tessellateEllipsePoints(QPointF center, double rx, double r
 
     std::vector<QPointF> out;
     out.reserve(segments + 1);
-    const double angleRad = angleDeg * kPi / 180.0;
     const double ca = std::cos(angleRad), sa = std::sin(angleRad);
     for (int i = 0; i <= segments; ++i)
     {
@@ -334,7 +333,7 @@ void renderDataset(QPainter& painter, const Dataset& ds, const RenderContext& ct
                         subpathClosed.push_back(false);
                         cur.clear();
                     }
-                    subpaths.push_back(tessellateEllipsePoints(center, wh.x(), wh.y(), angle));
+                    subpaths.push_back(tessellateEllipsePoints(center, wh.x() / 2.0, wh.y() / 2.0, angle));
                     subpathClosed.push_back(true);
                 }
                 currentPoint = center;
