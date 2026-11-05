@@ -1065,6 +1065,20 @@ void MainWindow::loadFiles(const std::vector<std::string>& paths)
     addRecentFile(expanded.first());
 }
 
+void MainWindow::loadFilesJoined(const std::vector<std::string>& paths)
+{
+    if (paths.empty()) return;
+    browseList_.clear();
+    loadFilesInternal(paths);
+    for (const auto& p : paths) addRecentFile(QString::fromStdString(p));
+}
+
+void MainWindow::enableAutoReload()
+{
+    autoReloadAction_->setChecked(true);
+    setAutoReload(true);
+}
+
 void MainWindow::showEvent(QShowEvent* event)
 {
     QMainWindow::showEvent(event);
@@ -1100,7 +1114,21 @@ void MainWindow::showEvent(QShowEvent* event)
         viewport_,
         [this]() {
             viewport_->ensureExtentSettled();
-            viewport_->fitToWindow();
+            if (startupZoom_ || startupActualPixels_)
+            {
+                // Like giv, an explicit startup view also turns off auto fit.
+                viewport_->setAutoFit(false);
+                autoFitAction_->setChecked(false);
+            }
+            if (startupZoom_)
+            {
+                viewport_->setTransformation(startupZoomValues_[0], startupZoomValues_[0], startupZoomValues_[1],
+                                              startupZoomValues_[2]);
+            }
+            else if (startupActualPixels_)
+                viewport_->zoomActualPixels();
+            else
+                viewport_->fitToWindow();
         },
         Qt::QueuedConnection);
 }

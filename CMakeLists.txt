@@ -159,6 +159,7 @@ add_executable(wiv
   src/qt/OpenFileDialog.cpp
   src/qt/RpcServer.cpp
   src/qt/ThumbnailStrip.cpp
+  src/qt/RemoteClient.cpp
   resources/wiv.qrc
 )
 if(WIN32)

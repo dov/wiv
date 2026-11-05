@@ -70,6 +70,24 @@ public:
     // "On start without a file" says (nothing / reopen the last file / Open dialog).
     void startWithoutFile();
 
+    // Like loadFiles(), but all `paths` are merged into a single scene
+    // (giv's --join) instead of being browsed one at a time.
+    void loadFilesJoined(const std::vector<std::string>& paths);
+
+    // Initial view applied once the window has settled after the first show
+    // (instead of Fit to Window): giv's `-n` (1:1) and `--zoom scale x y`.
+    void setStartupActualPixels() { startupActualPixels_ = true; }
+    void setStartupZoom(double scale, double shiftX, double shiftY)
+    {
+        startupZoom_ = true;
+        startupZoomValues_[0] = scale;
+        startupZoomValues_[1] = shiftX;
+        startupZoomValues_[2] = shiftY;
+    }
+
+    // giv's --auto-reload: same as ticking View > Auto Reload.
+    void enableAutoReload();
+
     // Starts the json-rpc remote-control server (see RpcServer.h) on
     // 127.0.0.1:port. Not started unless explicitly requested (--rpc-port),
     // unlike giv's own always-on-by-default json-rpc server - an image
@@ -213,6 +231,9 @@ private:
     // showEvent()'s guard for the deferred initial-load auto-fit - see its
     // doc comment.
     bool firstShow_ = true;
+    bool startupActualPixels_ = false;
+    bool startupZoom_ = false;
+    double startupZoomValues_[3] = {1, 0, 0};
 
     // Combines lastCursorText_/lastMeasureText_/lastSliceText_ into the
     // status-bar label's text - see the cursorWorldPosition/
