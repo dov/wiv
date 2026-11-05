@@ -767,6 +767,13 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     // > Calibrate Pixel Size) alone, matching giv's own cb_set_pixelsize
     // (fired only when the directive is present).
     if (scene_.pixelSize) setPixelCalibration(*scene_.pixelSize, scene_.pixelSizeUnit);
+    // $background directive (wiv extension, see SceneData::background); a
+    // file without one falls back to the Preferences color, so a background
+    // set by a previously viewed file doesn't stick.
+    if (scene_.background)
+        setBackgroundColor(QColor::fromRgbF(scene_.background->r, scene_.background->g, scene_.background->b));
+    else
+        setBackgroundColor(PreferencesDialog::loadBackgroundColor());
     loadedImageNames_ = std::move(newLoadedImageNames);
     loadedImageFrameSel_ = std::move(newLoadedImageFrameSel);
     markFrameImage_ = std::move(newMarkFrameImage);
