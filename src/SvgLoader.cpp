@@ -1339,6 +1339,7 @@ void populateScene(const NSVGimage* svgConst, const SvgNode* dom, const std::str
             ds.pathName = shape->id[0] ? shape->id : ("svg shape " + std::to_string(shapeIndex));
             ds.color = paintColor(shape->stroke, shape->opacity);
             ds.lineWidth = shape->strokeWidth > 0 ? shape->strokeWidth : 1.0;
+            ds.fromSvg = true;
             ds.lineCap = shape->strokeLineCap; // NSVG_CAP_* matches giv's line_cap encoding
             ds.doDrawLines = true;
             ds.doDrawPolygon = false;

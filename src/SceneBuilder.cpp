@@ -91,7 +91,8 @@ vsg::ref_ptr<vsg::BindGraphicsPipeline> makePipeline(const std::string& shaderDi
                                             const vsg::VertexInputState::Bindings& bindings,
                                             const vsg::VertexInputState::Attributes& attributes,
                                             vsg::ref_ptr<vsg::PipelineLayout> pipelineLayout,
-                                            bool blend = true)
+                                            bool blend = true,
+                                            bool depthWrite = false)
 {
     auto vertexShader = loadShader(VK_SHADER_STAGE_VERTEX_BIT, shaderDir, vertFile);
     auto fragmentShader = loadShader(VK_SHADER_STAGE_FRAGMENT_BIT, shaderDir, fragFile);
@@ -100,8 +101,12 @@ vsg::ref_ptr<vsg::BindGraphicsPipeline> makePipeline(const std::string& shaderDi
     rasterization->cullMode = VK_CULL_MODE_NONE;
 
     auto depthStencil = vsg::DepthStencilState::create();
-    depthStencil->depthTestEnable = VK_FALSE;
-    depthStencil->depthWriteEnable = VK_FALSE;
+    // Only the lines batch asks for depth (see lines.frag): it uses the
+    // depth buffer as a per-dataset "draw each pixel once" mask. The
+    // default compare op is GREATER (vsg's reversed depth, cleared to 0).
+    depthStencil->depthTestEnable = depthWrite ? VK_TRUE : VK_FALSE;
+    depthStencil->depthWriteEnable = depthWrite ? VK_TRUE : VK_FALSE;
+    depthStencil->depthCompareOp = VK_COMPARE_OP_GREATER;
 
     // The label-picking pass (blend == false) writes exact, unblended id
     // colors - any blending there would let a discard-free but partially
@@ -226,6 +231,7 @@ struct LineInstance
     vsg::vec4 widthDash; // x = half width, y = dashOn, z = dashOff, w = cumulative length at p0
     vsg::vec4 color;
     vsg::vec4 labelColor;
+    vsg::vec2 style;     // x = depth slot, y = cap/join flags - see lines.frag
 };
 
 struct FillVertex
@@ -330,15 +336,35 @@ std::vector<vsg::vec2> tessellateEllipse(const vsg::vec2& center, float rx, floa
     return out;
 }
 
+// lines.frag packs the depth slot into 2 bits less than a float's 23-bit
+// mantissa range, so slots must stay below 2^21; datasets past that share
+// the last slot (overlapping translucent lines of such late datasets may
+// then not stack).
+constexpr float kMaxLineSlot = 2097150.0f;
+
+// Cap/join flags for lines.frag. 0 selects the plain rectangle, which SVG
+// strokes keep.
+float lineStyleFlags(const Dataset& ds, bool startIsPathEnd, bool endIsPathEnd)
+{
+    if (ds.fromSvg) return 0.0f;
+    int flags = 1;
+    if (startIsPathEnd) flags |= 2;
+    if (endIsPathEnd) flags |= 4;
+    if (ds.lineCap == 0) flags |= 8;
+    else if (ds.lineCap == 2) flags |= 16;
+    return static_cast<float>(flags);
+}
+
 void addLineSegment(std::vector<LineInstance>& lines, const vsg::vec2& p0, const vsg::vec2& p1,
                      float halfWidth, float dashOn, float dashOff, float& cumLen, const vsg::vec4& color,
-                     const vsg::vec4& labelColor)
+                     const vsg::vec4& labelColor, const vsg::vec2& style)
 {
     LineInstance li;
     li.p0p1 = vsg::vec4(p0.x, p0.y, p1.x, p1.y);
     li.widthDash = vsg::vec4(halfWidth, dashOn, dashOff, cumLen);
     li.color = color;
     li.labelColor = labelColor;
+    li.style = style;
     lines.push_back(li);
     cumLen += vsg::length(p1 - p0);
 }
@@ -1283,6 +1309,10 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
         float markMode = markModeFor(ds.markType);
 
         float lineHalfWidth = static_cast<float>(std::max(0.1, ds.lineWidth * 0.5));
+        // Depth slots: later datasets get larger ones (so they draw over
+        // earlier ones), a dataset's quiver shafts get their own slot.
+        const float lineSlot = std::min(static_cast<float>(2 * dsIdx + 1), kMaxLineSlot);
+        const float quiverSlot = std::min(lineSlot + 1.0f, kMaxLineSlot);
         float dashOn = 1e9f, dashOff = 0.0f;
         if (ds.dashes.size() >= 2)
         {
@@ -1412,7 +1442,8 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
                 vsg::vec2 tip = currentPoint + p * static_cast<float>(ds.quiverScale);
                 float cum = 0.0f;
                 // dashOff -1 flags a quiver shaft for lines.vert's live quiver zoom.
-                addLineSegment(lines, currentPoint, tip, lineHalfWidth, 1e9f, -1.0f, cum, quiverColor, labelColor);
+                addLineSegment(lines, currentPoint, tip, lineHalfWidth, 1e9f, -1.0f, cum, quiverColor, labelColor,
+                               vsg::vec2(quiverSlot, ds.fromSvg ? 0.0f : static_cast<float>(1 | 2 | 4 | 8)));
                 if (ds.quiverHead)
                 {
                     vsg::vec2 dir = tip - currentPoint;
@@ -1450,13 +1481,15 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
                 {
                     float cum = 0.0f;
                     for (size_t i = 0; i + 1 < sp.size(); ++i)
-                        addLineSegment(lines, sp[i], sp[i + 1], lineHalfWidth, dashOn, dashOff, cum, outlineColor, labelColor);
+                        addLineSegment(lines, sp[i], sp[i + 1], lineHalfWidth, dashOn, dashOff, cum, outlineColor, labelColor,
+                                       vsg::vec2(lineSlot, lineStyleFlags(ds, i == 0 && !spClosed, i + 2 == sp.size() && !spClosed)));
                 }
                 else if (ds.doDrawLines)
                 {
                     float cum = 0.0f;
                     for (size_t i = 0; i + 1 < sp.size(); ++i)
-                        addLineSegment(lines, sp[i], sp[i + 1], lineHalfWidth, dashOn, dashOff, cum, lineColor, labelColor);
+                        addLineSegment(lines, sp[i], sp[i + 1], lineHalfWidth, dashOn, dashOff, cum, lineColor, labelColor,
+                                       vsg::vec2(lineSlot, lineStyleFlags(ds, i == 0 && !spClosed, i + 2 == sp.size() && !spClosed)));
                 }
 
                 if (ds.doDrawLines && ds.arrowType != ArrowType::None && sp.size() >= 2)
@@ -1614,23 +1647,31 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     // -------------------------------------------------------------
     // Lines batch - same two-phase build/draw split as above.
     // -------------------------------------------------------------
-    vsg::ref_ptr<vsg::BindGraphicsPipeline> linesBind, linesLabelBind;
+    vsg::ref_ptr<vsg::BindGraphicsPipeline> linesBind, linesFringeBind, linesLabelBind;
     vsg::ref_ptr<vsg::vec4Array> linesP0p1Array, linesWidthDashArray, linesColorArray, linesLabelColorArray, linesLabelWidthDashArray;
+    vsg::ref_ptr<vsg::vec2Array> linesStyleArray;
     if (!lines.empty())
     {
         vsg::VertexInputState::Bindings bindings{
             VkVertexInputBindingDescription{0, sizeof(vsg::vec2), VK_VERTEX_INPUT_RATE_VERTEX},
             VkVertexInputBindingDescription{1, sizeof(vsg::vec4), VK_VERTEX_INPUT_RATE_INSTANCE},
             VkVertexInputBindingDescription{2, sizeof(vsg::vec4), VK_VERTEX_INPUT_RATE_INSTANCE},
-            VkVertexInputBindingDescription{3, sizeof(vsg::vec4), VK_VERTEX_INPUT_RATE_INSTANCE}};
-        // Each attribute has its own tightly-packed vec4Array; see note above.
+            VkVertexInputBindingDescription{3, sizeof(vsg::vec4), VK_VERTEX_INPUT_RATE_INSTANCE},
+            VkVertexInputBindingDescription{4, sizeof(vsg::vec2), VK_VERTEX_INPUT_RATE_INSTANCE}};
+        // Each attribute has its own tightly-packed array; see note above.
         vsg::VertexInputState::Attributes attributes{
             VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32_SFLOAT, 0},
             VkVertexInputAttributeDescription{1, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 0},
             VkVertexInputAttributeDescription{2, 2, VK_FORMAT_R32G32B32A32_SFLOAT, 0},
-            VkVertexInputAttributeDescription{3, 3, VK_FORMAT_R32G32B32A32_SFLOAT, 0}};
+            VkVertexInputAttributeDescription{3, 3, VK_FORMAT_R32G32B32A32_SFLOAT, 0},
+            VkVertexInputAttributeDescription{4, 4, VK_FORMAT_R32G32_SFLOAT, 0}};
 
-        linesBind = makePipeline(shaderDir, "lines.vert.spv", "lines.frag.spv", bindings, attributes, vectorPipelineLayout);
+        linesBind = makePipeline(shaderDir, "lines.vert.spv", "lines.frag.spv", bindings, attributes, vectorPipelineLayout,
+                                 /*blend=*/true, /*depthWrite=*/true);
+        // Second draw of the same instances: the anti-aliased edge pixels
+        // (see lines.frag).
+        linesFringeBind = makePipeline(shaderDir, "lines.vert.spv", "lines_fringe.frag.spv", bindings, attributes, vectorPipelineLayout,
+                                       /*blend=*/true, /*depthWrite=*/true);
 
         linesP0p1Array = vsg::vec4Array::create(static_cast<uint32_t>(lines.size()));
         linesWidthDashArray = vsg::vec4Array::create(static_cast<uint32_t>(lines.size()));
@@ -1642,8 +1683,10 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
         // here and lines.vert scales it by the per-frame ViewParams value.
         linesColorArray = vsg::vec4Array::create(static_cast<uint32_t>(lines.size()));
         linesLabelColorArray = vsg::vec4Array::create(static_cast<uint32_t>(lines.size()));
+        linesStyleArray = vsg::vec2Array::create(static_cast<uint32_t>(lines.size()));
         for (size_t i = 0; i < lines.size(); ++i)
         {
+            linesStyleArray->set(i, lines[i].style);
             linesP0p1Array->set(i, lines[i].p0p1);
             linesWidthDashArray->set(i, lines[i].widthDash);
             linesColorArray->set(i, lines[i].color);
@@ -1665,10 +1708,10 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             linesLabelWidthDashArray->set(i, widthDash);
         }
 
-        // Label variant: lines.frag already has no AA (only a hard dash
-        // discard), so it's reused as-is; just swap in labelColor, the
-        // widened linesLabelWidthDashArray (see above), and disable blending.
-        linesLabelBind = makePipeline(shaderDir, "lines.vert.spv", "lines.frag.spv", bindings, attributes, vectorPipelineLayout, /*blend=*/false);
+        // Label variant: lines_label.frag is the same shape without AA or
+        // depth; swap in labelColor, the widened linesLabelWidthDashArray
+        // (see above), and disable blending.
+        linesLabelBind = makePipeline(shaderDir, "lines.vert.spv", "lines_label.frag.spv", bindings, attributes, vectorPipelineLayout, /*blend=*/false);
     }
 
     // -------------------------------------------------------------
@@ -1720,9 +1763,9 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     }
     if (linesBind)
     {
-        linesVertexBind = vsg::BindVertexBuffers::create(0, vsg::DataList{quadCorners, linesP0p1Array, linesWidthDashArray, linesColorArray});
+        linesVertexBind = vsg::BindVertexBuffers::create(0, vsg::DataList{quadCorners, linesP0p1Array, linesWidthDashArray, linesColorArray, linesStyleArray});
         linesLabelVertexBind =
-            vsg::BindVertexBuffers::create(0, vsg::DataList{quadCorners, linesP0p1Array, linesLabelWidthDashArray, linesLabelColorArray});
+            vsg::BindVertexBuffers::create(0, vsg::DataList{quadCorners, linesP0p1Array, linesLabelWidthDashArray, linesLabelColorArray, linesStyleArray});
         if (!quadIndexBind) quadIndexBind = vsg::BindIndexBuffer::create(quadIndices);
     }
 
@@ -1743,7 +1786,7 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     };
     BatchKind lastKind = BatchKind::None;
     uint32_t lastEnd = 0;
-    vsg::ref_ptr<vsg::DrawIndexed> lastDrawIndexed, lastLabelDrawIndexed;
+    vsg::ref_ptr<vsg::DrawIndexed> lastDrawIndexed, lastFringeDrawIndexed, lastLabelDrawIndexed;
     vsg::ref_ptr<vsg::Draw> lastDraw, lastLabelDraw;
 
     // A sprite draw has to keep its exact place in submission order, so it
@@ -1754,11 +1797,13 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
 
     auto emitIndexed = [&](BatchKind kind, const Range& r, vsg::ref_ptr<vsg::BindGraphicsPipeline> bind,
                             vsg::ref_ptr<vsg::BindGraphicsPipeline> labelBind, vsg::ref_ptr<vsg::BindVertexBuffers> vertexBind,
-                            vsg::ref_ptr<vsg::BindVertexBuffers> labelVertexBind) {
+                            vsg::ref_ptr<vsg::BindVertexBuffers> labelVertexBind,
+                            vsg::ref_ptr<vsg::BindGraphicsPipeline> fringeBind = nullptr) {
         if (!bind || r.count == 0) return;
         if (continuesRun(kind, r))
         {
             lastDrawIndexed->instanceCount += r.count;
+            if (fringeBind) lastFringeDrawIndexed->instanceCount += r.count;
             lastLabelDrawIndexed->instanceCount += r.count;
         }
         else
@@ -1772,6 +1817,17 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             drawCommands->addChild(lastDrawIndexed);
             root->addChild(wrapDraw(bind, drawCommands));
 
+            if (fringeBind)
+            {
+                // Same instances again, edge pixels only (see lines.frag).
+                lastFringeDrawIndexed = vsg::DrawIndexed::create(6, r.count, 0, 0, r.start);
+                auto fringeCommands = vsg::Commands::create();
+                fringeCommands->addChild(vertexBind);
+                fringeCommands->addChild(quadIndexBind);
+                fringeCommands->addChild(lastFringeDrawIndexed);
+                root->addChild(wrapDraw(fringeBind, fringeCommands));
+            }
+
             auto labelDrawCommands = vsg::Commands::create();
             labelDrawCommands->addChild(labelVertexBind);
             labelDrawCommands->addChild(quadIndexBind);
@@ -1783,7 +1839,7 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     };
 
     auto emitMarks = [&](const Range& r) { emitIndexed(BatchKind::Marks, r, marksBind, marksLabelBind, marksVertexBind, marksLabelVertexBind); };
-    auto emitLines = [&](const Range& r) { emitIndexed(BatchKind::Lines, r, linesBind, linesLabelBind, linesVertexBind, linesLabelVertexBind); };
+    auto emitLines = [&](const Range& r) { emitIndexed(BatchKind::Lines, r, linesBind, linesLabelBind, linesVertexBind, linesLabelVertexBind, linesFringeBind); };
 
     auto emitFill = [&](const Range& r) {
         if (!fillBind || r.count == 0) return;

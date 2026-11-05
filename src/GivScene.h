@@ -73,6 +73,7 @@ struct Dataset
     double lineWidth = 1.0;
     std::vector<float> dashes; // on,off,on,off,... in world units; empty = solid
     int lineCap = 1;           // 0=butt,1=round,2=square (matches giv's line_cap)
+    bool fromSvg = false;      // loaded from an SVG: strokes keep the plain per-segment rectangles (no giv-style round joins)
 
     MarkType markType = MarkType::FCircle;
     double markSize = 7.0; // giv's default_mark_size (giv-data.cc); full diameter in pixels when !doScaleMarks
