@@ -50,6 +50,7 @@ class VulkanViewport;
 class MarkTreeView;
 class CalibratePanel;
 class ContrastPanel;
+class GlyphSizeDialog;
 class ColorMapBar;
 class ColorTablePanel;
 class InfoPanel;
@@ -195,6 +196,7 @@ private:
     QDockWidget* colorTableDock_ = nullptr;
     CalibratePanel* calibratePanel_ = nullptr;
     QDockWidget* calibrateDock_ = nullptr;
+    GlyphSizeDialog* glyphSizeDialog_ = nullptr;
 
     // View > Image Info ("i"): giv's info panel, a dock the user can float.
     // While visible it is rebuilt on image/slice/scene changes and by
@@ -355,6 +357,7 @@ private:
     void buildContrastDock();
     void buildColorTableDock();
     void buildCalibrateDock();
+    void showGlyphSizeDialog();
     void updateContrastToolsEnabled();
 
     void refreshInfoPanel();

@@ -56,7 +56,7 @@ public:
     // vec4 because std140 pads a uniform block's members to 16 bytes
     // anyway). .z = show-pixel-grid flag (giv's 'g' key, do_show_grid), read
     // by grid.vert.
-    vsg::ref_ptr<vsg::vec4Value> value;
+    vsg::ref_ptr<vsg::vec4Array> value; // two vec4s: [0] = params above, [1].x = quiver zoom, .y = line width zoom
 
     // Call once per frame - not just on zoom, see the implementation - with
     // the current world-units-per-pixel scale (assumed isotropic: x and y
@@ -74,7 +74,28 @@ public:
     void setShowPixelGrid(bool show) { showPixelGrid_ = show; }
     bool showPixelGrid() const { return showPixelGrid_; }
 
+    // Global size factor for the pixel-sized (non-$scale_marks) marks,
+    // adjusted by Ctrl+left-drag; takes effect on the next update() call.
+    // Read by marks.vert from .w.
+    void setMarkZoom(float zoom) { markZoom_ = zoom; }
+    float markZoom() const { return markZoom_; }
+
+    // Live length factor for quiver arrows (Ctrl+left-drag, horizontal). The
+    // quiver shafts/heads are built at ds.quiverScale; lines.vert/fill.vert
+    // stretch them by this on top, so a drag needs no scene rebuild. Read
+    // from the second vec4, .x.
+    void setQuiverZoom(float zoom) { quiverZoom_ = zoom; }
+    float quiverZoom() const { return quiverZoom_; }
+
+    // Live factor for line widths (shafts, outlines, arrowhead size), second
+    // vec4's .y (Ctrl+right-drag, horizontal).
+    void setLineWidthZoom(float zoom) { lineWidthZoom_ = zoom; }
+    float lineWidthZoom() const { return lineWidthZoom_; }
+
 private:
+    float markZoom_ = 1.0f;
+    float quiverZoom_ = 1.0f;
+    float lineWidthZoom_ = 1.0f;
     bool forceOpaque_ = false;
     bool showPixelGrid_ = false;
 };

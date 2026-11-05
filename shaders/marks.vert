@@ -24,7 +24,7 @@ layout(push_constant) uniform PushConstants
 layout(set = 0, binding = 0) uniform ViewParams
 {
     vec4 params; // x = world units per screen pixel; y = force-opaque (giv's
-                 // 'a' toggle, do_no_transparency); zw unused
+                 // 'a' toggle, do_no_transparency); w = global mark-size zoom
 } vp;
 
 layout(location = 0) out vec2 fragCorner;
@@ -37,7 +37,7 @@ void main()
     // do_scale_marks == false default); a positive one is a world-space
     // half-size ($scale_marks 1, i.e. marks that grow/shrink with zoom).
     float halfSize = inPosSizeMode.z;
-    if (halfSize < 0.0) halfSize = -halfSize * vp.params.x;
+    if (halfSize < 0.0) halfSize = -halfSize * vp.params.x * vp.params.w;
 
     vec2 worldPos = inPosSizeMode.xy + inCorner * halfSize;
     gl_Position = pc.projection * pc.modelview * vec4(worldPos, 0.0, 1.0);

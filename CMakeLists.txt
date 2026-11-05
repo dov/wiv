@@ -153,6 +153,7 @@ add_executable(wiv
   src/qt/ContrastPanel.cpp
   src/qt/InfoPanel.cpp
   src/qt/ColorTablePanel.cpp
+  src/qt/GlyphSizeDialog.cpp
   src/qt/MainWindow.cpp
   src/qt/ToggleCapture.cpp
   src/qt/PrefetchPool.cpp

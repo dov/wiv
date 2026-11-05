@@ -27,9 +27,8 @@ namespace giv
 void ViewParams::update(float worldPerPixel)
 {
     if (!value) return;
-    value->value().x = worldPerPixel;
-    value->value().y = forceOpaque_ ? 1.0f : 0.0f;
-    value->value().z = showPixelGrid_ ? 1.0f : 0.0f;
+    value->set(0, vsg::vec4(worldPerPixel, forceOpaque_ ? 1.0f : 0.0f, showPixelGrid_ ? 1.0f : 0.0f, markZoom_));
+    value->set(1, vsg::vec4(quiverZoom_, lineWidthZoom_, 0.0f, 0.0f));
     // Written (16 bytes, whatever the scene's size) and dirtied on *every*
     // frame, not just when the value actually changes: vsg::TransferTask
     // keeps one GPU copy of a DYNAMIC_DATA buffer per in-flight frame and
@@ -377,8 +376,8 @@ void addLineSegment(std::vector<LineInstance>& lines, const vsg::vec2& p0, const
 // world space against the current zoom - see giv::ViewParams. The position
 // written into `tris` here is overwritten with the tip by that same code.
 void addArrowHead(std::vector<FillVertex>& tris, std::vector<uint32_t>& arrowIndex, std::vector<vsg::vec2>& arrowTip,
-                   std::vector<vsg::vec2>& arrowOffsetPixels, const vsg::vec2& tip, const vsg::vec2& dir,
-                   float hw, const vsg::vec4& color, const vsg::vec4& labelColor)
+                   std::vector<vsg::vec4>& arrowOffsetPixels, const vsg::vec2& tip, const vsg::vec2& dir,
+                   float hw, const vsg::vec4& color, const vsg::vec4& labelColor, const vsg::vec2& quiverVec = vsg::vec2(0.0f, 0.0f))
 {
     vsg::vec2 back(-dir.x, -dir.y);
     vsg::vec2 normal(-dir.y, dir.x);
@@ -400,7 +399,7 @@ void addArrowHead(std::vector<FillVertex>& tris, std::vector<uint32_t>& arrowInd
             arrowIndex.push_back(static_cast<uint32_t>(tris.size()));
             tris.push_back({tip + o, color, labelColor});
             arrowTip.push_back(tip);
-            arrowOffsetPixels.push_back(o);
+            arrowOffsetPixels.push_back(vsg::vec4(o.x, o.y, quiverVec.x, quiverVec.y));
         }
     };
     tri(oT, oV0, oV1);
@@ -775,7 +774,7 @@ void triangulateSubpaths(std::vector<FillVertex>& tris, const std::vector<std::v
 // shifted by $shadow_offset (pixels, or data units for $scale_font text).
 void addTextOutlines(const Dataset& ds, const TextItem& item, const vsg::vec2& anchor, const vsg::vec4& color,
                      const vsg::vec4& labelColor, std::vector<FillVertex>& tris, std::vector<uint32_t>& arrowIndex,
-                     std::vector<vsg::vec2>& arrowTip, std::vector<vsg::vec2>& arrowOffsetPixels)
+                     std::vector<vsg::vec2>& arrowTip, std::vector<vsg::vec4>& arrowOffsetPixels)
 {
     const FontSpec fs = parseFontSpec(ds.fontName);
     const double size = fs.sizePt > 0 ? fs.sizePt : (ds.textSize > 0 ? ds.textSize : 12.0);
@@ -797,7 +796,7 @@ void addTextOutlines(const Dataset& ds, const TextItem& item, const vsg::vec2& a
                 arrowIndex.push_back(static_cast<uint32_t>(tris.size()));
                 tris.push_back({anchor, c, labelColor});
                 arrowTip.push_back(anchor);
-                arrowOffsetPixels.push_back(vsg::vec2(v.x + shift.x, v.y + shift.y));
+                arrowOffsetPixels.push_back(vsg::vec4(v.x + shift.x, v.y + shift.y, 0.0f, 0.0f)); // no quiver vector: not a shaft
             }
         }
     };
@@ -1004,7 +1003,9 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     if (!vectorPipelineLayout_)
     {
         viewParams_ = ViewParams::create();
-        viewParams_->value = vsg::vec4Value::create(vsg::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+        viewParams_->value = vsg::vec4Array::create(2);
+        viewParams_->value->set(0, vsg::vec4(1.0f, 0.0f, 0.0f, 1.0f));
+        viewParams_->value->set(1, vsg::vec4(1.0f, 1.0f, 0.0f, 0.0f));
         viewParams_->value->properties.dataVariance = vsg::DYNAMIC_DATA;
         viewParamsLayout_ = vsg::DescriptorSetLayout::create(
             vsg::DescriptorSetLayoutBindings{{0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr}});
@@ -1254,7 +1255,7 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     // addArrowHead's doc comment and giv::ViewParams.
     std::vector<uint32_t> arrowIndex;
     std::vector<vsg::vec2> arrowTip;
-    std::vector<vsg::vec2> arrowOffsetPixels;
+    std::vector<vsg::vec4> arrowOffsetPixels;
 
     for (size_t dsIdx = 0; dsIdx < scene.datasets.size(); ++dsIdx)
     {
@@ -1410,12 +1411,13 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             {
                 vsg::vec2 tip = currentPoint + p * static_cast<float>(ds.quiverScale);
                 float cum = 0.0f;
-                addLineSegment(lines, currentPoint, tip, lineHalfWidth, 1e9f, 0.0f, cum, quiverColor, labelColor);
+                // dashOff -1 flags a quiver shaft for lines.vert's live quiver zoom.
+                addLineSegment(lines, currentPoint, tip, lineHalfWidth, 1e9f, -1.0f, cum, quiverColor, labelColor);
                 if (ds.quiverHead)
                 {
                     vsg::vec2 dir = tip - currentPoint;
                     float len = vsg::length(dir);
-                    if (len > 1e-6f) addArrowHead(fillTris, arrowIndex, arrowTip, arrowOffsetPixels, tip, dir / len, lineHalfWidth, quiverColor, labelColor);
+                    if (len > 1e-6f) addArrowHead(fillTris, arrowIndex, arrowTip, arrowOffsetPixels, tip, dir / len, lineHalfWidth, quiverColor, labelColor, dir);
                 }
                 break;
             }
@@ -1565,32 +1567,33 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     // fill instead of being covered by it.
     // -------------------------------------------------------------
     vsg::ref_ptr<vsg::BindGraphicsPipeline> fillBind, fillLabelBind;
-    vsg::ref_ptr<vsg::vec2Array> fillPosArray, fillOffsetPixelsArray;
+    vsg::ref_ptr<vsg::vec2Array> fillPosArray;
+    vsg::ref_ptr<vsg::vec4Array> fillOffsetPixelsArray;
     vsg::ref_ptr<vsg::vec4Array> fillColorArray, fillLabelColorArray;
     if (!fillTris.empty())
     {
         vsg::VertexInputState::Bindings bindings{
             VkVertexInputBindingDescription{0, sizeof(vsg::vec2), VK_VERTEX_INPUT_RATE_VERTEX},
             VkVertexInputBindingDescription{1, sizeof(vsg::vec4), VK_VERTEX_INPUT_RATE_VERTEX},
-            VkVertexInputBindingDescription{2, sizeof(vsg::vec2), VK_VERTEX_INPUT_RATE_VERTEX}};
+            VkVertexInputBindingDescription{2, sizeof(vsg::vec4), VK_VERTEX_INPUT_RATE_VERTEX}};
         // pos/color/offset are separate tightly-packed buffers; see note above.
         vsg::VertexInputState::Attributes attributes{
             VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32_SFLOAT, 0},
             VkVertexInputAttributeDescription{1, 1, VK_FORMAT_R32G32B32A32_SFLOAT, 0},
-            VkVertexInputAttributeDescription{2, 2, VK_FORMAT_R32G32_SFLOAT, 0}};
+            VkVertexInputAttributeDescription{2, 2, VK_FORMAT_R32G32B32A32_SFLOAT, 0}};
 
         fillBind = makePipeline(shaderDir, "fill.vert.spv", "fill.frag.spv", bindings, attributes, vectorPipelineLayout);
 
         fillPosArray = vsg::vec2Array::create(static_cast<uint32_t>(fillTris.size()));
         fillColorArray = vsg::vec4Array::create(static_cast<uint32_t>(fillTris.size()));
         fillLabelColorArray = vsg::vec4Array::create(static_cast<uint32_t>(fillTris.size()));
-        fillOffsetPixelsArray = vsg::vec2Array::create(static_cast<uint32_t>(fillTris.size()));
+        fillOffsetPixelsArray = vsg::vec4Array::create(static_cast<uint32_t>(fillTris.size()));
         for (size_t i = 0; i < fillTris.size(); ++i)
         {
             fillPosArray->set(i, fillTris[i].pos);
             fillColorArray->set(i, fillTris[i].color);
             fillLabelColorArray->set(i, fillTris[i].labelColor);
-            fillOffsetPixelsArray->set(i, vsg::vec2(0.0f, 0.0f));
+            fillOffsetPixelsArray->set(i, vsg::vec4(0.0f, 0.0f, 0.0f, 0.0f));
         }
         // Arrowhead vertices must stay pixel-constant in size as the view
         // zooms (see addArrowHead's doc comment), so instead of a world-space
