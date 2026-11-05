@@ -26,7 +26,7 @@ layout(set = 0, binding = 0) uniform ViewParams
 {
     vec4 params; // x = world units per screen pixel; y = force-opaque (giv's
                  // 'a' toggle, do_no_transparency); zw unused
-    vec4 params2; // x = live quiver length factor, y = live line width factor
+    vec4 params2; // x = live quiver length factor, y = live line width factor, z = alpha multiplier
 } vp;
 
 layout(location = 0) out vec4 fragColor;
@@ -53,7 +53,7 @@ void main()
     vec2 worldPos = mix(p0, p1, t) + normal * (inCorner.y * halfWidth);
 
     gl_Position = pc.projection * pc.modelview * vec4(worldPos, 0.0, 1.0);
-    fragColor = vec4(inColor.rgb, vp.params.y > 0.5 ? 1.0 : inColor.a);
+    fragColor = vec4(inColor.rgb, vp.params.y > 0.5 ? 1.0 : min(inColor.a * vp.params2.z, 1.0));
     fragAlong = inWidthDash.w + t * segLen;
     fragDash = inWidthDash.yz;
 }

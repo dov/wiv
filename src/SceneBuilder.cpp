@@ -28,7 +28,7 @@ void ViewParams::update(float worldPerPixel)
 {
     if (!value) return;
     value->set(0, vsg::vec4(worldPerPixel, forceOpaque_ ? 1.0f : 0.0f, showPixelGrid_ ? 1.0f : 0.0f, markZoom_));
-    value->set(1, vsg::vec4(quiverZoom_, lineWidthZoom_, 0.0f, 0.0f));
+    value->set(1, vsg::vec4(quiverZoom_, lineWidthZoom_, alphaScale_, 0.0f));
     // Written (16 bytes, whatever the scene's size) and dirtied on *every*
     // frame, not just when the value actually changes: vsg::TransferTask
     // keeps one GPU copy of a DYNAMIC_DATA buffer per in-flight frame and
@@ -1005,7 +1005,7 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
         viewParams_ = ViewParams::create();
         viewParams_->value = vsg::vec4Array::create(2);
         viewParams_->value->set(0, vsg::vec4(1.0f, 0.0f, 0.0f, 1.0f));
-        viewParams_->value->set(1, vsg::vec4(1.0f, 1.0f, 0.0f, 0.0f));
+        viewParams_->value->set(1, vsg::vec4(1.0f, 1.0f, 1.0f, 0.0f));
         viewParams_->value->properties.dataVariance = vsg::DYNAMIC_DATA;
         viewParamsLayout_ = vsg::DescriptorSetLayout::create(
             vsg::DescriptorSetLayoutBindings{{0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr}});

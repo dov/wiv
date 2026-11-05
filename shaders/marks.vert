@@ -25,6 +25,7 @@ layout(set = 0, binding = 0) uniform ViewParams
 {
     vec4 params; // x = world units per screen pixel; y = force-opaque (giv's
                  // 'a' toggle, do_no_transparency); w = global mark-size zoom
+    vec4 params2; // z = alpha multiplier (x, y: see lines.vert)
 } vp;
 
 layout(location = 0) out vec2 fragCorner;
@@ -42,6 +43,6 @@ void main()
     vec2 worldPos = inPosSizeMode.xy + inCorner * halfSize;
     gl_Position = pc.projection * pc.modelview * vec4(worldPos, 0.0, 1.0);
     fragCorner = inCorner;
-    fragColor = vec4(inColor.rgb, vp.params.y > 0.5 ? 1.0 : inColor.a);
+    fragColor = vec4(inColor.rgb, vp.params.y > 0.5 ? 1.0 : min(inColor.a * vp.params2.z, 1.0));
     fragMode = inPosSizeMode.w;
 }

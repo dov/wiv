@@ -36,7 +36,9 @@ void PanZoomHandler::apply(vsg::ButtonPressEvent& event)
     {
         // Ctrl+right-drag scales line widths instead of zooming the canvas.
         lineWidthDragging_ = true;
-        lineWidthLastX_ = event.x;
+        lineWidthStartX_ = lineWidthLastX_ = event.x;
+        lineWidthStartY_ = lineWidthLastY_ = event.y;
+        lineWidthAxis_ = MarkZoomAxis::Undecided;
         event.handled = true;
     }
     else if (event.button == 3)
@@ -93,12 +95,35 @@ void PanZoomHandler::apply(vsg::MoveEvent& event)
 
     if (lineWidthDragging_)
     {
-        int32_t widthDx = event.x - lineWidthLastX_;
-        lineWidthLastX_ = event.x;
-        if (widthDx != 0 && onLineWidthZoom)
-            onLineWidthZoom(std::pow(1.01, static_cast<double>(widthDx) * (shiftHeld() ? 5.0 : 1.0)));
+        constexpr int32_t kAxisLockPixels = 5;
+        if (lineWidthAxis_ == MarkZoomAxis::Undecided)
+        {
+            int32_t totalDx = event.x - lineWidthStartX_;
+            int32_t totalDy = event.y - lineWidthStartY_;
+            if (std::max(std::abs(totalDx), std::abs(totalDy)) >= kAxisLockPixels)
+            {
+                lineWidthAxis_ = std::abs(totalDy) >= std::abs(totalDx) ? MarkZoomAxis::Vertical : MarkZoomAxis::Horizontal;
+                lineWidthLastX_ = lineWidthStartX_;
+                lineWidthLastY_ = lineWidthStartY_;
+            }
+        }
+        if (lineWidthAxis_ != MarkZoomAxis::Undecided)
+        {
+            const double speed = shiftHeld() ? 5.0 : 1.0;
+            if (lineWidthAxis_ == MarkZoomAxis::Horizontal)
+            {
+                int32_t widthDx = event.x - lineWidthLastX_;
+                lineWidthLastX_ = event.x;
+                if (widthDx != 0 && onLineWidthZoom) onLineWidthZoom(std::pow(1.01, static_cast<double>(widthDx) * speed));
+            }
+            else
+            {
+                int32_t alphaDy = event.y - lineWidthLastY_;
+                lineWidthLastY_ = event.y;
+                if (alphaDy != 0 && onAlphaZoom) onAlphaZoom(std::pow(1.01, -static_cast<double>(alphaDy) * speed));
+            }
+        }
     }
-
 
     if (markZoomDragging_)
     {

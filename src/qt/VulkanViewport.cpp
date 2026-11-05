@@ -985,6 +985,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
         panZoom_->onMarkZoom = [this](double factor) { scaleGlyph(GlyphScale::Marks, factor); };
         panZoom_->onQuiverZoom = [this](double factor) { scaleGlyph(GlyphScale::Quivers, factor); };
         panZoom_->onLineWidthZoom = [this](double factor) { scaleGlyph(GlyphScale::Lines, factor); };
+        panZoom_->onAlphaZoom = [this](double factor) { scaleGlyph(GlyphScale::Alpha, factor); };
         panZoom_->verticalLock = verticalZoomLock_;
         // A wheel step zooms over a short motion: tick it from a timer (the
         // render loop is on demand) until it ends.
@@ -1387,11 +1388,12 @@ void VulkanViewport::applyGlyphScales()
     viewer_->viewParams->setMarkZoom(glyphScale(GlyphScale::Marks));
     viewer_->viewParams->setLineWidthZoom(glyphScale(GlyphScale::Lines));
     viewer_->viewParams->setQuiverZoom(glyphScale(GlyphScale::Quivers));
+    viewer_->viewParams->setAlphaScale(glyphScale(GlyphScale::Alpha));
 }
 
 void VulkanViewport::setGlyphScale(GlyphScale which, float scale)
 {
-    scale = std::clamp(scale, kGlyphScaleMin, kGlyphScaleMax);
+    scale = std::clamp(scale, glyphScaleMin(which), glyphScaleMax(which));
     float& slot = glyphScale_[static_cast<int>(which)];
     if (slot == scale) return;
     slot = scale;

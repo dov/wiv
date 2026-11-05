@@ -59,6 +59,10 @@ public:
     // horizontally (right = wider lines).
     std::function<void(double)> onLineWidthZoom;
 
+    // Called (if set) with a multiplicative factor while Ctrl+right-drag moves
+    // vertically (up = more opaque).
+    std::function<void(double)> onAlphaZoom;
+
     // Called (if set) when a wheel step starts or retargets a zoom motion, so
     // the owner can call advance() every frame until it returns false.
     std::function<void()> onZoomStarted;
@@ -118,9 +122,13 @@ private:
     enum class MarkZoomAxis { Undecided, Vertical, Horizontal };
     MarkZoomAxis markZoomAxis_ = MarkZoomAxis::Undecided;
 
-    // Ctrl+right-button drag: horizontal motion scales line widths.
+    // Ctrl+right-button drag: horizontal motion scales line widths, vertical
+    // motion the alpha multiplier (axis chosen by the first few pixels, like
+    // the Ctrl+left-drag above).
     bool lineWidthDragging_ = false;
-    int32_t lineWidthLastX_ = 0;
+    int32_t lineWidthStartX_ = 0, lineWidthStartY_ = 0;
+    int32_t lineWidthLastX_ = 0, lineWidthLastY_ = 0;
+    MarkZoomAxis lineWidthAxis_ = MarkZoomAxis::Undecided; // Horizontal = line width, Vertical = alpha
 
     // The zoom motion: the view moves from where it was at zoomStart_ by the
     // factor zoomTotal_ (a power of the profile) about the screen point

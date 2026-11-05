@@ -56,7 +56,7 @@ public:
     // vec4 because std140 pads a uniform block's members to 16 bytes
     // anyway). .z = show-pixel-grid flag (giv's 'g' key, do_show_grid), read
     // by grid.vert.
-    vsg::ref_ptr<vsg::vec4Array> value; // two vec4s: [0] = params above, [1].x = quiver zoom, .y = line width zoom
+    vsg::ref_ptr<vsg::vec4Array> value; // two vec4s: [0] = params above, [1].x = quiver zoom, .y = line width zoom, .z = alpha scale
 
     // Call once per frame - not just on zoom, see the implementation - with
     // the current world-units-per-pixel scale (assumed isotropic: x and y
@@ -92,10 +92,16 @@ public:
     void setLineWidthZoom(float zoom) { lineWidthZoom_ = zoom; }
     float lineWidthZoom() const { return lineWidthZoom_; }
 
+    // Global alpha multiplier for marks, lines and fills (result clamped to
+    // 1; the 'A' force-opaque toggle still overrides), second vec4's .z.
+    void setAlphaScale(float scale) { alphaScale_ = scale; }
+    float alphaScale() const { return alphaScale_; }
+
 private:
     float markZoom_ = 1.0f;
     float quiverZoom_ = 1.0f;
     float lineWidthZoom_ = 1.0f;
+    float alphaScale_ = 1.0f;
     bool forceOpaque_ = false;
     bool showPixelGrid_ = false;
 };
