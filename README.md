@@ -29,14 +29,19 @@ Full usage: **[docs/usage.md](docs/usage.md)**
   DICOM, HDF5 and `.npy` data keep their raw samples. Contrast stretch (with a
   histogram) and pseudo-colour tables run on the GPU, so you window the actual
   data rather than a quantised copy.
-- **Measurement tools.** Caliper for distances, pixel-size calibration so the
-  caliper reads in real units, a pixel grid with sub-pixel coordinates.
+- **Measurement tools.** Diagonal, horizontal and vertical caliper, Count
+  Marks, pixel-size calibration so the caliper reads in real units, a pixel
+  grid with sub-pixel coordinates.
+- **Live glyph scaling and export.** Ctrl+drag scales mark size, line width,
+  quiver length and opacity without rebuilding the scene (Glyph Appearance
+  panel); File > Export or `--export` renders the view to an image of any size.
 - **Every format through plugins.** Image decoders are runtime-loaded shared
   libraries (`dlopen`/`LoadLibrary`), so optional formats (HEIF/AVIF, JPEG XL,
   camera RAW, OpenEXR, HDF5) simply appear when their library is installed.
 - **Scriptable.** An optional JSON-RPC server (`--rpc-port`) speaks giv's wire
   protocol, so existing giv client scripts can load files, push marks, read and
-  set the view, and wait for a click.
+  set the view, and wait for a click. giv's command-line options and remote
+  client mode (`--remote "load_file x.giv"`) are supported too.
 - **Remembers your view.** Per-image contrast, colormap, pan/zoom and slice are
   kept in a SQLite database and restored when you reopen the file.
 - **Fast browsing.** Thumbnail strip, background prefetch of neighbouring
@@ -53,7 +58,8 @@ Full usage: **[docs/usage.md](docs/usage.md)**
 | --- | --- |
 | Raster | PNG, JPEG, BMP, TGA, GIF, PSD, TIFF (multi-page), WebP, ICO/CUR, DDS, PGM/PPM |
 | Optional raster | HEIC/HEIF/AVIF (libheif), JPEG XL (libjxl), camera RAW (LibRaw), OpenEXR |
-| HDR / scientific | Radiance HDR, PFM, FITS, DICOM, HDF5, NumPy `.npy` |
+| HDR / scientific | Radiance HDR, PFM, FITS, DICOM, HDF5, NIfTI, NumPy `.npy` |
+| Layered | OpenRaster `.ora`, Krita `.kra` (merged image) |
 | Vector | `.giv`, SVG (shapes, `<image>`, shaped multilingual `<text>`, `<textPath>`, CSS, animation) |
 
 See [features.md](features.md) for the complete feature list.
@@ -98,7 +104,8 @@ Coordinates follow giv's image-viewer convention (Y grows downward);
 ## Limitations
 
 - `.giv` dash patterns use only the first on/off pair.
-- No image editing, saving/export, printing or ICC colour management.
+- No image editing, printing or ICC colour management (export renders the
+  current view only).
 - Text depends on system fonts (fontconfig on Linux, the Fonts folder on
   Windows); no font is bundled.
 - `$low_contrast` and the `$hflip`/`$vflip` directives are parsed but not
@@ -108,10 +115,10 @@ Coordinates follow giv's image-viewer convention (Y grows downward);
 
 Requires [vcpkg](https://vcpkg.io) with `VCPKG_ROOT` set, CMake >= 3.21,
 Ninja and `glslangValidator` (Vulkan SDK or your distro's `glslang`) on `PATH`.
-On Linux only `vsg` and `vsgxchange` come from vcpkg (built into
-`build/<preset>/vcpkg_installed`, so no system-wide VSG install is used); Qt 6,
-SQLite and the other libraries come from the system package manager. On
-Windows vcpkg provides everything.
+On Linux every dependency except Qt 6 comes from vcpkg (built into
+`build/<preset>/vcpkg_installed`, so no system-wide VSG install is used); Qt 6
+is a system package. On Windows vcpkg provides everything. See
+[BUILD.md](BUILD.md) for details.
 
 ```sh
 export VCPKG_ROOT=/path/to/vcpkg

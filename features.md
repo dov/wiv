@@ -2,7 +2,7 @@
 
 A reference for feature-comparing wiv against other image viewers without
 rescanning the repo. Compiled from the source tree (menus, plugins, parser,
-RPC server) as of 2026-11-02; update it when features change. The README is
+RPC server) as of 2026-11-05; update it when features change. The README is
 partly stale (it still lists Phase-1 limitations that have since been
 implemented, e.g. colormaps, mark browser, RPC); this file reflects the code.
 
@@ -38,6 +38,8 @@ in Edit > Preferences > Keyboard.
 | DDS | `.dds` | `dds` | BC1–BC5, BC7, uncompressed (vendored bcdec) |
 | ICO/CUR | `.ico .cur` | `ico` | PNG and DIB entries |
 | HDF5 | `.h5 .hdf5 .he5` | `hdf5` (libhdf5, optional) | every numeric 2D/3D dataset is a page (PgUp/PgDn); 2D = gray (raw u8/u16/float samples), 3D = colour (last axis 3/4, first axis 3/4, or Image-spec `INTERLACE_MODE`) or slices (heuristic); content-sniffed |
+| NIfTI | `.nii .nii.gz` | `nifti` (own parser on zlib) | 2D/3D volumes, z = slice axis; scl_slope/inter applied; non-u8/u16 data becomes float |
+| OpenRaster, Krita | `.ora .kra` | `ora` (zlib + stb_image) | shows the flattened merged image; layers not composited |
 | FITS | `.fits .fit` | `fits` | float/int samples; NAXIS=3 cubes as slices |
 | DICOM | `.dcm` | `dicom` | multi-frame as slices |
 | NumPy | `.npy` | `npy` | 2D and 3D arrays (3D = slices) |
@@ -77,6 +79,8 @@ in Edit > Preferences > Keyboard.
   restored at startup. Not persisted on purpose: Balloon Tooltips (reset on
   every load), Image, Menu Bar, Auto Reload, Loop Animation.
 - Force opaque (`A`) — ignore alpha channel.
+- Glyph Appearance panel (View, `Ctrl+G`): global live multipliers for mark size, line width, quiver length and opacity (no scene rebuild; unused rows hidden). Gestures: Ctrl+LMB drag vertical = marks, horizontal = quiver length; Ctrl+RMB drag horizontal = line width, vertical = opacity; Alt+wheel = quivers. Force Opaque overrides opacity.
+- Export (File > Export..., `--export`, RPC `export_image`): renders the current view off-screen at any size to PNG/JPEG/BMP/TIFF/WebP.
 - Configurable background colour, MSAA (off/2x/4x).
 - Full screen (`F11`), hideable menu bar (`Ctrl+M`).
 - Drag-and-drop of files onto the window (incl. a native Windows drop target).
@@ -161,11 +165,13 @@ in Edit > Preferences > Keyboard.
 - Whole-volume histogram toggle for multi-slice data.
 - Contrast stretch and colormap applied on the GPU.
 - Color Table / pseudo-colour (`P`): None, Invert, Low Contrast, Rainbow,
-  Red Temperature, Blue-Green-Red-Yellow, Blue-White, Green-Red-Blue-White
+  Red Temperature, Blue-Green-Red-Yellow, Blue-White, Green-Red-Blue-White,
+  Equalize and Normalize (tables derived from the displayed 8-bit image)
   (ported from giv); colormap bar under the canvas showing min..max mapping.
 - Multi-slice volumes (FITS cubes, DICOM multi-frame, 3D npy): slice
   stepping, `Slice N/M` in status bar, per-slice histogram.
-- Caliper / Measure Distance diagonal (`Z`) with draggable jaws.
+- Tools > Measure Distance submenu (`Z` toggles): Diagonal, Horizontal and Vertical caliper modes (mode remembered), draggable jaws with highlight and crosshair/hand cursors, status-bar messages.
+- Count Marks (`C`): caliper rectangle that counts the `.giv` marks inside it.
 - Calibrate Pixel Size panel (`S`): set real-world units per pixel from a
   known value, last measurement, or image width/height; caliper then reads in
   real units.
@@ -221,8 +227,12 @@ Stored in `state.db` (SQLite, WAL mode) next to `wiv.ini` (e.g.
   $hide $image $line $line_cap $linedash $loop $lw $marks $mark_size $name
   $noline $nomark $outline_color $pango_markup $path $polygon $quiver_color
   $quiver_head $quiver_scale $scale_font $scale_marks $shadow_color $shadow_offset
-  $style $text_angle $text_size $text_style $title $vlock`, plus ellipses and beziers.
-- Parsed but ignored: `$svg $svgmarks $marks_file $low_contrast $hflip/$vflip`
+  $style $text_angle $text_size $text_style $title $vlock`, plus `$background` (wiv extension: viewport colour while the file is loaded), ellipses and beziers.
+- `$svgmarks` draws the SVG at every dataset point (native size, origin on the point, replaces the mark shape); `$svg` draws it once at the origin.
+- Ellipses (`e x y w h angle`) follow giv: full width/height, angle in radians, positive = clockwise on screen.
+- Lines are drawn as capsules: round joins, caps per `$line_cap`, analytic anti-aliased edges, translucent overlaps blend once (SVG strokes keep plain rectangles).
+- SVG gradient fills and strokes are rasterized (nanosvgrast, up to 4x oversampled) and drawn as textured sprites.
+- Parsed but ignored: `$marks_file $low_contrast $hflip/$vflip`
   (and `no*`), `$pixelsize`.
 - Marks: circle, filled circle, square, filled square (+ others per parser).
 - Lines: width, dash patterns (first on/off pair only), caps, arrows.
@@ -231,8 +241,8 @@ Stored in `state.db` (SQLite, WAL mode) next to `wiv.ini` (e.g.
 - Text with numeric-keypad alignment, rotation, size, font via fontconfig (HarfBuzz/FriBidi outlines).
 - Colours: X11 names, `name/alpha` suffix syntax, hex.
 - `$image` embeds raster images (one pixel = one world unit).
-- Mark Browser dock (`O`): checkbox tree of `$path` hierarchy to show/hide
-  datasets or groups; Show Marks toggle (`M`).
+- Mark Browser dock (`O`): checkbox tree with a top-level node per source file, then the `$path` hierarchy, to show/hide
+  files, datasets or groups; Show Marks toggle (`M`).
 - Multiple `.giv` files merged into one scene.
 - Remote control via JSON-RPC (see below).
 
@@ -240,7 +250,8 @@ Stored in `state.db` (SQLite, WAL mode) next to `wiv.ini` (e.g.
 
 - `--rpc-port PORT`: JSON-RPC server on 127.0.0.1 (off by default).
 - Methods: `ping`, `help`, `load_file`, `giv_string` (optionally `-append`),
-  `get_transformation`, `set_transformation`, `pick_coordinate`.
+  `get_transformation`, `set_transformation`, `pick_coordinate` (Esc aborts it), `list_actions`, `trigger_action`, `resize_window`, `set_colormap`, `set_contrast`, `mouse_move`, `export_image`, `screenshot`.
+- Remote client mode: `--remote "method params"` (or `--json_method`/`--json_params`, `--remote-host`, `--remote-port`) sends one command to a running instance and exits.
 
 ## Preferences (Edit > Preferences)
 
@@ -260,7 +271,9 @@ vcpkg `sqlite3` on Windows; `mingw64-sqlite` for the MinGW cross build).
 ## Command line
 
 ```
-wiv [--geometry WxH] [--rpc-port PORT] [file ...]
+wiv [--geometry WxH] [--rpc-port|--port PORT] [--join] [--auto-reload] [-n]
+    [--zoom scale sx sy] [--export FILE] [--log_file FILE] [file ...]
+wiv --remote "method params" [--remote-host HOST] [--remote-port PORT]
 ```
 
 Env vars: `WIV_PLUGIN_DIR`, `WIV_CONTINUOUS=1`, `WIV_TIMING=1`,
@@ -276,7 +289,7 @@ Env vars: `WIV_PLUGIN_DIR`, `WIV_CONTINUOUS=1`, `WIV_TIMING=1`,
 Absence is inferred from the menus and source layout, not exhaustively
 proven; re-check before relying on an item.
 
-- No image editing (crop, resize, adjust colour, annotate), saving or export.
+- No image editing (crop, resize, adjust colour, annotate); export only renders the current view.
 - No slideshow mode, no print support, no ICC colour management.
 - No video playback.
 - No EXIF editing; EXIF only for JPEG/TIFF/PNG/WebP.
