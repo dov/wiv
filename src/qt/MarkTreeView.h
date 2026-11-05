@@ -1,7 +1,8 @@
 #pragma once
 //
 // MarkTreeView.h - the content widget of wiv's Mark Browser: a checkbox
-// tree of every loaded dataset's $path hierarchy, letting the user show/hide
+// tree of every loaded dataset's $path hierarchy, under one top-level node per
+// source file (toggling it shows/hides everything from that file), letting the user show/hide
 // individual marks or whole groups. Mirrors giv's GivMarkTreeDialog
 // (giv-mark-tree-dialog.gob) - same three columns (Path / Visible / #nodes),
 // same "$path segments split on '/' build nested groups" tree shape, same
@@ -41,6 +42,7 @@ private:
         QTreeWidgetItem* item = nullptr;
         std::vector<size_t> datasetIndices; // every dataset in this node's subtree (aggregate)
         long long pointCount = 0;
+        bool anyVisible = false; // only maintained for top-level (file) nodes
     };
 
     VulkanViewport* viewport_;

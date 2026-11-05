@@ -769,8 +769,18 @@ bool GivParser::includeFile(const std::string& name, SceneData& scene, std::stri
 
 bool GivParser::parseFile(const std::string& filename, SceneData& scene, std::string& error)
 {
+    const size_t startIdx = scene.datasets.size();
+    auto tagSource = [&](const std::string& source) {
+        for (size_t i = startIdx; i < scene.datasets.size(); ++i)
+            if (scene.datasets[i].sourceFile.empty()) scene.datasets[i].sourceFile = source;
+    };
+
     if (filename.size() >= 4 && toLower(filename.substr(filename.size() - 4)) == ".svg")
-        return loadSvgFile(filename, scene, error);
+    {
+        bool ok = loadSvgFile(filename, scene, error);
+        tagSource(filename);
+        return ok;
+    }
 
     const std::string savedDir = baseDir_;
     const size_t slash = filename.find_last_of("/\\");
@@ -786,13 +796,16 @@ bool GivParser::parseFile(const std::string& filename, SceneData& scene, std::st
 
     parseBuffer(file.data, file.size, scene);
     baseDir_ = savedDir;
+    tagSource(filename);
     return true;
 }
 
 bool GivParser::parseString(const std::string& text, SceneData& scene, std::string& error)
 {
     (void)error;
+    const size_t startIdx = scene.datasets.size();
     parseBuffer(text.data(), text.size(), scene);
+    for (size_t i = startIdx; i < scene.datasets.size(); ++i) scene.datasets[i].sourceFile = "string"; // giv's name for string input
     return true;
 }
 
