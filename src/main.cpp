@@ -7,9 +7,11 @@
 #include "Logging.h"
 #include "SceneBuilder.h"
 #include "qt/MainWindow.h"
+#include "qt/RemoteClient.h"
 
 #include <QApplication>
 #include "qt/PreferencesDialog.h"
+#include <QCoreApplication>
 #include <QIcon>
 #include <QKeyEvent>
 #include <QCommandLineParser>
@@ -17,6 +19,7 @@
 #include <QFileInfo>
 #include <QStringList>
 
+#include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/spdlog.h>
 
 #include <vsg/all.h>
@@ -105,7 +108,57 @@ int main(int argc, char** argv)
 {
     giv::log::init();
 
-    QApplication app(argc, argv);
+    // giv's --zoom takes three separate arguments (scale shift_x shift_y),
+    // which QCommandLineParser can't express: pull them out of argv first.
+    std::vector<char*> filteredArgv;
+    bool hasZoom = false;
+    double zoomValues[3] = {1, 0, 0};
+    for (int i = 0; i < argc; ++i)
+    {
+        if (i > 0 && std::string(argv[i]) == "--zoom" && i + 3 < argc)
+        {
+            hasZoom = true;
+            for (int k = 0; k < 3; ++k) zoomValues[k] = QString(argv[i + 1 + k]).toDouble();
+            i += 3;
+            continue;
+        }
+        filteredArgv.push_back(argv[i]);
+    }
+    int filteredArgc = static_cast<int>(filteredArgv.size());
+    filteredArgv.push_back(nullptr);
+
+    // --remote / --json_method: act as a command-line client of a running
+    // viewer and exit, without opening a window.
+    {
+        QCoreApplication core(filteredArgc, filteredArgv.data());
+        QCommandLineParser remoteParser;
+        remoteParser.setSingleDashWordOptionMode(QCommandLineParser::ParseAsLongOptions);
+        QCommandLineOption remoteOpt("remote", "", "cmd");
+        QCommandLineOption jsonMethodOpt("json_method", "", "cmd");
+        QCommandLineOption jsonParamsOpt("json_params", "", "prms");
+        QCommandLineOption hostOpt("remote-host", "", "host", "localhost");
+        QCommandLineOption portOpt("remote-port", "", "port", "8448");
+        remoteParser.addOptions({remoteOpt, jsonMethodOpt, jsonParamsOpt, hostOpt, portOpt});
+        // Everything else is for the GUI parser below.
+        remoteParser.parse(core.arguments());
+        if (remoteParser.isSet(remoteOpt) || remoteParser.isSet(jsonMethodOpt))
+        {
+            QString method, params;
+            if (remoteParser.isSet(jsonMethodOpt))
+            {
+                method = remoteParser.value(jsonMethodOpt);
+                params = remoteParser.value(jsonParamsOpt);
+            }
+            else
+                givqt::splitRemoteCommand(remoteParser.value(remoteOpt), method, params);
+            return givqt::runRemoteClient(remoteParser.value(hostOpt), remoteParser.value(portOpt).toInt(), method,
+                                          params) == 0
+                       ? 0
+                       : 255;
+        }
+    }
+
+    QApplication app(filteredArgc, filteredArgv.data());
     QApplication::setOrganizationName("wiv");
     QApplication::setApplicationName("wiv");
     QApplication::setWindowIcon(QIcon(":/wiv-app-icon.png"));
@@ -133,9 +186,38 @@ int main(int argc, char** argv)
         "rpc-port", "Start the json-rpc remote-control server on 127.0.0.1:PORT (see RpcServer.h). Not started by default.",
         "PORT");
     parser.addOption(rpcPortOption);
+    QCommandLineOption portOption("port", "Alias of --rpc-port (giv's name for it).", "PORT");
+    parser.addOption(portOption);
+    QCommandLineOption joinOption("join", "Merge all the files on the command line into one scene.");
+    parser.addOption(joinOption);
+    QCommandLineOption autoReloadOption("auto-reload", "Start with View > Auto Reload on.");
+    parser.addOption(autoReloadOption);
+    QCommandLineOption actualPixelsOption("n", "Initially use 1:1 zoom instead of fitting to the window.");
+    parser.addOption(actualPixelsOption);
+    QCommandLineOption logFileOption("log_file", "Also log to this file.", "file");
+    parser.addOption(logFileOption);
+    // Handled above, before QApplication; declared so --help lists them and
+    // the parser doesn't reject them.
+    parser.addOption(QCommandLineOption("zoom", "Initial view: --zoom scale shift_x shift_y (pixels per unit, view center).",
+                                        "scale"));
+    for (const char* name : {"remote", "json_method", "json_params", "remote-host", "remote-port"})
+        parser.addOption(QCommandLineOption(name, "Remote client mode: send a json-rpc command to a running viewer.", "arg"));
     parser.addPositionalArgument("files", "giv file(s) to open.", "[file.giv ...]");
     parser.process(app);
     giv::log::captureStdStreams();
+
+    if (parser.isSet(logFileOption))
+    {
+        try
+        {
+            spdlog::default_logger()->sinks().push_back(
+                std::make_shared<spdlog::sinks::basic_file_sink_mt>(parser.value(logFileOption).toStdString(), true));
+        }
+        catch (const spdlog::spdlog_ex& e)
+        {
+            spdlog::error("Cannot open --log_file: {}", e.what());
+        }
+    }
 
     givqt::MainWindow window;
 
@@ -173,14 +255,19 @@ int main(int argc, char** argv)
     // top-level with no visible parent underneath it.
     window.show();
 
-    if (parser.isSet(rpcPortOption))
+    if (parser.isSet(autoReloadOption)) window.enableAutoReload();
+    if (hasZoom) window.setStartupZoom(zoomValues[0], zoomValues[1], zoomValues[2]);
+    else if (parser.isSet(actualPixelsOption)) window.setStartupActualPixels();
+
+    if (parser.isSet(rpcPortOption) || parser.isSet(portOption))
     {
+        const QString portText = parser.isSet(rpcPortOption) ? parser.value(rpcPortOption) : parser.value(portOption);
         bool ok = false;
-        int port = parser.value(rpcPortOption).toInt(&ok);
+        int port = portText.toInt(&ok);
         if (ok && port > 0 && port <= 65535)
             window.startRpcServer(port);
         else
-            spdlog::error("Invalid --rpc-port value: {}", parser.value(rpcPortOption).toStdString());
+            spdlog::error("Invalid --rpc-port value: {}", portText.toStdString());
     }
 
     auto files = parser.positionalArguments();
@@ -189,7 +276,10 @@ int main(int argc, char** argv)
         std::vector<std::string> paths;
         for (const auto& f : expandWildcards(files)) paths.push_back(f.toStdString());
         spdlog::info("Opening {} file(s) from command line: {}", paths.size(), files.join(", ").toStdString());
-        window.loadFiles(paths);
+        if (parser.isSet(joinOption))
+            window.loadFilesJoined(paths);
+        else
+            window.loadFiles(paths);
     }
 
     else
