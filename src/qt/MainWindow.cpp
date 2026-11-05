@@ -717,9 +717,24 @@ void MainWindow::buildMenus()
 
 
     auto toolsMenu = menuBar()->addMenu("&Tools");
+    // giv's three Measure Distance tools. Mutually exclusive like giv's menu:
+    // the viewport owns the state (picking the active one again switches the
+    // tool off) and measureModeChanged() below keeps the check marks in sync.
     measureDistanceAction_ = toolsMenu->addAction("Measure Distance Diagonal", viewport_, &VulkanViewport::toggleMeasureDistance);
     measureDistanceAction_->setCheckable(true);
     measureDistanceAction_->setShortcut(QKeySequence("Z"));
+    measureDistanceHorizontalAction_ = toolsMenu->addAction(
+        "Measure Distance Horizontal", this, [this]() { viewport_->toggleMeasureMode(giv::MeasureMode::Horizontal); });
+    measureDistanceHorizontalAction_->setCheckable(true);
+    measureDistanceVerticalAction_ = toolsMenu->addAction(
+        "Measure Distance Vertical", this, [this]() { viewport_->toggleMeasureMode(giv::MeasureMode::Vertical); });
+    measureDistanceVerticalAction_->setCheckable(true);
+    connect(viewport_, &VulkanViewport::measureModeChanged, this, [this](bool enabled, int mode) {
+        const auto m = static_cast<giv::MeasureMode>(mode);
+        measureDistanceAction_->setChecked(enabled && m == giv::MeasureMode::Diagonal);
+        measureDistanceHorizontalAction_->setChecked(enabled && m == giv::MeasureMode::Horizontal);
+        measureDistanceVerticalAction_->setChecked(enabled && m == giv::MeasureMode::Vertical);
+    });
 
     calibrateDock_->toggleViewAction()->setShortcut(QKeySequence("S")); // pixel Size
     toolsMenu->addAction(calibrateDock_->toggleViewAction());
@@ -1159,6 +1174,8 @@ void MainWindow::loadFilesInternal(const std::vector<std::string>& paths)
     lastPaths_ = paths;
     balloonAction_->setChecked(false);
     measureDistanceAction_->setChecked(false);
+    measureDistanceHorizontalAction_->setChecked(false);
+    measureDistanceVerticalAction_->setChecked(false);
     spdlog::info("Loaded {} file(s) successfully", paths.size());
     const auto perfLoaded = std::chrono::steady_clock::now();
     updateThumbnailStrip();

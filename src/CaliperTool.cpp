@@ -20,6 +20,7 @@ constexpr double kBarWidthPx = 12.0;
 constexpr double kJawSizePx = 36.0; // half-height of the jaw bracket
 constexpr double kJawHitRadiusPx = 40.0;
 constexpr double kBarHitHalfWidthPx = 20.0;
+constexpr double kGuideWidthPx = 3.0; // axis marker lines in Horizontal/Vertical mode
 constexpr double kMinDragPx = 3.0;    // below this, a release is a degenerate no-op click
 constexpr double kLabelFillFrac = 0.9; // label glyph height, as a fraction of the bar's own width
 
@@ -61,6 +62,23 @@ void CaliperTool::setEnabled(bool enabled)
     builder_ = vsg::Builder::create(); // drop the per-move quad cache
     clearGeometry();
     if (onMeasurementText) onMeasurementText(std::string());
+}
+
+void CaliperTool::setMode(MeasureMode mode)
+{
+    if (mode_ == mode) return;
+    mode_ = mode;
+    refresh();
+}
+
+vsg::dvec2 CaliperTool::effectiveP1() const
+{
+    switch (mode_)
+    {
+        case MeasureMode::Horizontal: return {p1_.x, p0_.y};
+        case MeasureMode::Vertical: return {p0_.x, p1_.y};
+        default: return p1_;
+    }
 }
 
 void CaliperTool::clearGeometry()
@@ -105,10 +123,11 @@ int CaliperTool::hitTest(const vsg::dvec2& world) const
 
     // Jaws take priority over the bar - they're the smaller targets and sit
     // right at the bar's own endpoints.
+    const vsg::dvec2 p1 = effectiveP1();
     if (vsg::length(world - p0_) <= jawRadius) return kJaw0;
-    if (vsg::length(world - p1_) <= jawRadius) return kJaw1;
+    if (vsg::length(world - p1) <= jawRadius) return kJaw1;
 
-    vsg::dvec2 d = p1_ - p0_;
+    vsg::dvec2 d = p1 - p0_;
     double dist = vsg::length(d);
     if (dist < 1e-9) return kNoPart;
     vsg::dvec2 dir = d / dist;
@@ -174,7 +193,7 @@ void CaliperTool::apply(vsg::ButtonReleaseEvent& event)
 
     if (wasNewPlacement)
     {
-        double distPx = vsg::length(p1_ - p0_) / std::max(worldPerPixel(), 1e-12);
+        double distPx = vsg::length(effectiveP1() - p0_) / std::max(worldPerPixel(), 1e-12);
         if (distPx < kMinDragPx)
         {
             // A press with no real drag - discard the degenerate 0-length
@@ -187,10 +206,11 @@ void CaliperTool::apply(vsg::ButtonReleaseEvent& event)
         haveCaliper_ = true;
     }
 
-    double dist = vsg::length(p1_ - p0_);
+    const vsg::dvec2 p1 = effectiveP1();
+    double dist = vsg::length(p1 - p0_);
     spdlog::info(
         "Caliper measurement: ({:.3f}, {:.3f}) -> ({:.3f}, {:.3f}), distance = {:.3f}",
-        p0_.x, p0_.y, p1_.x, p1_.y, dist);
+        p0_.x, p0_.y, p1.x, p1.y, dist);
 }
 
 void CaliperTool::apply(vsg::MoveEvent& event)
@@ -241,7 +261,8 @@ void CaliperTool::rebuildGeometry()
     // are touched below - see waitForGpuIdle's doc comment.
     if (waitForGpuIdle && !waitForGpuIdle()) return;
 
-    vsg::dvec2 d = p1_ - p0_;
+    const vsg::dvec2 p1 = effectiveP1();
+    vsg::dvec2 d = p1 - p0_;
     double dist = std::sqrt(d.x * d.x + d.y * d.y);
     // `dir` is the raw p0_->p1_ direction and stays that way for the rest of
     // this function: addJawMesh(p0_, dir)/addJawMesh(p1_, -dir) below is
@@ -267,9 +288,9 @@ void CaliperTool::rebuildGeometry()
     state.blending = true;
 
     auto newRoot = vsg::Group::create();
-    auto addQuad = [&](const vsg::dvec2& center, const vsg::dvec2& dx, const vsg::dvec2& dy, const vsg::vec4& color) {
+    auto addQuad = [&](const vsg::dvec2& center, const vsg::dvec2& dx, const vsg::dvec2& dy, const vsg::vec4& color, float z = 0.01f) {
         vsg::GeometryInfo info;
-        info.position = toVec3(center, 0.01f);
+        info.position = toVec3(center, z);
         info.dx = toVec3(dx);
         info.dy = toVec3(dy);
         info.color = color;
@@ -283,8 +304,35 @@ void CaliperTool::rebuildGeometry()
     // placement (local y in [-0.03, 0], i.e. entirely to one side of the
     // hot-spot line).
     vsg::dvec2 barSize = perp * (2.0 * kBarWidthPx * wpp);
-    vsg::dvec2 barCenter = (p0_ + p1_) * 0.5 + barSize * 0.5;
+    vsg::dvec2 barCenter = (p0_ + p1) * 0.5 + barSize * 0.5;
     addQuad(barCenter, d, barSize, kBarColor);
+
+    // Horizontal / Vertical: an axis marker through each jaw, perpendicular
+    // to the measuring direction and spanning the whole view, and a thin guide
+    // from the constrained jaw to the raw (cursor-side) position - the reference application's
+    // updateGuides(), as giv's own full-height/width measure bands.
+    if (mode_ != MeasureMode::Diagonal)
+    {
+        auto lookAt = camera_ ? camera_->viewMatrix.cast<vsg::LookAt>() : vsg::ref_ptr<vsg::LookAt>();
+        const vsg::dvec2 viewCenter = lookAt ? vsg::dvec2(lookAt->center.x, lookAt->center.y) : p0_;
+        const double span = 4.0 * std::max(lastExtent_.width, lastExtent_.height) * wpp;
+        const double thick = kGuideWidthPx * wpp;
+        const bool horizontal = mode_ == MeasureMode::Horizontal;
+        for (const vsg::dvec2& jaw : {p0_, p1})
+        {
+            if (horizontal)
+                addQuad({jaw.x, viewCenter.y}, {thick, 0.0}, {0.0, span}, kBarColor);
+            else
+                addQuad({viewCenter.x, jaw.y}, {span, 0.0}, {0.0, thick}, kBarColor);
+        }
+        vsg::dvec2 g = p1_ - p1;
+        double glen = vsg::length(g);
+        if (glen > 1e-9)
+        {
+            vsg::dvec2 gdir = g / glen;
+            addQuad((p1 + p1_) * 0.5, g, vsg::dvec2(-gdir.y, gdir.x) * (0.6 * thick), kJawColor, 0.015f);
+        }
+    }
 
     // Both jaws' filled triangle mesh (hardcoded shape - see
     // CaliperJawShape.h), rebuilt as one combined vsg::VertexIndexDraw and
@@ -321,7 +369,7 @@ void CaliperTool::rebuildGeometry()
                 }
         };
         addJawMesh(p0_, dir);
-        addJawMesh(p1_, -dir);
+        addJawMesh(p1, -dir);
 
         auto colors = vsg::vec4Array::create(1, kJawColor);
         auto vid = vsg::VertexIndexDraw::create();
@@ -344,7 +392,10 @@ void CaliperTool::rebuildGeometry()
         // the text never renders upside down (independent of the jaws'
         // perp-only flip above, since `dir` itself is never touched there).
         double angle = std::atan2(dir.y, dir.x);
-        if (std::cos(angle) < 0.0) angle += vsg::PI;
+        if (std::fabs(std::cos(angle)) < 1e-6)
+            angle = vsg::PI * 0.5; // vertical bar: always read bottom-to-top
+        else if (std::cos(angle) < 0.0)
+            angle += vsg::PI;
 
         // Centered in the bar (above its own z=0.01f), almost filling the
         // bar's own width (2*kBarWidthPx) in y.
