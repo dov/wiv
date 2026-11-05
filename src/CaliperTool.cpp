@@ -307,11 +307,25 @@ void CaliperTool::rebuildGeometry()
     vsg::dvec2 barCenter = (p0_ + p1) * 0.5 + barSize * 0.5;
     addQuad(barCenter, d, barSize, kBarColor);
 
+    // Count Marks: the rectangle the jaws span, outlined in the bar's color.
+    if (mode_ == MeasureMode::CountMarks)
+    {
+        const double thick = kGuideWidthPx * wpp;
+        const vsg::dvec2 lo(std::min(p0_.x, p1.x), std::min(p0_.y, p1.y));
+        const vsg::dvec2 hi(std::max(p0_.x, p1.x), std::max(p0_.y, p1.y));
+        const vsg::dvec2 mid = (lo + hi) * 0.5;
+        const double w = hi.x - lo.x, h = hi.y - lo.y;
+        addQuad({mid.x, lo.y}, {w + thick, 0.0}, {0.0, thick}, kBarColor);
+        addQuad({mid.x, hi.y}, {w + thick, 0.0}, {0.0, thick}, kBarColor);
+        addQuad({lo.x, mid.y}, {thick, 0.0}, {0.0, h + thick}, kBarColor);
+        addQuad({hi.x, mid.y}, {thick, 0.0}, {0.0, h + thick}, kBarColor);
+    }
+
     // Horizontal / Vertical: an axis marker through each jaw, perpendicular
     // to the measuring direction and spanning the whole view, and a thin guide
     // from the constrained jaw to the raw (cursor-side) position - the reference application's
     // updateGuides(), as giv's own full-height/width measure bands.
-    if (mode_ != MeasureMode::Diagonal)
+    if (mode_ == MeasureMode::Horizontal || mode_ == MeasureMode::Vertical)
     {
         auto lookAt = camera_ ? camera_->viewMatrix.cast<vsg::LookAt>() : vsg::ref_ptr<vsg::LookAt>();
         const vsg::dvec2 viewCenter = lookAt ? vsg::dvec2(lookAt->center.x, lookAt->center.y) : p0_;
@@ -385,8 +399,13 @@ void CaliperTool::rebuildGeometry()
     newRoot->addChild(jawStateGroup_);
 
     lastDistPx_ = dist;
-    std::string label = std::format("{:.3f}{}", dist * pixelSize_, unit_);
+    std::string label = mode_ == MeasureMode::CountMarks
+                            ? std::format("{} marks in rectangle", countMarks ? countMarks(p0_, p1) : 0)
+                            : std::format("{:.3f}{}", dist * pixelSize_, unit_);
 
+    // The count goes to the status bar only; a text label would not fit on
+    // the (possibly tiny) bar.
+    if (mode_ != MeasureMode::CountMarks)
     {
         // Parallel to the bar; flip 180 degrees when it points leftward so
         // the text never renders upside down (independent of the jaws'

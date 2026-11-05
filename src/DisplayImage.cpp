@@ -3,6 +3,7 @@
 #include "ImagePluginHost.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <thread>
@@ -75,7 +76,78 @@ void renderIntegral(const T* in, size_t n, size_t tableSize, double contrastMin,
     });
 }
 
+// giv's PSEUDO_COLOR_EQUALIZE / PSEUDO_COLOR_NORMALIZE (giv-win.gob): the gray
+// table is derived from the contrast-stretched 8-bit image itself.
+std::vector<uint8_t> adaptiveLut(const LoadedImage& src, double contrastMin, double range, colormaps::Id id, int slice)
+{
+    const size_t pixelCount = static_cast<size_t>(src.width) * src.height;
+    const size_t sliceOffset = pixelCount * static_cast<size_t>(std::max(0, slice));
+    std::array<size_t, 256> hist{};
+    switch (src.sampleType)
+    {
+        case WIV_SAMPLE_U8:
+        {
+            const uint8_t* in = src.samples.data() + sliceOffset;
+            std::array<int, 256> level;
+            for (int v = 0; v < 256; ++v) level[v] = stretch(v, contrastMin, range);
+            for (size_t i = 0; i < pixelCount; ++i) ++hist[level[in[i]]];
+            break;
+        }
+        case WIV_SAMPLE_U16:
+        {
+            const uint16_t* in = reinterpret_cast<const uint16_t*>(src.samples.data()) + sliceOffset;
+            std::vector<uint8_t> level(65536);
+            for (int v = 0; v < 65536; ++v) level[v] = static_cast<uint8_t>(stretch(v, contrastMin, range));
+            for (size_t i = 0; i < pixelCount; ++i) ++hist[level[in[i]]];
+            break;
+        }
+        case WIV_SAMPLE_FLOAT:
+        {
+            const float* in = reinterpret_cast<const float*>(src.samples.data()) + sliceOffset;
+            for (size_t i = 0; i < pixelCount; ++i) ++hist[stretch(in[i], contrastMin, range)];
+            break;
+        }
+        default: break;
+    }
+
+    std::array<uint8_t, 256> map{};
+    if (id == colormaps::Id::Equalize)
+    {
+        size_t accumulated = 0; // pixels strictly below this level
+        for (int level = 0; level < 256; ++level)
+        {
+            map[level] = static_cast<uint8_t>(accumulated * 255 / std::max<size_t>(pixelCount, 1));
+            accumulated += hist[level];
+        }
+    }
+    else
+    {
+        int lo = 255, hi = 0;
+        for (int level = 0; level < 256; ++level)
+            if (hist[level])
+            {
+                lo = std::min(lo, level);
+                hi = std::max(hi, level);
+            }
+        const int span = std::max(hi - lo, 1);
+        for (int level = 0; level < 256; ++level) map[level] = static_cast<uint8_t>(std::clamp(255 * (level - lo) / span, 0, 255));
+    }
+    std::vector<uint8_t> lut(256 * 3);
+    for (int level = 0; level < 256; ++level) lut[level * 3] = lut[level * 3 + 1] = lut[level * 3 + 2] = map[level];
+    return lut;
+}
+
 } // namespace
+
+std::vector<uint8_t> displayLut(const LoadedImage& src, float contrastMin, float contrastMax, colormaps::Id colormapId,
+                                bool colormapEnabled, int slice)
+{
+    if (!colormapEnabled) return {};
+    if (colormaps::isAdaptive(colormapId))
+        return adaptiveLut(src, contrastMin, static_cast<double>(contrastMax) - contrastMin, colormapId, slice);
+    const uint8_t* lut = colormaps::lut(colormapId);
+    return lut ? std::vector<uint8_t>(lut, lut + 256 * 3) : std::vector<uint8_t>();
+}
 
 void renderDisplayRgba(const LoadedImage& src, float contrastMin, float contrastMax,
                         colormaps::Id colormapId, bool colormapEnabled, PixelBuffer& outRgba,
@@ -89,7 +161,8 @@ void renderDisplayRgba(const LoadedImage& src, float contrastMin, float contrast
     const size_t pixelCount = static_cast<size_t>(src.width) * src.height;
     std::vector<uint8_t> rendered(pixelCount * 4);
 
-    const uint8_t* lut = colormapEnabled ? colormaps::lut(colormapId) : nullptr;
+    const std::vector<uint8_t> lutTable = displayLut(src, contrastMin, contrastMax, colormapId, colormapEnabled, slice);
+    const uint8_t* lut = lutTable.empty() ? nullptr : lutTable.data();
     const double range = static_cast<double>(contrastMax) - contrastMin;
     const size_t sliceOffset = pixelCount * static_cast<size_t>(std::max(0, slice));
     uint8_t* out = rendered.data();
@@ -141,7 +214,30 @@ uint32_t displayRgbaAt(const LoadedImage& src, float contrastMin, float contrast
         default: break;
     }
     const double range = static_cast<double>(contrastMax) - contrastMin;
-    return packRgba(colormapEnabled ? colormaps::lut(colormapId) : nullptr, stretch(v, contrastMin, range));
+    if (!colormapEnabled || !colormaps::isAdaptive(colormapId))
+        return packRgba(colormapEnabled ? colormaps::lut(colormapId) : nullptr, stretch(v, contrastMin, range));
+
+    // Equalize/Normalize need the whole image's histogram: keep the table for
+    // the pixel under the cursor instead of rebuilding it on every mouse move.
+    static struct
+    {
+        const void* samples = nullptr;
+        float min = 0, max = 0;
+        colormaps::Id id = colormaps::Id::None;
+        std::vector<uint8_t> lut;
+    } cache;
+    const size_t pixelCount = static_cast<size_t>(src.width) * src.height;
+    const int slice = pixelCount ? static_cast<int>(sampleIndex / pixelCount) : 0;
+    if (cache.samples != src.samples.data() || cache.min != contrastMin || cache.max != contrastMax || cache.id != colormapId ||
+        cache.lut.empty())
+    {
+        cache.lut = displayLut(src, contrastMin, contrastMax, colormapId, true, slice);
+        cache.samples = src.samples.data();
+        cache.min = contrastMin;
+        cache.max = contrastMax;
+        cache.id = colormapId;
+    }
+    return packRgba(cache.lut.data(), stretch(v, contrastMin, range));
 }
 
 } // namespace giv

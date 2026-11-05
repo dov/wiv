@@ -417,6 +417,14 @@ void MainWindow::buildMenus()
     auto exportAction = fileMenu->addAction("&Export...", this, &MainWindow::exportImage);
     exportAction->setShortcut(QKeySequence("Ctrl+E"));
 
+    // giv: Escape aborts a pending pick_coordinate request.
+    auto* escapeAction = new QAction(this);
+    escapeAction->setShortcut(QKeySequence(Qt::Key_Escape));
+    connect(escapeAction, &QAction::triggered, this, [this]() {
+        if (rpcServer_) rpcServer_->abortPick();
+    });
+    addAction(escapeAction);
+
     auto reloadAction = fileMenu->addAction("&Reload", this, &MainWindow::reloadFiles);
     reloadAction->setShortcuts({QKeySequence(Qt::Key_Return), QKeySequence(Qt::Key_Enter)});
 
@@ -734,11 +742,15 @@ void MainWindow::buildMenus()
     measureDistanceVerticalAction_ = toolsMenu->addAction(
         "Measure Distance Vertical", this, [this]() { viewport_->toggleMeasureMode(giv::MeasureMode::Vertical); });
     measureDistanceVerticalAction_->setCheckable(true);
+    countMarksAction_ = toolsMenu->addAction(
+        "Count Marks", this, [this]() { viewport_->toggleMeasureMode(giv::MeasureMode::CountMarks); });
+    countMarksAction_->setCheckable(true);
     connect(viewport_, &VulkanViewport::measureModeChanged, this, [this](bool enabled, int mode) {
         const auto m = static_cast<giv::MeasureMode>(mode);
         measureDistanceAction_->setChecked(enabled && m == giv::MeasureMode::Diagonal);
         measureDistanceHorizontalAction_->setChecked(enabled && m == giv::MeasureMode::Horizontal);
         measureDistanceVerticalAction_->setChecked(enabled && m == giv::MeasureMode::Vertical);
+        countMarksAction_->setChecked(enabled && m == giv::MeasureMode::CountMarks);
     });
 
     calibrateDock_->toggleViewAction()->setShortcut(QKeySequence("S")); // pixel Size
@@ -1249,6 +1261,7 @@ void MainWindow::loadFilesInternal(const std::vector<std::string>& paths)
     measureDistanceAction_->setChecked(false);
     measureDistanceHorizontalAction_->setChecked(false);
     measureDistanceVerticalAction_->setChecked(false);
+    countMarksAction_->setChecked(false);
     spdlog::info("Loaded {} file(s) successfully", paths.size());
     const auto perfLoaded = std::chrono::steady_clock::now();
     updateThumbnailStrip();

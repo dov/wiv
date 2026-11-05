@@ -43,7 +43,11 @@ enum class MeasureMode
 {
     Diagonal,
     Horizontal,
-    Vertical
+    Vertical,
+    // giv's Tools > Count Marks: the two jaws are opposite corners of a
+    // rectangle, and instead of a distance the readout is how many marks
+    // fall inside it (see CaliperTool::countMarks).
+    CountMarks
 };
 
 class CaliperTool : public vsg::Inherit<vsg::Visitor, CaliperTool>
@@ -91,6 +95,10 @@ public:
     // the Calibrate dialog's "Last measure" source option (giv's
     // last_measure_distance_in_pixels).
     double lastDistancePixels() const { return lastDistPx_; }
+
+    // CountMarks mode: how many marks lie in the axis-aligned rectangle with
+    // these two opposite corners (world coordinates, either order).
+    std::function<int(const vsg::dvec2&, const vsg::dvec2&)> countMarks;
 
     // Fired whenever the live/fixed measurement text changes (empty once
     // disabled or before any caliper exists) - for a status-bar readout.

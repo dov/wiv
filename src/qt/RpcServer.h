@@ -45,6 +45,10 @@ public:
     // spdlog) on failure, e.g. the port is already in use.
     bool start(quint16 port);
 
+    // Replies to a waiting pick_coordinate call with an "Aborted" error
+    // (giv's Escape key); no-op if none is waiting.
+    void abortPick();
+
 private:
     MainWindow* mainWindow_ = nullptr;
     VulkanViewport* viewport_ = nullptr;
