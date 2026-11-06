@@ -97,8 +97,6 @@ thumbnails and background prefetching keep browsing fast.
 
 <p align="center"><img src="images/overview.png" alt="alpha-example.giv: semi-transparent marks over an image, with the thumbnail strip off" width="640"><br><em>alpha-example.giv: semi-transparent marks over an image, with the thumbnail strip off</em></p>
 
-<p align="center"><img src="images/thumbnails.png" alt="The same window with the thumbnail strip (<kbd>t</kbd>)" width="640"><br><em>The same window with the thumbnail strip (<kbd>t</kbd>)</em></p>
-
 ## 3. The giv file format
 
 A `.giv` file is plain text, one command per line. wiv reads the format of the
@@ -301,10 +299,6 @@ the middle, `1 2 3` at the bottom. `T7 100 100 hi` puts the top-left corner of
 22:
 ... (51 more lines)
 ```
-
-**Rendering:**
-
-<p align="center"><img src="images/text-markup.png" alt="Pango markup and drop-shadow labels" width="560"><br><em>Pango markup and drop-shadow labels</em></p>
 
 Text is shaped with HarfBuzz and FriBidi, so ligatures, kerning, right-to-left
 scripts and per-character font fallback work, and it is drawn as vector
@@ -613,7 +607,7 @@ Toggles such as Auto Contrast and Pixel Grid are saved and restored at startup.
 
 <p align="center"><img src="images/mark-browser.png" alt="The Mark Browser (<kbd>o</kbd>) lists the datasets of colors.giv; the checkboxes show and hide them" width="560"><br><em>The Mark Browser (<kbd>o</kbd>) lists the datasets of colors.giv; the checkboxes show and hide them</em></p>
 
-<p align="center"><img src="images/image-info.png" alt="The Image Info dock (<kbd>i</kbd>) for examples/mri-orange.fits" width="560"><br><em>The Image Info dock (<kbd>i</kbd>) for examples/mri-orange.fits</em></p>
+<p align="center"><img src="images/image-info.png" alt="The Image Info dock (<kbd>i</kbd>) with the EXIF metadata of a JPEG photo" width="560"><br><em>The Image Info dock (<kbd>i</kbd>) with the EXIF metadata of a JPEG photo</em></p>
 
 ## 5. Scientific tools
 
@@ -629,7 +623,7 @@ Toggles such as Auto Contrast and Pixel Grid are saved and restored at startup.
 Volumes (FITS cubes, multi-frame DICOM, 3D `.npy`, HDF5 datasets) are stepped
 with <kbd>PgUp</kbd>/<kbd>PgDn</kbd>; the status bar shows `Slice N/M` and the histogram is per slice.
 
-<p align="center"><img src="images/fits-contrast.png" alt="Adjust Contrast (<kbd>c</kbd>) on examples/m51.fits: histogram with draggable min/max handles" width="560"><br><em>Adjust Contrast (<kbd>c</kbd>) on examples/m51.fits: histogram with draggable min/max handles</em></p>
+<p align="center"><img src="images/fits-contrast.png" alt="Adjust Contrast (<kbd>c</kbd>) on examples/m51.fits: histogram with draggable min/max handles and the colour table selector" width="560"><br><em>Adjust Contrast (<kbd>c</kbd>) on examples/m51.fits: histogram with draggable min/max handles and the colour table selector</em></p>
 
 <p align="center"><img src="images/fits-colormap.png" alt="Color Table (<kbd>p</kbd>) with the Rainbow table; the colormap bar shows the min..max mapping" width="560"><br><em>Color Table (<kbd>p</kbd>) with the Rainbow table; the colormap bar shows the min..max mapping</em></p>
 

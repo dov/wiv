@@ -68,7 +68,6 @@ def shot_defs():
         ("balloon", "multi-line-balloon.giv", (1000, 600), ["BalloonTooltips"], hover),
         ("overview", "alpha-example.giv", (1000, 700), [], None),
         ("graph", "3x3-graph.giv", (800, 650), [], None),
-        ("text-markup", "text-markup.giv", (900, 650), [], zoom_out(2)),
         ("bezier", "bezier.giv", (900, 650), [], None),
         ("arrows", "arrows.giv", (900, 650), [], None),
         ("quiver", "quiver.giv", (900, 650), [], None),
