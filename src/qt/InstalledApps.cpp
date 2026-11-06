@@ -71,7 +71,7 @@ QList<InstalledApp> installedImageApps()
 {
     QList<InstalledApp> out;
     QStringList seen;
-    for (const char* ext : {"jpg", "png", "gif", "bmp", "tif", "webp", "ico", "svg", "heic", "avif"})
+    for (const char* ext : {"jpg", "png", "apng", "gif", "bmp", "tif", "webp", "ico", "svg", "heic", "avif"})
         for (const InstalledApp& app : appsForSuffix(ext))
             if (!seen.contains(app.command))
             {
