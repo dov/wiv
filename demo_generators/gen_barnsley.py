@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Dov Grobgeld
 """Barnsley fern: iterated function system with four affine maps.
 
 Many independent walkers are iterated in parallel with numpy; points are

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 #pragma once
 // Version / commit info baked in at build time (see cmake/GenBuildInfo.cmake).
 // Kept in its own translation unit so a new commit recompiles only

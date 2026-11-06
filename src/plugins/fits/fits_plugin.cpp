@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 //
 // fits_plugin.cpp - wiv image plugin for FITS (Flexible Image Transport
 // System) files, via cfitsio. Modeled on giv's

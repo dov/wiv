@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 //
 // exr_plugin.cpp - wiv image plugin for OpenEXR (.exr), via the OpenEXR
 // library's RGBA interface (single-part, scanline or tiled; Y/RGB/RGBA

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 //
 // stbimage_plugin.cpp - wiv image plugin for PNG/JPEG/BMP/TGA/GIF/PSD via
 // the vendored single-header stb_image (third_party/stb_image.h).

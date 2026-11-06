@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 //
 // jxl_plugin.cpp - wiv image plugin for JPEG XL (.jxl), via libjxl.
 // Decodes to sRGB RGBA8. An animated file shows its first frame from

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Dov Grobgeld
 """Mandelbrot set as a point cloud: one point per pixel centre of a regular
 grid (about N points in total), kept only if it lies in or near the set and
 coloured by escape-time. Points inside the set are drawn black.

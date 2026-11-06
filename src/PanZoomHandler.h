@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 #pragma once
 //
 // PanZoomHandler.h - drag-to-pan / scroll-to-zoom-at-cursor for a 2D

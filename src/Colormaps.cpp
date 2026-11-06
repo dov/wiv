@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 //
 // Colormaps.cpp - predefined 256x3 RGB color-table LUTs, ported verbatim
 // from giv's ~/hd/github/giv/src/colormaps.cc (data tables only - the

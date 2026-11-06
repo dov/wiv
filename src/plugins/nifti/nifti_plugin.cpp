@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 //
 // nifti_plugin.cpp - wiv image plugin for NIfTI-1 (.nii, .nii.gz) files.
 // Counterpart of giv's ~/hd/github/giv/src/plugins/nifti.c, but a small

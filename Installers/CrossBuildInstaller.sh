@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Dov Grobgeld
 # Builds the wiv Windows installer on Linux by MinGW cross compilation and
 # NSIS (makensis). Linux counterpart of BuildInstaller.bat.
 #

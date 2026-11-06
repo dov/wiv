@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 // Application-wide logging (spdlog). Every log line lands in
 // $HOME/.wiv/logs/, detailed enough that the sequence of user actions
 // (files opened, tool toggles, navigation, measurements, errors) can be

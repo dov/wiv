@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 #pragma once
 //
 // GivColor.h - X11 color name lookup + giv's "/alpha" suffix extension.

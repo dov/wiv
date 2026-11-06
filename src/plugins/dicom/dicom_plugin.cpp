@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 //
 // dicom_plugin.cpp - wiv image plugin for a minimal subset of DICOM: an
 // uncompressed, single-sample-per-pixel (grayscale) 8- or 16-bit dataset,

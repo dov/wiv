@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 //
 // ico_plugin.cpp - wiv image plugin for Windows icons and cursors (.ico,
 // .cur). Shows the largest image in the file (ties go to the higher bit

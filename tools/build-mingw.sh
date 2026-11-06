@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Dov Grobgeld
 # Cross compiles wiv for 64-bit Windows from Linux (Fedora MinGW) and
 # optionally builds the NSIS installer.
 #

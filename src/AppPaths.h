@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 #pragma once
 // Locates resources relative to the running executable so an installed copy
 // (<prefix>/bin/wiv.exe with <prefix>/share/wiv/shaders and

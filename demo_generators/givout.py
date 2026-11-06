@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Dov Grobgeld
 """Tiny helper for the demo generators: write numpy point sets as .giv datasets."""
 import colorsys
 import numpy as np

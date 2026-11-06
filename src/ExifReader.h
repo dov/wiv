@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 #pragma once
 //
 // ExifReader.h - a small, dependency-free EXIF reader for the Image Info

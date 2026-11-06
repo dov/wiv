@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 //
 // heif_plugin.cpp - wiv image plugin for HEIC/HEIF and AVIF stills, via
 // libheif (which pulls in the actual codecs - libde265/x265 for HEVC,

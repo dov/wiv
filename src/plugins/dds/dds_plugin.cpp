@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 //
 // dds_plugin.cpp - wiv image plugin for DirectDraw Surface (.dds) files:
 // the top mip level of 2D textures, either block compressed (BC1-BC5, BC7;

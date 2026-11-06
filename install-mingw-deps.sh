@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Dov Grobgeld
 # Installs the Fedora packages needed to cross compile wiv for Windows
 # (tools/build-mingw.sh). Run with: sudo ./install-mingw-deps.sh
 set -e

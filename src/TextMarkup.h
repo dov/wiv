@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 #pragma once
 // A small Pango-markup parser (the subset giv labels use). Qt- and
 // Pango-free. Turns "<b>bold</b> and <span foreground=\"red\" size=\"x-large\">big</span>"

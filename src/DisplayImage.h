@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 #pragma once
 //
 // DisplayImage.h - renders the RGBA8 buffer actually uploaded to the GPU

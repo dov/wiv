@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 #pragma once
 
 // Diagnostic only (enabled by the environment variable WIV_CAPTURE=1): grabs
