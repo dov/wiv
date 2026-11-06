@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Dov Grobgeld
 # Builds the libraries that Fedora doesn't package for MinGW - vsg,
 # vsgXchange, spdlog and the optional image codecs (LibRaw, libde265/libheif,
-# libjxl) - and installs them into $MINGW_DEPS_PREFIX
+# libjxl, HDF5) - and installs them into $MINGW_DEPS_PREFIX
 # (default /usr/local/mingw64, same prefix giv uses). Run once, after
 # `sudo ./install-mingw-deps.sh`.
 #
@@ -25,6 +25,7 @@ LIBDE265_TAG=${LIBDE265_TAG:-v1.0.15}
 LIBHEIF_TAG=${LIBHEIF_TAG:-v1.19.5}
 LIBJXL_TAG=${LIBJXL_TAG:-v0.11.1}
 AOM_TAG=${AOM_TAG:-v3.11.0}
+HDF5_TAG=${HDF5_TAG:-hdf5_1.14.6}
 SYSROOT=/usr/x86_64-w64-mingw32/sys-root/mingw
 
 mkdir -p "$SRC" "$MINGW_DEPS_PREFIX"
@@ -97,6 +98,7 @@ build aom -DENABLE_DOCS=OFF -DENABLE_EXAMPLES=OFF -DENABLE_TESTS=OFF \
   -DBUILD_SHARED_LIBS=ON
 fetch libheif https://github.com/strukturag/libheif.git "$LIBHEIF_TAG"
 build libheif -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF -DWITH_EXAMPLES=OFF \
+  -DWITH_GDK_PIXBUF=OFF \
   -DENABLE_PLUGIN_LOADING=OFF -DWITH_LIBDE265=ON -DWITH_AOM_DECODER=ON \
   -DWITH_AOM_ENCODER=OFF -DWITH_X265=OFF -DWITH_DAV1D=OFF -DWITH_RAV1E=OFF \
   -DWITH_SvtEnc=OFF -DWITH_JPEG_DECODER=OFF -DWITH_JPEG_ENCODER=OFF \
@@ -112,4 +114,12 @@ build libjxl -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF \
   -DJPEGXL_ENABLE_TRANSCODE_JPEG=OFF -DJPEGXL_ENABLE_JPEGLI=OFF \
   -DJPEGXL_FORCE_SYSTEM_BROTLI=OFF -DJPEGXL_FORCE_SYSTEM_HWY=OFF
 
-echo "Installed vsg, vsgXchange, spdlog and image codecs into $MINGW_DEPS_PREFIX"
+# HDF5 (C library only; Fedora has no mingw64-hdf5).
+fetch hdf5 https://github.com/HDFGroup/hdf5.git "$HDF5_TAG"
+build hdf5 -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF -DHDF5_BUILD_EXAMPLES=OFF \
+  -DHDF5_BUILD_TOOLS=OFF -DHDF5_BUILD_UTILS=OFF -DHDF5_BUILD_HL_LIB=OFF \
+  -DHDF5_BUILD_CPP_LIB=OFF -DHDF5_BUILD_FORTRAN=OFF -DHDF5_BUILD_JAVA=OFF \
+  -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DHDF5_ENABLE_SZIP_SUPPORT=OFF \
+  -DHDF5_ENABLE_PARALLEL=OFF -DHDF5_ENABLE_THREADSAFE=OFF
+
+echo "Installed vsg, vsgXchange, spdlog and image codecs and HDF5 into $MINGW_DEPS_PREFIX"
