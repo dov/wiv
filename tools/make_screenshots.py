@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Dov Grobgeld
 """Regenerates the screenshots in docs/images/ by remote-driving a real wiv.
 
     tools/make_screenshots.py [--wiv build/linux-release/wiv] [--only NAME ...]

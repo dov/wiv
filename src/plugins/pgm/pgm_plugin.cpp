@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 //
 // pgm_plugin.cpp - wiv image plugin for binary PGM (P5, gray) and PPM
 // (P6, RGB) files. No external dependency. Modeled on giv's

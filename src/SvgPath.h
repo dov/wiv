@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 #pragma once
 // A polyline measured along its length, built from SVG path data. Used for
 // <animateMotion> paths and for <textPath>.

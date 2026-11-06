@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 // wiv - Vulkan-based, giv-format-compatible 2D vector viewer.
 //
 // Qt application shell (see plan): QMainWindow with menu/toolbar/dataset

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 //
 // stbimage_anim.h - animation support for the stbimage plugin (included by
 // stbimage_plugin.cpp after stb_image.h): GIF through stb's own multi-frame

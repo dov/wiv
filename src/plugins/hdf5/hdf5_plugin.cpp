@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 //
 // hdf5_plugin.cpp - wiv image plugin for HDF5 files (.h5 .hdf5 .he5), via
 // libhdf5. Every numeric 2D or 3D dataset in the file (found by walking the

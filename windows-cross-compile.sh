@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Dov Grobgeld
 # Cross compiles wiv for Windows from Fedora (MinGW) and builds the NSIS
 # installer. Usage: ./windows-cross-compile.sh [--no-installer]
 # Needs `sudo ./install-mingw-deps.sh` once; vsg/vsgXchange/spdlog are built

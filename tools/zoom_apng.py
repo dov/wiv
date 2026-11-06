@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Dov Grobgeld
 """Records a smooth zoom into a point of a dataset as an APNG, driving a real wiv.
 
     tools/zoom_apng.py demo_generators/barnsley_10M.giv --target -1.121 -4.728 \

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 //
 // raw_plugin.cpp - wiv image plugin for camera RAW files (CR2/CR3, NEF,
 // ARW, DNG, ORF, RW2, RAF, PEF, ...), via LibRaw. Files are demosaiced with

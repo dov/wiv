@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 //
 // jpegturbo_plugin.cpp - wiv image plugin for JPEG, via libjpeg-turbo's
 // classic libjpeg API (jpeglib.h) rather than the vendored stb_image (see

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 #pragma once
 //
 // Colormaps.h - predefined 256x3 RGB color-table LUTs, ported verbatim from

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 #pragma once
 // CSS in SVG files. The rules of the document's <style> elements are applied
 // to the DOM so that nanosvg (which only knows simple class selectors) sees

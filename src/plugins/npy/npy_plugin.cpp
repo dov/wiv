@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 //
 // npy_plugin.cpp - wiv image plugin for NumPy .npy files (v1.0 header).
 // Modeled on giv's ~/hd/github/giv/src/plugins/npy.c, ported off glib

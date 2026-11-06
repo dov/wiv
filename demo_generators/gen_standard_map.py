@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Dov Grobgeld
 """Chirikov standard map phase portrait.
 
     p' = p + K sin(theta)      theta' = theta + p'     (both mod 2*pi)

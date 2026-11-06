@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Dov Grobgeld
 """Generate a Clifford attractor as a .giv file, for showing off wiv/giv.
 
     gen_clifford.py -o clifford.giv

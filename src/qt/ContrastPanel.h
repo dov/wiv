@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 #pragma once
 //
 // ContrastPanel.h - Tools > Adjust Contrast (a dock widget), giv's GivContrast dialog

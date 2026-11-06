@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 #pragma once
 //
 // OpenFileDialog.h - wiv's File > Open dialog: a QFileDialog subclass (so

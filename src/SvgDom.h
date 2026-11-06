@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 #pragma once
 // Minimal XML element tree for SVG files, built with expat. Names are kept
 // exactly as written (no namespace processing), so "xlink:href" and

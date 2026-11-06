@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 //
 // webp_plugin.cpp - wiv image plugin for WebP, via libwebp. Modeled on
 // giv's ~/hd/github/giv/src/plugins/webp.cc: read the whole file, decode

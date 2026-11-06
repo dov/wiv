@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Dov Grobgeld
 import re, sys
 import gi
 gi.require_version('Gdk', '3.0')

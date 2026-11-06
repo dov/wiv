@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 //
 // ora_plugin.cpp - wiv image plugin for OpenRaster (.ora) and Krita (.kra)
 // files. Counterpart of giv's ~/hd/github/giv/src/plugins/ora.cc: both

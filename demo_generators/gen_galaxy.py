@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Dov Grobgeld
 """Spiral galaxy: stars along logarithmic spiral arms plus a central bulge.
 
 Colour runs from hot blue-white arms to a warm yellow-orange core.

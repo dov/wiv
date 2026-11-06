@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Dov Grobgeld
 """Wraps a screenshot of a window's client area in a generic window frame
 (title bar with three buttons, thin border, soft shadow), so it stands out from
 a page instead of blending into it.

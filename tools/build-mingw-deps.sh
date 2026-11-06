@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Dov Grobgeld
 # Builds the libraries that Fedora doesn't package for MinGW - vsg,
 # vsgXchange, spdlog and the optional image codecs (LibRaw, libde265/libheif,
 # libjxl) - and installs them into $MINGW_DEPS_PREFIX

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 #pragma once
 //
 // GivViewer.h - vsgQt::Viewer subclass that layers wiv's per-frame work

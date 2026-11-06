@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Dov Grobgeld
 """Phyllotaxis (sunflower spiral): point k sits at radius c*sqrt(k), angle k*golden_angle.
 
 Points are coloured by index (hue sweep) so the Fibonacci spirals show up.

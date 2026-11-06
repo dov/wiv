@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 //
 // tiff_plugin.cpp - wiv image plugin for TIFF, via libtiff. Modeled on
 // giv's ~/hd/github/giv/src/plugins/tiff.c. Uses libtiff's any-format-to-

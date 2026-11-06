@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (c) 2026 Dov Grobgeld
 #pragma once
 // Text layout for vector output: fontconfig font lookup (with per-character
 // fallback), FriBidi bidirectional reordering, HarfBuzz shaping, and glyph
