@@ -4,11 +4,13 @@
 
 #include "DisplayImage.h"
 #include "TextLayout.h"
+#include <earcut.hpp>
 
 
 #include <algorithm>
 #include <map>
 #include <array>
+#include <cstdint>
 #include <cctype>
 #include <chrono>
 #include <cmath>
@@ -438,127 +440,60 @@ void addArrowHead(std::vector<FillVertex>& tris, std::vector<uint32_t>& arrowInd
     tri(oT, oV4, oV0);
 }
 
-// Ear-clipping triangulation of a single simple (non-self-intersecting)
-// polygon contour - handles concave outlines correctly, unlike a vertex-0
-// fan (which overfills across any concavity). O(n^2); fine at the point
-// counts a single dataset/SVG-shape subpath produces.
-bool pointInTriangle(const vsg::vec2& p, const vsg::vec2& a, const vsg::vec2& b, const vsg::vec2& c)
+// Triangulates a polygon with holes using earcut (O(n log n) in practice,
+// handles holes and mildly degenerate input natively). rings[0] is the
+// outer contour, the rest are holes; winding is irrelevant.
+void triangulateRings(std::vector<FillVertex>& tris, const std::vector<std::vector<vsg::vec2>>& rings,
+                      const vsg::vec4& color, const vsg::vec4& labelColor)
 {
-    float d1 = (p.x - b.x) * (a.y - b.y) - (a.x - b.x) * (p.y - b.y);
-    float d2 = (p.x - c.x) * (b.y - c.y) - (b.x - c.x) * (p.y - c.y);
-    float d3 = (p.x - a.x) * (c.y - a.y) - (c.x - a.x) * (p.y - a.y);
-    bool hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
-    bool hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
-    return !(hasNeg && hasPos);
+    using Pt = std::array<float, 2>;
+    std::vector<std::vector<Pt>> polygon;
+    std::vector<vsg::vec2> verts; // flattened, in earcut's index order
+
+    for (const auto& poly : rings)
+    {
+        if (poly.size() < 3) continue;
+        vsg::vec2 bbMin = poly[0], bbMax = poly[0];
+        for (const auto& p : poly)
+        {
+            bbMin.x = std::min(bbMin.x, p.x);
+            bbMin.y = std::min(bbMin.y, p.y);
+            bbMax.x = std::max(bbMax.x, p.x);
+            bbMax.y = std::max(bbMax.y, p.y);
+        }
+        const float diag = std::max(1e-6f, std::hypot(bbMax.x - bbMin.x, bbMax.y - bbMin.y));
+        const float eps = diag * 1e-5f; // scale-relative, not a fixed absolute tolerance
+
+        // Collapse near-duplicate consecutive points (bezier flattening and
+        // the synthetic duplicate Op::ClosePath appends leave zero-length edges).
+        std::vector<vsg::vec2> ring;
+        ring.reserve(poly.size());
+        for (const auto& p : poly)
+            if (ring.empty() || std::hypot(p.x - ring.back().x, p.y - ring.back().y) > eps) ring.push_back(p);
+        if (ring.size() > 3 && std::hypot(ring.front().x - ring.back().x, ring.front().y - ring.back().y) <= eps)
+            ring.pop_back();
+        if (ring.size() < 3) continue;
+
+        std::vector<Pt> pts;
+        pts.reserve(ring.size());
+        for (const auto& p : ring)
+        {
+            pts.push_back({p.x, p.y});
+            verts.push_back(p);
+        }
+        polygon.push_back(std::move(pts));
+    }
+    if (polygon.empty()) return;
+
+    const std::vector<uint32_t> indices = mapbox::earcut<uint32_t>(polygon);
+    tris.reserve(tris.size() + indices.size());
+    for (uint32_t i : indices) tris.push_back({verts[i], color, labelColor});
 }
 
 void triangulatePolygon(std::vector<FillVertex>& tris, const std::vector<vsg::vec2>& poly, const vsg::vec4& color,
-                         const vsg::vec4& labelColor)
+                        const vsg::vec4& labelColor)
 {
-    if (poly.size() < 3) return;
-
-    vsg::vec2 bbMin = poly[0], bbMax = poly[0];
-    for (const auto& p : poly)
-    {
-        bbMin.x = std::min(bbMin.x, p.x);
-        bbMin.y = std::min(bbMin.y, p.y);
-        bbMax.x = std::max(bbMax.x, p.x);
-        bbMax.y = std::max(bbMax.y, p.y);
-    }
-    const float diag = std::max(1e-6f, std::hypot(bbMax.x - bbMin.x, bbMax.y - bbMin.y));
-    const float eps = diag * 1e-5f; // scale-relative, not a fixed absolute tolerance
-
-    // Collapse near-duplicate consecutive points - bezier flattening plus
-    // the synthetic duplicate Op::ClosePath appends after a subpath whose
-    // curve already lands back on its start point (common for hand-drawn
-    // SVG art, e.g. inkscape control points close to the anchor) otherwise
-    // leaves a near-zero-length edge. That edge's degenerate cross product
-    // can misclassify its vertex as reflex/blocked under exact arithmetic,
-    // which can stall the ear search below and leave the polygon partially
-    // untriangulated - a visible notch cut into the fill.
-    std::vector<vsg::vec2> ring;
-    ring.reserve(poly.size());
-    for (const auto& p : poly)
-    {
-        if (ring.empty() || std::hypot(p.x - ring.back().x, p.y - ring.back().y) > eps) ring.push_back(p);
-    }
-    if (ring.size() > 3 && std::hypot(ring.front().x - ring.back().x, ring.front().y - ring.back().y) <= eps)
-        ring.pop_back();
-    if (ring.size() < 3) return;
-
-    double signedArea = 0.0;
-    for (size_t i = 0; i < ring.size(); ++i)
-    {
-        const vsg::vec2& a = ring[i];
-        const vsg::vec2& b = ring[(i + 1) % ring.size()];
-        signedArea += static_cast<double>(a.x) * b.y - static_cast<double>(b.x) * a.y;
-    }
-    const bool ccw = signedArea > 0.0;
-
-    std::vector<int> idx(ring.size());
-    for (size_t i = 0; i < idx.size(); ++i) idx[i] = static_cast<int>(i);
-
-    const float crossTol = diag * diag * 1e-7f; // near-collinear vertices count as convex, not reflex
-
-    int guard = static_cast<int>(idx.size()) * static_cast<int>(idx.size()) + 8;
-    while (idx.size() > 3 && guard-- > 0)
-    {
-        int bestI = -1;
-        int bestViolations = -1;
-        for (size_t i = 0; i < idx.size(); ++i)
-        {
-            size_t iPrev = (i + idx.size() - 1) % idx.size();
-            size_t iNext = (i + 1) % idx.size();
-            const vsg::vec2& a = ring[idx[iPrev]];
-            const vsg::vec2& b = ring[idx[i]];
-            const vsg::vec2& c = ring[idx[iNext]];
-
-            float cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-            if (ccw ? (cross <= -crossTol) : (cross >= crossTol)) continue; // clearly reflex, not an ear
-
-            int violations = 0;
-            for (size_t k = 0; k < idx.size(); ++k)
-            {
-                if (k == i || k == iPrev || k == iNext) continue;
-                // Hole bridging duplicates vertices; a coincident vertex
-                // isn't "inside" the ear.
-                const vsg::vec2& q = ring[idx[k]];
-                if ((q.x == a.x && q.y == a.y) || (q.x == b.x && q.y == b.y) || (q.x == c.x && q.y == c.y)) continue;
-                if (pointInTriangle(ring[idx[k]], a, b, c)) ++violations;
-            }
-            if (violations == 0)
-            {
-                bestI = static_cast<int>(i);
-                break;
-            }
-            // No clean ear this pass (can happen on self-intersecting or
-            // numerically borderline input) - remember the least-bad convex
-            // vertex so the loop still makes progress instead of stalling
-            // and leaving the remaining vertices unfilled.
-            if (bestViolations < 0 || violations < bestViolations)
-            {
-                bestViolations = violations;
-                bestI = static_cast<int>(i);
-            }
-        }
-
-        if (bestI < 0) break; // no convex vertex at all left (shouldn't happen for a simple polygon)
-
-        size_t i = static_cast<size_t>(bestI);
-        size_t iPrev = (i + idx.size() - 1) % idx.size();
-        size_t iNext = (i + 1) % idx.size();
-        tris.push_back({ring[idx[iPrev]], color, labelColor});
-        tris.push_back({ring[idx[i]], color, labelColor});
-        tris.push_back({ring[idx[iNext]], color, labelColor});
-        idx.erase(idx.begin() + bestI);
-    }
-
-    if (idx.size() == 3)
-    {
-        tris.push_back({ring[idx[0]], color, labelColor});
-        tris.push_back({ring[idx[1]], color, labelColor});
-        tris.push_back({ring[idx[2]], color, labelColor});
-    }
+    triangulateRings(tris, {poly}, color, labelColor);
 }
 
 double ringSignedArea(const std::vector<vsg::vec2>& r)
@@ -583,61 +518,6 @@ bool pointInRing(const vsg::vec2& p, const std::vector<vsg::vec2>& r)
             in = !in;
     }
     return in;
-}
-
-// Proper crossing of segments ab and cd (shared endpoints / touching don't count).
-bool segmentsCross(const vsg::vec2& a, const vsg::vec2& b, const vsg::vec2& c, const vsg::vec2& d)
-{
-    auto orient = [](const vsg::vec2& p, const vsg::vec2& q, const vsg::vec2& r) {
-        return (static_cast<double>(q.x) - p.x) * (static_cast<double>(r.y) - p.y) -
-               (static_cast<double>(q.y) - p.y) * (static_cast<double>(r.x) - p.x);
-    };
-    double o1 = orient(a, b, c), o2 = orient(a, b, d), o3 = orient(c, d, a), o4 = orient(c, d, b);
-    return ((o1 > 0) != (o2 > 0)) && ((o3 > 0) != (o4 > 0)) && o1 != 0 && o2 != 0 && o3 != 0 && o4 != 0;
-}
-
-// Merges `hole` into `outer` through a zero-width bridge between the hole's
-// rightmost vertex and the nearest outer vertex whose connecting segment
-// crosses no ring edge, yielding one weakly-simple ring for ear clipping.
-void bridgeHole(std::vector<vsg::vec2>& outer, const std::vector<vsg::vec2>& hole,
-                const std::vector<const std::vector<vsg::vec2>*>& allHoles)
-{
-    size_t m = 0;
-    for (size_t i = 1; i < hole.size(); ++i)
-        if (hole[i].x > hole[m].x) m = i;
-    const vsg::vec2& M = hole[m];
-
-    auto blocked = [&](const vsg::vec2& V) {
-        auto crossesRing = [&](const std::vector<vsg::vec2>& r) {
-            for (size_t i = 0; i < r.size(); ++i)
-                if (segmentsCross(M, V, r[i], r[(i + 1) % r.size()])) return true;
-            return false;
-        };
-        if (crossesRing(outer)) return true;
-        for (const auto* h : allHoles)
-            if (crossesRing(*h)) return true;
-        return false;
-    };
-
-    size_t best = outer.size();
-    double bestD = 1e300;
-    for (size_t i = 0; i < outer.size(); ++i)
-    {
-        double dx = outer[i].x - M.x, dy = outer[i].y - M.y, d = dx * dx + dy * dy;
-        if (d < bestD && !blocked(outer[i]))
-        {
-            bestD = d;
-            best = i;
-        }
-    }
-    if (best == outer.size()) return; // no visible vertex: leave the hole filled rather than corrupt the ring
-
-    std::vector<vsg::vec2> merged;
-    merged.reserve(outer.size() + hole.size() + 2);
-    for (size_t i = 0; i <= best; ++i) merged.push_back(outer[i]);
-    for (size_t k = 0; k <= hole.size(); ++k) merged.push_back(hole[(m + k) % hole.size()]);
-    for (size_t i = best; i < outer.size(); ++i) merged.push_back(outer[i]);
-    outer = std::move(merged);
 }
 
 // Appends `poly` to `out`, first cutting it at self-intersections into
@@ -767,21 +647,10 @@ void triangulateSubpaths(std::vector<FillVertex>& tris, const std::vector<std::v
             holes.push_back(rings[h]);
             if (ringSignedArea(holes.back()) > 0) std::reverse(holes.back().begin(), holes.back().end());
         }
-        std::sort(holes.begin(), holes.end(), [](const auto& a, const auto& b) {
-            auto mx = [](const std::vector<vsg::vec2>& r) {
-                float m = r[0].x;
-                for (const auto& p : r) m = std::max(m, p.x);
-                return m;
-            };
-            return mx(a) > mx(b);
-        });
-        for (size_t h = 0; h < holes.size(); ++h)
-        {
-            std::vector<const std::vector<vsg::vec2>*> others;
-            for (size_t k = h + 1; k < holes.size(); ++k) others.push_back(&holes[k]);
-            bridgeHole(outer, holes[h], others);
-        }
-        triangulatePolygon(tris, outer, color, labelColor);
+        std::vector<std::vector<vsg::vec2>> polygon;
+        polygon.push_back(std::move(outer));
+        for (auto& h : holes) polygon.push_back(std::move(h));
+        triangulateRings(tris, polygon, color, labelColor);
     }
 }
 
