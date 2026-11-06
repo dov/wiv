@@ -775,6 +775,9 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     // $background directive (wiv extension, see SceneData::background); a
     // file without one falls back to the Preferences color, so a background
     // set by a previously viewed file doesn't stick.
+    // $hflip/$vflip (and no* forms): only when the file says so, like $pixelsize.
+    if (scene_.hflip) setFlipHorizontal(*scene_.hflip);
+    if (scene_.vflip) setFlipVertical(*scene_.vflip);
     if (scene_.background)
         setBackgroundColor(QColor::fromRgbF(scene_.background->r, scene_.background->g, scene_.background->b));
     else
@@ -1928,7 +1931,10 @@ void VulkanViewport::showAnimationFrame(int frame)
     if (!displayImages_.empty()) displayImages_.front().rgba = pixels;
     if (animTexture_ && animTexture_->dataSize() == pixels.size())
     {
-        std::memcpy(animTexture_->dataPointer(), pixels.data(), pixels.size());
+        if (scene_.lowContrast)
+            giv::dimRgba(pixels.data(), static_cast<uint8_t*>(animTexture_->dataPointer()), pixels.size());
+        else
+            std::memcpy(animTexture_->dataPointer(), pixels.data(), pixels.size());
         // vsg keeps a GPU copy per frame in flight and refreshes the one for the frame
         // being recorded, so the change has to be flagged on each of the next few frames.
         animTextureDirty_ = 4;
@@ -2140,6 +2146,7 @@ void VulkanViewport::recomputeDisplayImage()
         const ContrastState state = currentContrastState();
         display.display = {state.min, state.max, state.colormapId, state.colormapEnabled, currentSlice_};
     }
+    display.display.lowContrast = scene_.lowContrast;
     displayImages_ = {std::move(display)};
 }
 
@@ -3282,6 +3289,7 @@ void VulkanViewport::setFlipHorizontal(bool flip)
 {
     flipHorizontal_ = flip;
     spdlog::info("Horizontal Flip set to {}", flip);
+    emit flipChanged(flipHorizontal_, flipVertical_);
     if (flipProjection_) flipProjection_->flipX = flip;
     viewer_->request();
     updateScrollBars();
@@ -3291,6 +3299,7 @@ void VulkanViewport::setFlipVertical(bool flip)
 {
     flipVertical_ = flip;
     spdlog::info("Vertical Flip set to {}", flip);
+    emit flipChanged(flipHorizontal_, flipVertical_);
     if (flipProjection_) flipProjection_->flipY = flip;
     viewer_->request();
     updateScrollBars();

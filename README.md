@@ -103,13 +103,10 @@ Coordinates follow giv's image-viewer convention (Y grows downward);
 
 ## Limitations
 
-- `.giv` dash patterns use only the first on/off pair.
 - No image editing, printing or ICC colour management (export renders the
   current view only).
 - Text depends on system fonts (fontconfig on Linux, the Fonts folder on
   Windows); no font is bundled.
-- `$low_contrast` and the `$hflip`/`$vflip` directives are parsed but not
-  rendered; see the usage page.
 
 ## Build
 

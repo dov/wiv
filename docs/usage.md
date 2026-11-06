@@ -132,7 +132,7 @@ Y coordinates follow image conventions: Y increases downwards.
 | `$outline_color` | `$outline_color black` | Outline colour of filled marks and polygons. |
 | `$lw` | `$lw 3` | Line width. |
 | `$ls` | `$ls 2` | Line style number (as in giv). |
-| `$linedash` | `$linedash 10,5` | Dash pattern, on/off lengths. Only the first on/off pair is used. |
+| `$linedash` | `$linedash 10,5` | Dash pattern, on/off lengths; any number of values (an odd count repeats). |
 | `$line_cap` | `$line_cap round` | Line cap style. Lines have round joins and anti-aliased edges; translucent overlapping segments of one dataset blend once. |
 | `$noline` | `$noline` | Draw marks only, no connecting lines. `$line` turns lines on again. |
 | `$nomark` | `$nomark` | Draw lines only. |
@@ -160,8 +160,8 @@ at every point of the dataset (control points included, as in giv), at native
 size with the SVG origin on the point, instead of the built-in mark shape; the
 copies do not affect the auto-fit bounds. `$marks_file` includes a marks file
 (paths relative to the including file). `$pixelsize <value> [unit]` sets the
-pixel calibration. Parsed for compatibility but not rendered: `$low_contrast`
-and `$hflip`/`$vflip` (and their `no*` forms).
+pixel calibration. `$low_contrast` shows the `$image` dimmed so the vectors stand
+out; `$hflip`/`$vflip` (and `$nohflip`/`$novflip`) mirror the view on load.
 Unknown properties are ignored.
 
 ### 3.2 Lines, polygons and Bezier curves
