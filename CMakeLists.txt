@@ -134,8 +134,9 @@ add_subdirectory(third_party/QtAwesome EXCLUDE_FROM_ALL)
 # ---------------------------------------------------------------------------
 # Main executable
 # ---------------------------------------------------------------------------
-add_executable(wiv
-  src/main.cpp
+# All the application code except main() lives in an OBJECT library so that
+# the test binaries (tests/) can link the very same objects as the executable.
+add_library(wiv_lib OBJECT
   src/Logging.cpp
   src/GivColor.cpp
   src/GivParser.cpp
@@ -180,9 +181,13 @@ add_executable(wiv
   src/qt/RemoteClient.cpp
   resources/wiv.qrc
 )
+
+add_executable(wiv src/main.cpp)
+target_link_libraries(wiv PRIVATE wiv_lib)
 if(WIN32)
   # wiv.rc embeds the app icon (id 1) and the .giv file icon (id 2).
-  target_sources(wiv PRIVATE src/qt/WinDropTarget.cpp resources/wiv.rc resources/wiv.manifest)
+  target_sources(wiv_lib PRIVATE src/qt/WinDropTarget.cpp)
+  target_sources(wiv PRIVATE resources/wiv.rc resources/wiv.manifest)
   # rc.exe doesn't report include dependencies; without this, editing an
   # icon doesn't rebuild the resource and the exe keeps the stale icon.
   set_source_files_properties(resources/wiv.rc PROPERTIES
@@ -191,12 +196,12 @@ if(WIN32)
   target_link_libraries(wiv PRIVATE ole32 shell32 uuid)
 endif()
 
-add_dependencies(wiv wiv_shaders)
+add_dependencies(wiv_lib wiv_shaders)
 
-target_include_directories(wiv PRIVATE src ${CMAKE_SOURCE_DIR}/third_party)
-target_link_libraries(wiv PRIVATE vsg::vsg vsgXchange::vsgXchange vsgQt::vsgQt Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent Qt6::Network QtAwesome spdlog::spdlog SQLite::SQLite3 EXPAT::EXPAT PkgConfig::HARFBUZZ PkgConfig::FRIBIDI)
+target_include_directories(wiv_lib PUBLIC src ${CMAKE_SOURCE_DIR}/third_party)
+target_link_libraries(wiv_lib PUBLIC vsg::vsg vsgXchange::vsgXchange vsgQt::vsgQt Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent Qt6::Network QtAwesome spdlog::spdlog SQLite::SQLite3 EXPAT::EXPAT PkgConfig::HARFBUZZ PkgConfig::FRIBIDI)
 if(NOT WIN32)
-  target_link_libraries(wiv PRIVATE PkgConfig::FONTCONFIG)
+  target_link_libraries(wiv_lib PUBLIC PkgConfig::FONTCONFIG)
 endif()
 
 # X11 only: the render window's bit gravity (see VulkanViewport::keepContentsInPlaceOnResize()).
@@ -205,8 +210,8 @@ if(UNIX AND NOT APPLE)
   if(PkgConfig_FOUND)
     pkg_check_modules(XCB QUIET IMPORTED_TARGET xcb)
     if(XCB_FOUND)
-      target_link_libraries(wiv PRIVATE PkgConfig::XCB)
-      target_compile_definitions(wiv PRIVATE WIV_HAVE_XCB)
+      target_link_libraries(wiv_lib PUBLIC PkgConfig::XCB)
+      target_compile_definitions(wiv_lib PRIVATE WIV_HAVE_XCB)
     endif()
   endif()
 endif()
@@ -227,22 +232,22 @@ add_custom_target(wiv_buildinfo
   COMMENT "Updating build info header"
   VERBATIM)
 set_source_files_properties(src/BuildInfo.cpp PROPERTIES OBJECT_DEPENDS ${WIV_BUILDINFO_HEADER})
-target_sources(wiv PRIVATE src/BuildInfo.cpp)
-target_include_directories(wiv PRIVATE ${CMAKE_BINARY_DIR}/generated)
-add_dependencies(wiv wiv_buildinfo)
+target_sources(wiv_lib PRIVATE src/BuildInfo.cpp)
+target_include_directories(wiv_lib PUBLIC ${CMAKE_BINARY_DIR}/generated)
+add_dependencies(wiv_lib wiv_buildinfo)
 
-target_compile_definitions(wiv PRIVATE
+target_compile_definitions(wiv_lib PRIVATE
   WIV_SHADER_DIR="${CMAKE_BINARY_DIR}/shaders"
   WIV_PLUGIN_DIR="${CMAKE_BINARY_DIR}/plugins"
 )
 
 if(MSVC)
   # M_PI etc. from <cmath>
-  target_compile_definitions(wiv PRIVATE _USE_MATH_DEFINES)
+  target_compile_definitions(wiv_lib PRIVATE _USE_MATH_DEFINES)
 endif()
 
 if(UNIX AND NOT APPLE)
-  target_link_libraries(wiv PRIVATE pthread ${CMAKE_DL_LIBS})
+  target_link_libraries(wiv_lib PUBLIC pthread ${CMAKE_DL_LIBS})
 endif()
 
 if(WIN32)
@@ -312,3 +317,22 @@ endif()
 # Image-format plugins (dlopen-loaded .so files, see src/ImagePluginHost)
 # ---------------------------------------------------------------------------
 add_subdirectory(src/plugins)
+
+# ---------------------------------------------------------------------------
+# Tests (see Testing.md). Off by default when cross-compiling.
+# ---------------------------------------------------------------------------
+if(CMAKE_CROSSCOMPILING OR WIN32)
+  option(WIV_BUILD_TESTS "Build the test suite" OFF)
+else()
+  option(WIV_BUILD_TESTS "Build the test suite" ON)
+endif()
+if(WIV_BUILD_TESTS)
+  find_package(GTest QUIET)
+  find_package(Qt6 QUIET COMPONENTS Test)
+  if(GTest_FOUND AND Qt6Test_FOUND)
+    enable_testing()
+    add_subdirectory(tests)
+  else()
+    message(STATUS "GTest and/or Qt6Test not found - skipping the test suite (see Testing.md)")
+  endif()
+endif()
