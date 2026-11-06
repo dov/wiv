@@ -4,6 +4,9 @@
 
 #include <QApplication>
 #include <QContextMenuEvent>
+#include <QDrag>
+#include <QMimeData>
+#include <QUrl>
 #include <QMenu>
 #include <QFileInfo>
 #include <QFutureWatcher>
@@ -97,6 +100,8 @@ ThumbnailStrip::ThumbnailStrip(QWidget* parent) : QListWidget(parent)
     setFlow(QListView::TopToBottom); // fills a column, then wraps to the next: several rows, scrolled sideways
     setWrapping(true);
     setMovement(QListView::Static);
+    setDragEnabled(true);
+    setDragDropMode(QAbstractItemView::DragOnly);
     setResizeMode(QListView::Adjust);
     setUniformItemSizes(true);
     setIconSize(QSize(thumbSize_, thumbSize_));
@@ -133,6 +138,27 @@ void ThumbnailStrip::mouseDoubleClickEvent(QMouseEvent* event)
 {
     ignoreClick_ = true;
     QListWidget::mouseDoubleClickEvent(event);
+}
+
+void ThumbnailStrip::startDrag(Qt::DropActions)
+{
+    QListWidgetItem* it = currentItem();
+    if (!it) return;
+    const int r = row(it);
+    if (r < 0 || r >= files_.size()) return;
+    const QString path = files_[r];
+    if (!QFileInfo::exists(path)) return;
+
+    auto* mime = new QMimeData;
+    mime->setUrls({QUrl::fromLocalFile(path)});
+    auto* drag = new QDrag(this);
+    drag->setMimeData(mime);
+    const QPixmap pm = it->data(kThumbRole).value<QPixmap>();
+    if (!pm.isNull()) {
+        drag->setPixmap(pm.scaled(64, 64, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        drag->setHotSpot(QPoint(32, 32));
+    }
+    drag->exec(Qt::CopyAction, Qt::CopyAction);
 }
 
 void ThumbnailStrip::setFiles(const QStringList& files, int current)
