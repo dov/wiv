@@ -31,7 +31,7 @@ bool hasExtension(const std::string& filename, const char* ext)
 extern "C" bool wiv_plugin_supports_file(const char* filename)
 {
     std::string f(filename);
-    static const char* kExtensions[] = {".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".psd"};
+    static const char* kExtensions[] = {".png", ".apng", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".psd"};
     for (const char* ext : kExtensions)
         if (hasExtension(f, ext))
             return true;
