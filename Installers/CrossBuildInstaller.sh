@@ -49,7 +49,7 @@ echo "=== makensis ==="
 makensis -V2 -DVERSION="$VERSION" -DSHORTSHA1="$SHORTSHA1" -DSTAGING=tmp wiv.nsi
 
 # The .nsi decides the exact file name (and its case).
-INSTALLER=$(ls -t "$HERE"/[Ii]nstall[Vv]giv-v"$VERSION"-"$SHORTSHA1".exe | head -1)
+INSTALLER=$(ls -t "$HERE"/[Ii]nstall[Ww]iv-v"$VERSION"-"$SHORTSHA1".exe | head -1)
 echo
 echo "Built: $INSTALLER"
 
