@@ -10,6 +10,7 @@ It includes and uses the following third-party software.
 | [stb_image](https://github.com/nothings/stb) (Sean Barrett) | PNG, JPEG, BMP, TGA, GIF, PSD decoding | MIT or public domain (Unlicense), see the end of `third_party/stb_image.h` |
 | [nanosvg / nanosvgrast](https://github.com/memononen/nanosvg) (Mikko Mononen) | SVG parsing and gradient rasterization | zlib license, see the headers in `third_party/` |
 | [bcdec](https://github.com/iOrange/bcdec) (Sergii Kudlai) | DDS block-compression decoding | MIT or public domain (Unlicense), see the end of `third_party/bcdec.h` |
+| [earcut.hpp](https://github.com/mapbox/earcut.hpp) (Mapbox) | Polygon triangulation (with holes) for filled shapes | ISC license, see `third_party/earcut.LICENSE` |
 | [QtAwesome](https://github.com/gamecreature/QtAwesome) (Rick Blommers) | Icon loader for Qt | MIT, see `third_party/QtAwesome/LICENSE.md` |
 | [Font Awesome Free](https://fontawesome.com) 6 | Toolbar and menu icons (fonts in `third_party/QtAwesome/QtAwesome/fonts`) | Icons CC BY 4.0, fonts SIL OFL 1.1, code MIT; see `third_party/QtAwesome/LICENSE.md` |
 | `X11-rgb.txt` | X11 colour names for `.giv` files | X Consortium license (see the file header) |
