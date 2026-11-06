@@ -54,6 +54,8 @@ protected:
     void contextMenuEvent(QContextMenuEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseDoubleClickEvent(QMouseEvent* event) override;
+    // Drags the file under the cursor out to other programs (as a file URL).
+    void startDrag(Qt::DropActions supportedActions) override;
 
 private:
     void loadVisibleThumbnails();
