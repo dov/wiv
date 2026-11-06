@@ -3,7 +3,7 @@
 **wiv (vviv) - The Vulkan Vector Image Viewer. A high-performance, scientific successor to giv.**
 
 <p align="center">
-  <a href="docs/wiv-screenshot.png"><img src="docs/images/wiv-screenshot.png" alt="wiv screenshot" width="400"></a>
+  <a href="docs/images/wiv-screenshot.png"><img src="docs/images/wiv-screenshot.png" alt="wiv screenshot" width="400"></a>
 </p>
 
 
@@ -179,4 +179,6 @@ meaningful; `WIV_TIMING=1` also prints the per-stage cost of each frame.
 
 ## License
 
-GNU General Public License, version 2; see [COPYING](COPYING).
+GNU General Public License, version 3 (GPL-3.0-only); see [COPYING](COPYING). Bundled and
+linked third-party components and their licenses are listed in
+[THIRD_PARTY.md](THIRD_PARTY.md).

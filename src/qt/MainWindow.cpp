@@ -1015,9 +1015,10 @@ void MainWindow::showAboutDialog()
 
     addLabel(QString("wiv ") + giv::kVersion, "font-size: 24pt; font-weight: bold;");
     addLabel("The Vulkan giv-format-compatible 2D vector viewer");
-    addLabel("Based on <a href=\"http://giv.sourceforge.net/giv\">giv</a>");
+    addLabel("Successor to <a href=\"https://github.com/dov/giv\">giv</a> &middot; <a href=\"https://github.com/dov/wiv\">github.com/dov/wiv</a>");
     addLabel(QString("%1 %2").arg(QSysInfo::currentCpuArchitecture(), QSysInfo::prettyProductName()));
     addLabel("Copyright &copy; Dov Grobgeld, 2026");
+    addLabel("Licensed under the <a href=\"https://www.gnu.org/licenses/gpl-3.0.html\">GNU GPL, version 3</a>");
     addLabel("Email: <a href=\"mailto:dov.grobgeld@gmail.com\"><code>dov.grobgeld@gmail.com</code></a>");
     addLabel(QString("Commit-Id: ") + giv::kCommitId);
     addLabel(QString("Commit-Date: ") + giv::kCommitDate);

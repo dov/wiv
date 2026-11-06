@@ -2,9 +2,7 @@
 
 A reference for feature-comparing wiv against other image viewers without
 rescanning the repo. Compiled from the source tree (menus, plugins, parser,
-RPC server) as of 2026-11-05; update it when features change. The README is
-partly stale (it still lists Phase-1 limitations that have since been
-implemented, e.g. colormaps, mark browser, RPC); this file reflects the code.
+RPC server) as of 2026-11-05; update it when features change.
 
 Key bindings below are defaults; most View/File/Tools actions are rebindable
 in Edit > Preferences > Keyboard.
