@@ -342,6 +342,7 @@ private:
     // all are no-ops when nothing is loaded.
     QString currentFilePath() const;
     void copyCurrentFile();
+    void copyCursorInfo();
     void deleteCurrentFile();
     void renameCurrentFile();
     void openFileLocation();

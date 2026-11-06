@@ -433,6 +433,8 @@ void MainWindow::buildMenus()
     fileMenu->addSeparator();
     auto copyAction = fileMenu->addAction("&Copy", this, &MainWindow::copyCurrentFile);
     copyAction->setShortcut(QKeySequence("Ctrl+C"));
+    auto copyCoordAction = fileMenu->addAction("Copy Coordinate && Color", this, &MainWindow::copyCursorInfo);
+    copyCoordAction->setShortcut(QKeySequence("Ctrl+Shift+C"));
     auto renameAction = fileMenu->addAction("Re&name...", this, &MainWindow::renameCurrentFile);
     renameAction->setShortcut(QKeySequence("F2"));
     auto deleteAction = fileMenu->addAction("&Delete", this, &MainWindow::deleteCurrentFile);
@@ -1862,6 +1864,18 @@ void MainWindow::copyCurrentFile()
     if (!image.isNull()) mime->setImageData(image);
     QApplication::clipboard()->setMimeData(mime);
     infoLabel_->setText("Copied: " + QFileInfo(path).fileName());
+}
+
+void MainWindow::copyCursorInfo()
+{
+    const QString text = lastCursorText_.simplified();
+    if (text.isEmpty())
+    {
+        statusBar()->showMessage("Nothing to copy: no pixel under the cursor", 3000);
+        return;
+    }
+    QApplication::clipboard()->setText(text);
+    statusBar()->showMessage("Copied to clipboard: " + text, 3000);
 }
 
 void MainWindow::deleteCurrentFile()
