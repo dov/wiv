@@ -97,6 +97,7 @@ struct LoadedImage
         colormaps::Id colormap = colormaps::Id::None;
         bool colormapEnabled = false;
         int slice = 0;
+        bool lowContrast = false; // $low_contrast: shown dimmed (colormap/pixels compressed toward mid-gray)
     } display;
 
     // Set by the viewport while this image is being played as an animation:

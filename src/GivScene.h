@@ -231,6 +231,11 @@ struct SceneData
     // whole-file viewport background color. std::nullopt if the file never
     // sets it, in which case the Preferences background color is used.
     std::optional<Color> background;
+    // $low_contrast: show the $image dimmed so the vectors stand out.
+    bool lowContrast = false;
+    // $hflip/$nohflip and $vflip/$novflip: mirror the view on load. nullopt =
+    // the file says nothing, so the user's View menu setting is kept.
+    std::optional<bool> hflip, vflip;
 
     double minX = 1e30, minY = 1e30;
     double maxX = -1e30, maxY = -1e30;

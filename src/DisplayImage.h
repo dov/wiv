@@ -47,4 +47,18 @@ std::vector<uint8_t> displayLut(const LoadedImage& src, float contrastMin, float
 uint32_t displayRgbaAt(const LoadedImage& src, float contrastMin, float contrastMax, colormaps::Id colormapId,
                        bool colormapEnabled, size_t sampleIndex);
 
+// $low_contrast: compresses RGBA bytes toward mid-gray (alpha untouched) so overlaid
+// vectors stand out. One byte value -> the matching dimmed byte.
+inline uint8_t dimByte(uint8_t v) { return static_cast<uint8_t>(64 + (v >> 1)); }
+inline void dimRgba(const uint8_t* src, uint8_t* dst, size_t bytes)
+{
+    for (size_t i = 0; i + 3 < bytes; i += 4)
+    {
+        dst[i] = dimByte(src[i]);
+        dst[i + 1] = dimByte(src[i + 1]);
+        dst[i + 2] = dimByte(src[i + 2]);
+        dst[i + 3] = src[i + 3];
+    }
+}
+
 } // namespace giv

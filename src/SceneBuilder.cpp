@@ -1162,9 +1162,19 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
                 textureProperties.dataVariance = vsg::DYNAMIC_DATA;
                 auto animData = vsg::ubvec4Array2D::create(static_cast<uint32_t>(li.width), static_cast<uint32_t>(li.height),
                                                            textureProperties);
-                std::memcpy(animData->dataPointer(), li.rgba.data(), li.rgba.size());
+                if (li.display.lowContrast)
+                    dimRgba(li.rgba.data(), static_cast<uint8_t*>(animData->dataPointer()), li.rgba.size());
+                else
+                    std::memcpy(animData->dataPointer(), li.rgba.data(), li.rgba.size());
                 if (!animatedTexture_) animatedTexture_ = animData;
                 textureData = animData;
+            }
+            else if (li.display.lowContrast)
+            {
+                auto dimmed = vsg::ubvec4Array2D::create(static_cast<uint32_t>(li.width), static_cast<uint32_t>(li.height),
+                                                         textureProperties);
+                dimRgba(li.rgba.data(), static_cast<uint8_t*>(dimmed->dataPointer()), li.rgba.size());
+                textureData = dimmed;
             }
             else
             {
@@ -1317,11 +1327,64 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
         const float lineSlot = std::min(static_cast<float>(2 * dsIdx + 1), kMaxLineSlot);
         const float quiverSlot = std::min(lineSlot + 1.0f, kMaxLineSlot);
         float dashOn = 1e9f, dashOff = 0.0f;
-        if (ds.dashes.size() >= 2)
+        // A pattern of exactly one on/off pair is dashed in the line shader; anything
+        // longer (or an odd count, which repeats like SVG's) is cut up here instead.
+        std::vector<double> dashPattern;
         {
-            dashOn = ds.dashes[0];
-            dashOff = ds.dashes[1];
+            double sum = 0.0;
+            for (float d : ds.dashes)
+            {
+                dashPattern.push_back(std::max(0.0, static_cast<double>(d)));
+                sum += dashPattern.back();
+            }
+            if (dashPattern.size() % 2) dashPattern.insert(dashPattern.end(), dashPattern.begin(), dashPattern.end());
+            if (sum <= 1e-12) dashPattern.clear();
         }
+        if (dashPattern.size() == 2)
+        {
+            dashOn = static_cast<float>(dashPattern[0]);
+            dashOff = static_cast<float>(dashPattern[1]);
+            dashPattern.clear();
+        }
+        // Emits one subpath as separate solid dashes following `dashPattern`.
+        auto addDashedSubpath = [&](const std::vector<vsg::vec2>& sp, const vsg::vec4& color, float slot) {
+            size_t idx = 0;
+            double remain = dashPattern[0];
+            bool on = true;
+            std::vector<vsg::vec2> piece;
+            auto flush = [&]() {
+                float cum = 0.0f;
+                for (size_t i = 0; i + 1 < piece.size(); ++i)
+                    addLineSegment(lines, piece[i], piece[i + 1], lineHalfWidth, 1e9f, 0.0f, cum, color, labelColor,
+                                   vsg::vec2(slot, lineStyleFlags(ds, i == 0, i + 2 == piece.size())));
+                piece.clear();
+            };
+            if (!sp.empty()) piece.push_back(sp[0]);
+            for (size_t i = 0; i + 1 < sp.size(); ++i)
+            {
+                vsg::vec2 a = sp[i];
+                const vsg::vec2 b = sp[i + 1];
+                double len = vsg::length(b - a);
+                while (len > remain)
+                {
+                    const float f = static_cast<float>(remain / len);
+                    a = a + (b - a) * f;
+                    len -= remain;
+                    if (on)
+                    {
+                        piece.push_back(a);
+                        flush();
+                    }
+                    on = !on;
+                    idx = (idx + 1) % dashPattern.size();
+                    remain = dashPattern[idx];
+                    if (on) piece.push_back(a);
+                }
+                remain -= len;
+                if (on) piece.push_back(b);
+            }
+            if (on) flush();
+        };
 
         const bool needSubpaths = ds.doDrawLines || ds.doDrawPolygon || ds.arrowType != ArrowType::None;
 
@@ -1485,6 +1548,8 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
                 if (ds.doDrawPolygonOutline && ds.doDrawPolygon)
                 {
                     float cum = 0.0f;
+                    if (!dashPattern.empty()) addDashedSubpath(sp, outlineColor, lineSlot);
+                    else
                     for (size_t i = 0; i + 1 < sp.size(); ++i)
                         addLineSegment(lines, sp[i], sp[i + 1], lineHalfWidth, dashOn, dashOff, cum, outlineColor, labelColor,
                                        vsg::vec2(lineSlot, lineStyleFlags(ds, i == 0 && !spClosed, i + 2 == sp.size() && !spClosed)));
@@ -1492,6 +1557,8 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
                 else if (ds.doDrawLines)
                 {
                     float cum = 0.0f;
+                    if (!dashPattern.empty()) addDashedSubpath(sp, lineColor, lineSlot);
+                    else
                     for (size_t i = 0; i + 1 < sp.size(); ++i)
                         addLineSegment(lines, sp[i], sp[i + 1], lineHalfWidth, dashOn, dashOff, cum, lineColor, labelColor,
                                        vsg::vec2(lineSlot, lineStyleFlags(ds, i == 0 && !spClosed, i + 2 == sp.size() && !spClosed)));
@@ -1938,7 +2005,8 @@ void SceneBuilder::fillSampleParams(vsg::vec4Array& out, const LoadedImage& li)
         const float r = lut ? lut[i * 3 + 0] / 255.0f : i / 255.0f;
         const float g = lut ? lut[i * 3 + 1] / 255.0f : i / 255.0f;
         const float b = lut ? lut[i * 3 + 2] / 255.0f : i / 255.0f;
-        out.set(static_cast<size_t>(i) + 1, vsg::vec4(r, g, b, 1.0f));
+        const auto dim = [&](float c) { return li.display.lowContrast ? 0.25f + 0.5f * c : c; };
+        out.set(static_cast<size_t>(i) + 1, vsg::vec4(dim(r), dim(g), dim(b), 1.0f));
     }
 }
 

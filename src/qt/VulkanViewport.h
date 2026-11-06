@@ -405,6 +405,8 @@ public:
 
 signals:
     void sceneLoaded();
+    // The view's mirroring changed (View menu or a $hflip/$vflip directive).
+    void flipChanged(bool horizontal, bool vertical);
     // The animation's state changed (frame shown, play/pause, speed, or one
     // was found/dropped: count is 0 when the current image has none).
     void animationChanged(int frame, int count, bool playing, double speed);

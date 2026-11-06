@@ -471,13 +471,14 @@ void GivParser::parseLine(Dataset& ds, const char* line, size_t len, SceneData& 
             if (!f.empty()) pendingIncludes_.push_back(std::move(f));
         }
         else if (w0 == "$polygon") ds.doDrawPolygon = true;
-        else if (w0 == "$low_contrast")
+        else if (w0 == "$low_contrast") scene.lowContrast = true;
+        else if (w0 == "$vflip") scene.vflip = true;
+        else if (w0 == "$novflip") scene.vflip = false;
+        else if (w0 == "$hflip") scene.hflip = true;
+        else if (w0 == "$nohflip") scene.hflip = false;
+        else if (w0 == "$vlock")
         {
-            // colormap/pseudo-color out of Phase 1 scope; accept-and-ignore.
-        }
-        else if (w0 == "$vflip" || w0 == "$vlock" || w0 == "$novflip" || w0 == "$hflip" || w0 == "$nohflip")
-        {
-            // orientation flip callbacks not implemented in Phase 1; accept-and-ignore.
+            // vertical zoom lock isn't a per-file setting in wiv; accept-and-ignore.
         }
         else if (w0 == "$linedash") ds.dashes = parseDashList(tok.getRest(1));
         else if (w0 == "$arrow")

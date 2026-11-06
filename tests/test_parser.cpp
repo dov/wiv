@@ -162,6 +162,17 @@ TEST(GivParser, DashList)
     EXPECT_EQ(s.datasets[0].dashes.size(), 2u);
 }
 
+TEST(GivParser, ViewDirectives)
+{
+    SceneData s = parse("$low_contrast\n$hflip\n$vflip\n$nohflip\n0 0\n1 1\n");
+    EXPECT_TRUE(s.lowContrast);
+    ASSERT_TRUE(s.hflip.has_value());
+    EXPECT_FALSE(*s.hflip);
+    ASSERT_TRUE(s.vflip.has_value());
+    EXPECT_TRUE(*s.vflip);
+    EXPECT_FALSE(parse("0 0\n1 1\n").hflip.has_value());
+}
+
 TEST(GivParser, CrLfLineEndings)
 {
     SceneData s = parse("$color red\r\n0 0\r\n3 4\r\n");
