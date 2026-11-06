@@ -711,6 +711,8 @@ private:
     // interim scrollbar state (old zoom, new bounds) is never shown, avoiding a
     // show-then-hide flicker.
     bool deferScrollBarUpdate_ = false;
+    // One-shot: the next updateScrollBars() leaves a small-content axis where an explicit view put it.
+    bool keepViewOffCenter_ = false;
 
     // See checkResizeSettling()/GivViewer::isResizeSettling's doc comment.
     bool resizeSettling_ = false;

@@ -2728,7 +2728,9 @@ void VulkanViewport::updateScrollBars()
 
     // Zoomed out past "fill", an axis whose content is smaller than the
     // window stays centered instead of drifting wherever the zoom left it.
-    if (!viewAnim_.active)
+    const bool keepOffCenter = keepViewOffCenter_;
+    keepViewOffCenter_ = false;
+    if (!viewAnim_.active && !keepOffCenter)
     {
         const double contentCenterX = (minXyd + maxXyd) * 0.5;
         const double contentCenterY = -(minYyd + maxYyd) * 0.5;
@@ -3020,7 +3022,9 @@ void VulkanViewport::getTransformation(double& scaleX, double& scaleY, double& s
 
 void VulkanViewport::setTransformation(double scaleX, double scaleY, double shiftX, double shiftY)
 {
+    cancelViewAnimation();
     if (panZoom_) panZoom_->cancelZoom();
+    viewDirty_ = true; // an explicit view is a user view: don't let a refit replace it
     if (!camera_ || !projection_ || !window_ || !window_->windowAdapter) return;
     if (scaleX <= 0.0 || scaleY <= 0.0) return;
 
@@ -3039,7 +3043,9 @@ void VulkanViewport::setTransformation(double scaleX, double scaleY, double shif
     projection_->top = halfH;
 
     viewer_->request();
+    keepViewOffCenter_ = true;
     updateScrollBars();
+    keepViewOffCenter_ = false;
 }
 
 bool VulkanViewport::exportImage(const QString& path, int width, int height, const ExportView& view, QString* error)
