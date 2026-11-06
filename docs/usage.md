@@ -67,6 +67,8 @@ contours, measurements or labels over a picture.
 
 <p align="center"><img src="images/big-fern.png" alt="barnsley_10M.giv: a Barnsley fern made of ten million points" width="560"><br><em>barnsley_10M.giv: ten million points (154&nbsp;MB), generated with <code>demo_generators/gen_barnsley.py -n 10000000</code>; pan and zoom stay interactive</em></p>
 
+<p align="center"><img src="images/zoom-fern.webp" alt="Animation: zooming smoothly into a frond tip of barnsley_10M.giv, with the thumbnail strip showing the other demo files" width="640"><br><em>Zooming 50&times; into a frond of the fern (an animated WebP, recorded with <code>tools/zoom_apng.py</code>)</em></p>
+
 Several images can be browsed from the folder of the current file, or from a
 single multi-image `.giv` file. A thumbnail strip, an Open dialog with cached
 thumbnails and background prefetching keep browsing fast.
