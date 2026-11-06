@@ -371,7 +371,7 @@ bool layoutText(const TextRequest& req, TextOutline& out)
     fribidi_get_bidi_types(cps.data(), static_cast<FriBidiStrIndex>(n), types.data());
     fribidi_get_bracket_types(cps.data(), static_cast<FriBidiStrIndex>(n), types.data(), brackets.data());
     FriBidiParType base = req.rtlBase ? FRIBIDI_PAR_RTL : FRIBIDI_PAR_LTR;
-    fribidi_get_par_embedding_levels_ex(types.data(), brackets.data(), static_cast<FriBidiStrIndex>(n), &base, levels.data());
+    std::ignore = fribidi_get_par_embedding_levels_ex(types.data(), brackets.data(), static_cast<FriBidiStrIndex>(n), &base, levels.data());
 
     // ---- Script per character (common/inherited take the previous script) ---
     hb_unicode_funcs_t* uf = hb_unicode_funcs_get_default();
