@@ -132,7 +132,9 @@ endif()
 
 # HDF5 (2D arrays as grayscale, 3D as colour or slices) is optional too.
 find_package(HDF5 COMPONENTS C QUIET)
-if(HDF5_FOUND)
+# When cross compiling, FindHDF5 can latch onto the host's h5cc wrapper and
+# report "found" with no usable target library; only accept a real config.
+if(HDF5_FOUND AND (NOT CMAKE_CROSSCOMPILING OR HDF5_DIR))
   wiv_add_plugin(hdf5 hdf5/hdf5_plugin.cpp)
   if(TARGET hdf5::hdf5)
     target_link_libraries(wiv_plugin_hdf5 PRIVATE hdf5::hdf5)

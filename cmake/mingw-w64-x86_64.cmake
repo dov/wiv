@@ -47,3 +47,4 @@ set(CMAKE_MODULE_LINKER_FLAGS_INIT "-static-libgcc -static-libstdc++")
 set(ENV{PKG_CONFIG_LIBDIR}
     "${MINGW_SYSROOT}/lib/pkgconfig:${MINGW_SYSROOT}/share/pkgconfig:${MINGW_DEPS_PREFIX}/lib/pkgconfig")
 set(ENV{PKG_CONFIG_SYSROOT_DIR} "")
+set(ENV{PKG_CONFIG_PATH} "")  # host PKG_CONFIG_PATH (e.g. /usr/local) must not leak in
