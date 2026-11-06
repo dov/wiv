@@ -1,56 +1,125 @@
 # wiv
 
-**wiv (vviv) - The Vulkan Vector Image Viewer. A high-performance, scientific successor to giv.**
+**A fast image viewer that is also a GPU vector and scientific viewer.**
+Photos, camera RAW, FITS, DICOM and HDF5 data, SVG and millions of vector
+points, all rendered with Vulkan.
 
-<p align="center">
-  <a href="docs/images/wiv-screenshot.png"><img src="docs/images/wiv-screenshot.png" alt="wiv screenshot" width="400"></a>
-</p>
+<table align="center">
+  <tr>
+    <td align="center" width="33%"><img src="docs/images/hero/hero-science.png" width="250" alt="M51 as a FITS image with a rainbow color table"><br><b>Images</b><br>FITS, DICOM, RAW, HDR with live contrast and colour tables</td>
+    <td align="center" width="33%"><img src="docs/images/hero/hero-text.png" width="250" alt="SVG text on a path, with spacing and markup"><br><b>Vectors</b><br>SVG with shaped, multilingual text, crisp at any zoom</td>
+    <td align="center" width="33%"><img src="docs/images/hero/hero-vector.png" width="250" alt="Segmented seedling roots overlaid on a scan"><br><b>Data</b><br>Contours, marks and quivers on top of an image</td>
+  </tr>
+</table>
 
+Opens your photos, camera RAW, HDR, FITS, DICOM, HDF5 and
+NumPy data like a fast image viewer, and opens SVG and
+[giv](https://github.com/dov/giv)-format `.giv` files as true vector
+graphics: millions of points, text, dashes, arrows and animation. Linux and
+Windows.
 
-wiv opens your photos, camera RAW, HDR, FITS, DICOM, HDF5 and NumPy data like a
-fast image viewer, and it opens [giv](https://github.com/dov/giv)-format
-`.giv` files and SVGs as true vector graphics: millions of points, crisp at any
-zoom, with text, dashes, arrows and animation. It is a Vulkan/Qt 6 successor to
-giv, and reads existing `.giv` files unmodified.
+[Download](#download) · [Usage guide](docs/usage.md) · [Feature list](features.md) · [Build from source](#build)
 
-Full usage: **[docs/usage.md](docs/usage.md)**
+## Millions of points, still interactive
+
+<p align="center"><img src="docs/images/zoom-fern.webp" alt="Animation: zooming smoothly into a frond tip of a ten-million-point Barnsley fern" width="640"><br><em>Zooming 50&times; into a 10-million-point plot (<code>demo_generators/barnsley_10M.giv</code>, 154&nbsp;MB).</em></p>
+
+A 10M-point file parses in about 0.3 s, builds its scene in about 0.2 s and
+pans and zooms interactively. Marks, line segments and dashes are drawn with
+GPU instancing: one draw call for *all* marks and one for *all* line segments
+in a file.
 
 ## Why wiv?
 
 - **Images and vectors in one viewer.** Overlay contours, quiver plots,
-  measurement marks and labels on top of a raster image (`$image` in a `.giv`
-  file), or just view a folder of photos. Most image viewers can't draw
-  vectors; most plotting tools can't browse a folder of RAW files.
-- **Built for big data.** Marks, line segments and dashes are drawn with
-  GPU instancing: one draw call for *all* marks and one for *all* line
-  segments in a file. A 10-million-point, 208 MB `.giv` file parses in about
-  0.3 s, builds its scene in about 0.2 s and pans and zooms interactively.
+  measurement marks and labels on top of a raster image, or just view a folder
+  of photos. Most image viewers can't draw vectors; most plotting tools can't
+  browse a folder of RAW files.
 - **Real dynamic range, not 8-bit RGBA.** 8/16-bit grayscale, float FITS,
   DICOM, HDF5 and `.npy` data keep their raw samples. Contrast stretch (with a
   histogram) and pseudo-colour tables run on the GPU, so you window the actual
   data rather than a quantised copy.
+- **A real text engine.** HarfBuzz and FriBidi shaping: bidirectional and
+  multilingual text, ligatures, kerning, Pango-style markup, `<textPath>`. Text
+  is drawn as geometry with no glyph atlas, so it scales, rotates and animates
+  like any other shape.
+- **Fast, friendly browsing.** An Open dialog with cached thumbnails (drag a
+  thumbnail straight into another program), a thumbnail strip, and background
+  prefetch of neighbouring images so holding the arrow key stays responsive.
+  Open With and external-app shortcuts hand a file to your editor.
+- **Know your file.** The Image Info dock shows file properties, EXIF (camera,
+  exposure, GPS) and format headers. Auto Reload re-renders when the file
+  changes on disk, which is handy next to a script that writes plots.
+- **Animation.** GIF, APNG, animated WebP/JXL, AVIF sequences, animated SVG
+  (SMIL and CSS `@keyframes`) and `.giv` animation via `$frame`.
 - **Measurement tools.** Diagonal, horizontal and vertical caliper, Count
   Marks, pixel-size calibration so the caliper reads in real units, a pixel
   grid with sub-pixel coordinates.
 - **Live glyph scaling and export.** Ctrl+drag scales mark size, line width,
-  quiver length and opacity without rebuilding the scene (Glyph Appearance
-  panel); File > Export or `--export` renders the view to an image of any size.
-- **Every format through plugins.** Image decoders are runtime-loaded shared
-  libraries (`dlopen`/`LoadLibrary`), so optional formats (HEIF/AVIF, JPEG XL,
-  camera RAW, OpenEXR, HDF5) simply appear when their library is installed.
-- **Scriptable.** An optional JSON-RPC server (`--rpc-port`) speaks giv's wire
-  protocol, so existing giv client scripts can load files, push marks, read and
-  set the view, and wait for a click. giv's command-line options and remote
-  client mode (`--remote "load_file x.giv"`) are supported too.
+  quiver length and opacity without rebuilding the scene; File > Export or
+  `--export` renders the view to an image of any size.
+- **Scriptable.** `$svgmarks` puts an SVG symbol at every data point. An
+  optional JSON-RPC server (`--rpc-port`) speaks giv's wire protocol, so
+  client scripts can load files, push marks, read and set the view, and wait
+  for a click.
 - **Remembers your view.** Per-image contrast, colormap, pan/zoom and slice are
   kept in a SQLite database and restored when you reopen the file.
-- **Fast browsing.** Thumbnail strip, background prefetch of neighbouring
-  images with cancellable decodes and low-resolution previews, so holding the
-  arrow key stays responsive.
-- **Animation.** GIF, APNG, animated WebP/JXL, AVIF sequences, animated SVG
-  (SMIL and CSS `@keyframes`) and `.giv` animation via `$frame`.
-- **Linux and Windows.** Native Linux build; Windows via MSVC/vcpkg or a MinGW
-  cross build with an NSIS installer.
+- **Comfortable UI.** Light and dark themes, pinch-to-zoom on touchpads,
+  rebindable keys, every format through runtime-loaded plugins.
+
+## Who is it for?
+
+- **Astronomy, microscopy and medical imaging**: window FITS, DICOM, HDF5 and
+  NIfTI data with histogram contrast, pseudo-colour and calibrated measurement.
+  See [scientific tools](features.md#scientific--pixel-value-tools).
+- **Plots and annotations**: write a text `.giv` file from any language and
+  view millions of points, polygons, arrows and labels over an image.
+  See [the `.giv` format](docs/usage.md).
+- **Photographers**: fast browsing of JPEG, RAW, HEIC and AVIF with EXIF and
+  remembered zoom.
+- **Anyone with SVGs**: a viewer that renders text and animation correctly.
+- **Existing giv users**: wiv reads your `.giv` files unmodified and
+  understands giv's command line and remote protocol.
+
+## Gallery
+
+<table>
+  <tr>
+    <td width="33%"><a href="docs/images/image-info.png"><img src="docs/images/image-info.png" width="250" alt="Image Info and EXIF dock"></a><br>Image Info and EXIF</td>
+    <td width="33%"><a href="docs/images/thumbnails.png"><img src="docs/images/thumbnails.png" width="250" alt="Thumbnail strip"></a><br>Thumbnail strip</td>
+    <td width="33%"><a href="docs/images/fits-contrast.png"><img src="docs/images/fits-contrast.png" width="250" alt="Contrast panel with histogram and colour table"></a><br>Contrast, histogram and colour table</td>
+  </tr>
+  <tr>
+    <td width="33%"><a href="docs/images/pixel-grid.png"><img src="docs/images/pixel-grid.png" width="250" alt="Pixel grid with sub-pixel coordinates"></a><br>Pixel grid</td>
+    <td width="33%"><a href="docs/images/quiver.png"><img src="docs/images/quiver.png" width="250" alt="Quiver plot"></a><br>Quiver plot</td>
+    <td width="33%"><a href="docs/images/voronoi-mark-browser.png"><img src="docs/images/voronoi-mark-browser.png" width="250" alt="Voronoi diagram with the Mark Browser dock"></a><br>Voronoi diagram and Mark Browser</td>
+  </tr>
+</table>
+
+## Download
+
+Prebuilt packages are published on the
+[Releases page](https://github.com/dov/wiv/releases):
+
+- **Linux**: an AppImage. `chmod +x wiv-*.AppImage && ./wiv-*.AppImage photo.jpg`
+- **Windows**: the `InstallWiv-*.exe` installer.
+
+Or [build from source](#build).
+
+## How wiv compares
+
+| | wiv | giv | Gwenview | ImageJ / DS9 |
+| --- | --- | --- | --- | --- |
+| Photo browsing, RAW, HEIC/AVIF | yes | no | yes | limited |
+| FITS / DICOM / HDF5 with contrast and colour tables | yes | no | no | yes |
+| Vector overlays on an image | yes | yes | no | ROI/overlays |
+| Millions of vector points, GPU rendered | yes | limited | no | no |
+| SVG with shaped text and animation | yes | no | basic | no |
+| Image editing, plugins/macros | no | no | basic editing | yes |
+| Platforms | Linux, Windows | Linux, Windows | Linux, Windows | all |
+
+*Rough orientation only; check each tool's current documentation.*
+See [features.md](features.md) for the full wiv feature list.
 
 ## Supported formats
 
@@ -62,7 +131,17 @@ Full usage: **[docs/usage.md](docs/usage.md)**
 | Layered | OpenRaster `.ora`, Krita `.kra` (merged image) |
 | Vector | `.giv`, SVG (shapes, `<image>`, shaped multilingual `<text>`, `<textPath>`, CSS, animation) |
 
-See [features.md](features.md) for the complete feature list.
+## Quick start
+
+```sh
+wiv photo.jpg                       # view an image; next/previous with the arrow keys
+wiv examples/example.giv            # a vector file
+wiv --geometry 1024x768 *.png
+wiv --rpc-port 8080 file.giv        # enable remote control
+```
+
+Keys, mouse bindings, the `.giv` format and the remote protocol are described
+in **[docs/usage.md](docs/usage.md)**.
 
 ## Architecture
 
@@ -156,23 +235,18 @@ sudo ./install-mingw-deps.sh
 `MINGW_DEPS_PREFIX` overrides the dependency prefix (default
 `/usr/local/mingw64`).
 
-## Quick start
-
-```sh
-wiv photo.jpg                       # view an image; next/previous with the arrow keys
-wiv examples/example.giv            # a vector file
-wiv --geometry 1024x768 *.png
-wiv --rpc-port 8080 file.giv        # enable remote control
-```
-
-Keys, mouse bindings, the `.giv` format and the remote protocol are described
-in **[docs/usage.md](docs/usage.md)**.
-
 ## Benchmarking
 
 `tools/gen_test_giv.py` generates synthetic `.giv` files (point clouds, long
 polylines). `WIV_CONTINUOUS=1` renders every timer tick so the FPS figure is
 meaningful; `WIV_TIMING=1` also prints the per-stage cost of each frame.
+
+## Coming from giv?
+
+wiv is a Vulkan/Qt 6 successor to [giv](https://github.com/dov/giv). It reads
+existing `.giv` files unmodified, supports giv's command-line options and
+remote client mode (`--remote "load_file x.giv"`), and its JSON-RPC server
+speaks giv's wire protocol.
 
 ## License
 

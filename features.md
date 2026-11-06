@@ -233,8 +233,8 @@ Stored in `state.db` (SQLite, WAL mode) next to `wiv.ini` (e.g.
 - Parsed but ignored: `$marks_file $low_contrast $hflip/$vflip`
   (and `no*`), `$pixelsize`.
 - Marks: circle, filled circle, square, filled square (+ others per parser).
-- Lines: width, dash patterns (first on/off pair only), caps, arrows.
-- Polygons (fan-triangulated; concave polygons may fill wrongly), holes.
+- Lines: width, dash patterns (multi-value patterns), caps, arrows.
+- Polygons (earcut-triangulated, so concave polygons fill correctly), holes.
 - Quivers with heads and scale.
 - Text with numeric-keypad alignment, rotation, size, font via fontconfig (HarfBuzz/FriBidi outlines).
 - Colours: X11 names, `name/alpha` suffix syntax, hex.
@@ -292,5 +292,4 @@ proven; re-check before relying on an item.
 - No video playback.
 - No EXIF editing; EXIF only for JPEG/TIFF/PNG/WebP.
 - No remote/network file loading beyond local paths.
-- No concave-polygon earcut, no multi-value dash patterns in `.giv`.
 - No bundled font; text depends on fontconfig (Linux) / system fonts.
