@@ -171,10 +171,13 @@ struct ImagePipeline
 // other batch in this file uses. Returns the pipelineLayout alongside the
 // stateGroup since each image's per-filter vsg::DescriptorSet is built
 // against it (see the "Image batch" section of build()).
-ImagePipeline makeImagePipeline(const std::string& shaderDir, bool rawSamples = false)
+// labelPass selects the label-picking variant (image_label.*): a third,
+// per-vertex label color attribute, hard-edged and unblended output.
+ImagePipeline makeImagePipeline(const std::string& shaderDir, bool rawSamples = false, bool labelPass = false)
 {
-    auto vertexShader = loadShader(VK_SHADER_STAGE_VERTEX_BIT, shaderDir, "image.vert.spv");
-    auto fragmentShader = loadShader(VK_SHADER_STAGE_FRAGMENT_BIT, shaderDir, rawSamples ? "image_samples.frag.spv" : "image.frag.spv");
+    auto vertexShader = loadShader(VK_SHADER_STAGE_VERTEX_BIT, shaderDir, labelPass ? "image_label.vert.spv" : "image.vert.spv");
+    auto fragmentShader = loadShader(VK_SHADER_STAGE_FRAGMENT_BIT, shaderDir,
+                                     labelPass ? "image_label.frag.spv" : (rawSamples ? "image_samples.frag.spv" : "image.frag.spv"));
 
     vsg::PushConstantRanges pushConstantRanges{
         {VK_SHADER_STAGE_VERTEX_BIT, 0, 128} // projection + modelview, auto-supplied by RecordTraversal
@@ -193,7 +196,7 @@ ImagePipeline makeImagePipeline(const std::string& shaderDir, bool rawSamples = 
     depthStencil->depthWriteEnable = VK_FALSE;
 
     auto colorBlend = vsg::ColorBlendState::create();
-    colorBlend->configureAttachments(true);
+    colorBlend->configureAttachments(!labelPass);
 
     vsg::VertexInputState::Bindings bindings{
         VkVertexInputBindingDescription{0, sizeof(vsg::vec2), VK_VERTEX_INPUT_RATE_VERTEX},
@@ -201,6 +204,11 @@ ImagePipeline makeImagePipeline(const std::string& shaderDir, bool rawSamples = 
     vsg::VertexInputState::Attributes attributes{
         VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32_SFLOAT, 0},
         VkVertexInputAttributeDescription{1, 1, VK_FORMAT_R32G32_SFLOAT, 0}};
+    if (labelPass)
+    {
+        bindings.push_back(VkVertexInputBindingDescription{2, sizeof(vsg::vec4), VK_VERTEX_INPUT_RATE_VERTEX});
+        attributes.push_back(VkVertexInputAttributeDescription{2, 2, VK_FORMAT_R32G32B32A32_SFLOAT, 0});
+    }
 
     vsg::GraphicsPipelineStates pipelineStates{
         vsg::VertexInputState::create(bindings, attributes),
@@ -1115,8 +1123,8 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     // order - see the per-dataset loop below - so only the pipeline
     // itself is shared here; each sprite gets its own descriptor set/draw.
     // -------------------------------------------------------------
-    vsg::ref_ptr<vsg::BindGraphicsPipeline> spriteBind;
-    vsg::ref_ptr<vsg::PipelineLayout> spritePipelineLayout;
+    vsg::ref_ptr<vsg::BindGraphicsPipeline> spriteBind, spriteLabelBind;
+    vsg::ref_ptr<vsg::PipelineLayout> spritePipelineLayout, spriteLabelPipelineLayout;
     vsg::ref_ptr<vsg::Sampler> spriteSampler;
     bool hasSprites = std::any_of(scene.datasets.begin(), scene.datasets.end(), [](const Dataset& ds) { return ds.isSprite; });
     if (hasSprites)
@@ -1124,6 +1132,12 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
         auto [spriteStateGroup, layout] = makeImagePipeline(shaderDir);
         spriteBind = spriteStateGroup->stateCommands.front().cast<vsg::BindGraphicsPipeline>();
         spritePipelineLayout = layout;
+
+        // Label-picking twin (see image_label.frag): same descriptor set
+        // layout, so one descriptor set per texture serves both passes.
+        auto [spriteLabelStateGroup, labelLayout] = makeImagePipeline(shaderDir, /*rawSamples=*/false, /*labelPass=*/true);
+        spriteLabelBind = spriteLabelStateGroup->stateCommands.front().cast<vsg::BindGraphicsPipeline>();
+        spriteLabelPipelineLayout = labelLayout;
 
         spriteSampler = vsg::Sampler::create();
         spriteSampler->minFilter = VK_FILTER_LINEAR;
@@ -1846,6 +1860,18 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             drawCommands->addChild(vsg::BindIndexBuffer::create(spriteQuadIndices));
             drawCommands->addChild(vsg::DrawIndexed::create(6, 1, 0, 0, 0));
             root->addChild(wrapImageDraw(spriteBind, bindDescriptorSet, drawCommands));
+
+            // Same quad into the label-picking pass, so hovering the sprite
+            // finds its dataset (and its $svgmarks owner's balloon).
+            const vsg::vec4 spriteLabelColor = labelColorFor(dsIdx);
+            auto labelColors = vsg::vec4Array::create({spriteLabelColor, spriteLabelColor, spriteLabelColor, spriteLabelColor});
+            auto labelBindDescriptorSet =
+                vsg::BindDescriptorSet::create(VK_PIPELINE_BIND_POINT_GRAPHICS, spriteLabelPipelineLayout, 0, descriptorSet);
+            auto labelDrawCommands = vsg::Commands::create();
+            labelDrawCommands->addChild(vsg::BindVertexBuffers::create(0, vsg::DataList{positions, uvs, labelColors}));
+            labelDrawCommands->addChild(vsg::BindIndexBuffer::create(spriteQuadIndices));
+            labelDrawCommands->addChild(vsg::DrawIndexed::create(6, 1, 0, 0, 0));
+            labelRoot->addChild(wrapImageDraw(spriteLabelBind, labelBindDescriptorSet, labelDrawCommands));
             breakRun();
         }
 
