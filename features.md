@@ -36,6 +36,7 @@ in Edit > Preferences > Keyboard.
 | DDS | `.dds` | `dds` | BC1–BC5, BC7, uncompressed (vendored bcdec) |
 | ICO/CUR | `.ico .cur` | `ico` | PNG and DIB entries |
 | HDF5 | `.h5 .hdf5 .he5` | `hdf5` (libhdf5, optional) | every numeric 2D/3D dataset is a page (PgUp/PgDn); 2D = gray (raw u8/u16/float samples), 3D = colour (last axis 3/4, first axis 3/4, or Image-spec `INTERLACE_MODE`) or slices (heuristic); content-sniffed |
+| netCDF | `.nc .nc4 .cdf .netcdf` | `netcdf` (libnetcdf, optional) | every numeric 2D-4D variable is a page; 3D/4D leading axes = slices; _FillValue becomes NaN, scale_factor/add_offset applied, ascending latitude flipped north-up; classic files content-sniffed |
 | NIfTI | `.nii .nii.gz` | `nifti` (own parser on zlib) | 2D/3D volumes, z = slice axis; scl_slope/inter applied; non-u8/u16 data becomes float |
 | OpenRaster, Krita | `.ora .kra` | `ora` (zlib + stb_image) | shows the flattened merged image; layers not composited |
 | FITS | `.fits .fit` | `fits` | float/int samples; NAXIS=3 cubes as slices |

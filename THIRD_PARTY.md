@@ -27,7 +27,7 @@ system or from vcpkg at build time. Each remains under its own license.
 - [HarfBuzz](https://harfbuzz.github.io), [FriBidi](https://github.com/fribidi/fribidi),
   [Fontconfig](https://www.fontconfig.org), FreeType
 - Image-format plugin libraries: libjpeg-turbo, libtiff, libwebp, cfitsio, and,
-  where installed, libheif, libjxl, LibRaw, OpenEXR and HDF5
+  where installed, libheif, libjxl, LibRaw, OpenEXR, HDF5 and netCDF
 
 ## Format compatibility
 
