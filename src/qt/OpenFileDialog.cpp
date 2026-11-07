@@ -513,9 +513,9 @@ OpenFileDialog::OpenFileDialog(QWidget* parent, QSettings* settings)
     setAcceptMode(QFileDialog::AcceptOpen);
     setWindowTitle("Open");
     setNameFilters({
-        "Supported files (*.giv *.svg *.png *.apng *.jpg *.jpeg *.bmp *.tga *.gif *.psd *.tif *.tiff *.webp *.heic *.heif *.hif *.avif *.jxl *.dds *.ico *.cur *.cr2 *.cr3 *.crw *.nef *.nrw *.arw *.sr2 *.srf *.dng *.orf *.rw2 *.raf *.pef *.srw *.raw *.rwl *.3fr *.fff *.erf *.kdc *.dcr *.mef *.mos *.mrw *.iiq *.x3f *.gpr *.pgm *.ppm *.hdr *.pfm *.exr *.npy *.h5 *.hdf5 *.he5 *.fits *.fit *.dcm)",
+        "Supported files (*.giv *.svg *.png *.apng *.jpg *.jpeg *.bmp *.tga *.gif *.psd *.tif *.tiff *.webp *.heic *.heif *.hif *.avif *.jxl *.dds *.ico *.cur *.cr2 *.cr3 *.crw *.nef *.nrw *.arw *.sr2 *.srf *.dng *.orf *.rw2 *.raf *.pef *.srw *.raw *.rwl *.3fr *.fff *.erf *.kdc *.dcr *.mef *.mos *.mrw *.iiq *.x3f *.gpr *.pgm *.ppm *.hdr *.pfm *.exr *.npy *.h5 *.hdf5 *.he5 *.nc *.nc4 *.cdf *.netcdf *.fits *.fit *.dcm)",
         "giv files (*.giv)",
-        "Image files (*.svg *.png *.apng *.jpg *.jpeg *.bmp *.tga *.gif *.psd *.tif *.tiff *.webp *.heic *.heif *.hif *.avif *.jxl *.dds *.ico *.cur *.cr2 *.cr3 *.crw *.nef *.nrw *.arw *.sr2 *.srf *.dng *.orf *.rw2 *.raf *.pef *.srw *.raw *.rwl *.3fr *.fff *.erf *.kdc *.dcr *.mef *.mos *.mrw *.iiq *.x3f *.gpr *.pgm *.ppm *.hdr *.pfm *.exr *.npy *.h5 *.hdf5 *.he5 *.fits *.fit *.dcm)",
+        "Image files (*.svg *.png *.apng *.jpg *.jpeg *.bmp *.tga *.gif *.psd *.tif *.tiff *.webp *.heic *.heif *.hif *.avif *.jxl *.dds *.ico *.cur *.cr2 *.cr3 *.crw *.nef *.nrw *.arw *.sr2 *.srf *.dng *.orf *.rw2 *.raf *.pef *.srw *.raw *.rwl *.3fr *.fff *.erf *.kdc *.dcr *.mef *.mos *.mrw *.iiq *.x3f *.gpr *.pgm *.ppm *.hdr *.pfm *.exr *.npy *.h5 *.hdf5 *.he5 *.nc *.nc4 *.cdf *.netcdf *.fits *.fit *.dcm)",
         "All files (*)",
     });
 

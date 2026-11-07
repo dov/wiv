@@ -683,6 +683,7 @@ found at configure time.
 | `raw` (optional) | Camera RAW (about 30 extensions) |
 | `exr` (optional) | OpenEXR |
 | `hdf5` (optional) | HDF5; every numeric 2D/3D dataset is a page |
+| `netcdf` (optional) | netCDF; every numeric 2D-4D variable is a page |
 
 SVG and `.giv` are built in. SVG gradient fills and strokes are rendered (rasterized as sprites). EXIF orientation is applied to every format; EXIF,
 and header attributes of HDR/PFM/EXR, appear in the Image Info panel (<kbd>i</kbd>).

@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxcb-randr0-dev libxcb-sync-dev libxcb-xfixes0-dev libxcb-shm0-dev \
     libgl1-mesa-dev libegl1-mesa-dev libdbus-1-dev libfontconfig-dev libfreetype-dev \
     libfribidi-dev libharfbuzz-dev libsqlite3-dev libexpat1-dev \
-    libheif-dev libraw-dev libopenexr-dev libhdf5-dev \
+    libheif-dev libraw-dev libopenexr-dev libhdf5-dev libnetcdf-dev \
  && rm -rf /var/lib/apt/lists/*
 # Recent cmake/ninja (vsgQt wants cmake >= 3.28) and Qt 6.8 from the Qt installer mirrors.
 RUN pip3 install --no-cache-dir cmake ninja aqtinstall

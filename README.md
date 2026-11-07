@@ -127,7 +127,7 @@ See [features.md](features.md) for the full wiv feature list.
 | --- | --- |
 | Raster | PNG, JPEG, BMP, TGA, GIF, PSD, TIFF (multi-page), WebP, ICO/CUR, DDS, PGM/PPM |
 | Optional raster | HEIC/HEIF/AVIF (libheif), JPEG XL (libjxl), camera RAW (LibRaw), OpenEXR |
-| HDR / scientific | Radiance HDR, PFM, FITS, DICOM, HDF5, NIfTI, NumPy `.npy` |
+| HDR / scientific | Radiance HDR, PFM, FITS, DICOM, HDF5, netCDF, NIfTI, NumPy `.npy` |
 | Layered | OpenRaster `.ora`, Krita `.kra` (merged image) |
 | Vector | `.giv`, SVG (shapes, `<image>`, shaped multilingual `<text>`, `<textPath>`, CSS, animation) |
 
