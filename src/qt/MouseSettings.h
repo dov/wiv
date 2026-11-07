@@ -21,7 +21,7 @@ struct MouseSettings
 
     Wheel wheel = Wheel::Navigate;
     MiddleClick middleClick = MiddleClick::Nothing;
-    bool leftDragPans = false;       // left-drag pans too (not while measuring)
+    bool leftDragPans = true;        // left-drag pans too (not while measuring)
     SideButtons sideButtons = SideButtons::Navigate;
     bool swapSideButtons = false;    // back = next image / step zoom in
     bool tiltNavigates = true;       // horizontal wheel tilt pages through images

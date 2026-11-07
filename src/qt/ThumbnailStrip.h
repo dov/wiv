@@ -31,6 +31,9 @@ public:
     // Rebuilds the items only when the list itself changed.
     void setBackgroundColor(const QColor& color);
     void setFiles(const QStringList& files, int current);
+    // Forgets the items so the next setFiles() rebuilds them and re-requests every
+    // thumbnail (the disk cache regenerates those whose file changed).
+    void invalidate() { files_.clear(); }
     // Thumbnail edge in device-independent pixels; clamped, and persisted by the caller.
     void setThumbSize(int size);
     // One zoom step, as a Ctrl+wheel notch: +1 larger, -1 smaller.

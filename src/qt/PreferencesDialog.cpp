@@ -56,7 +56,7 @@ MouseSettings PreferencesDialog::loadMouseSettings()
     m.sideButtons = static_cast<MouseSettings::SideButtons>(sb);
     m.middleClick = s.value("mouse/middleClick", 0).toInt() == 1 ? MouseSettings::MiddleClick::FullScreen
                                                                  : MouseSettings::MiddleClick::Nothing;
-    m.leftDragPans = s.value("mouse/leftDragPans", false).toBool();
+    m.leftDragPans = s.value("mouse/leftDragPans", true).toBool();
     m.swapSideButtons = s.value("mouse/swapSideButtons", false).toBool();
     m.tiltNavigates = s.value("mouse/tiltNavigates", true).toBool();
     m.tiltZooms = s.value("mouse/tiltZooms", true).toBool();
@@ -333,7 +333,7 @@ QWidget* PreferencesDialog::buildMouseTab()
 
     auto layout = new QVBoxLayout(page);
     layout->addLayout(form);
-    layout->addWidget(new QLabel("Middle-drag pans (left-drag too, if enabled), right-drag zooms, Shift+wheel zooms faster and Alt+wheel "
+    layout->addWidget(new QLabel("Left- or middle-drag pans, right-drag zooms, Shift+wheel zooms faster and Alt+wheel "
                                  "scales quivers, as in giv."));
     layout->addStretch();
     return page;

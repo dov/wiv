@@ -1508,6 +1508,16 @@ void MainWindow::buildNavigationBar()
     };
     auto* thumbLarger = addZoomButton(fa::fa_magnifying_glass_plus, "Larger thumbnails", thumbLargerAction_);
     auto* thumbSmaller = addZoomButton(fa::fa_magnifying_glass_minus, "Smaller thumbnails", thumbSmallerAction_);
+    {
+        auto* refresh = new QToolButton(bottomBar_);
+        refresh->setAutoRaise(true);
+        refresh->setFocusPolicy(Qt::NoFocus);
+        refresh->setIcon(icon(fa::fa_arrows_rotate));
+        track(refresh, fa::fa_arrows_rotate);
+        refresh->setToolTip("Refresh the thumbnails\nRescans the folder for added, removed and changed files");
+        thumbZoomColumn_->addWidget(refresh);
+        connect(refresh, &QToolButton::clicked, this, &MainWindow::refreshThumbnails);
+    }
     thumbZoomColumn_->addStretch(1);
     auto updateThumbZoom = [this, thumbLarger, thumbSmaller](int size) {
         thumbLarger->setEnabled(size < ThumbnailStrip::kMaxThumbSize);
@@ -1599,6 +1609,34 @@ void MainWindow::buildNavigationBar()
     connect(previousImageAction_, &QAction::changed, prev, syncEnabled);
     connect(nextImageAction_, &QAction::changed, next, syncEnabled);
     syncEnabled();
+}
+
+void MainWindow::refreshThumbnails()
+{
+    spdlog::info("User invoked thumbnail refresh");
+    const QString current = directoryFileIndex_ >= 0 && directoryFileIndex_ < directoryFiles_.size()
+                                ? directoryFiles_[directoryFileIndex_]
+                                : QString();
+    if (!browseList_.isEmpty())
+    {
+        // An explicit list (Open dialog selection): keep it, minus files that are gone.
+        browseList_.erase(std::remove_if(browseList_.begin(), browseList_.end(),
+                                         [](const QString& f) { return !QFileInfo::exists(f); }),
+                          browseList_.end());
+        directoryFiles_ = browseList_;
+    }
+    else if (!current.isEmpty())
+    {
+        QStringList files;
+        const QDir dir = QFileInfo(current).absoluteDir();
+        for (const auto& entry : dir.entryInfoList(QDir::Files, QDir::Name | QDir::IgnoreCase))
+            if (isGivCompatibleFile(entry.absoluteFilePath())) files << entry.absoluteFilePath();
+        directoryFiles_ = files;
+    }
+    directoryFileIndex_ = directoryFiles_.indexOf(current);
+    thumbnailStrip_->invalidate();
+    updateThumbnailStrip();
+    updateNavigationActionsEnabled();
 }
 
 void MainWindow::updateThumbnailStrip()

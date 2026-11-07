@@ -307,6 +307,7 @@ private:
     QAction* thumbnailStripAction_ = nullptr;
     QAction* thumbLargerAction_ = nullptr;
     QAction* thumbSmallerAction_ = nullptr;
+    void refreshThumbnails(); // rescan the thumbnail directory and regenerate changed thumbnails
     PrefetchPool* prefetchPool_ = nullptr; // persistent decode workers
     int lastNavigationStep_ = 1; // +1/-1: which side to prefetch further on
     void goToDirectoryIndex(int index);

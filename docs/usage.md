@@ -524,7 +524,7 @@ A balloon can have several lines: write `\n` in the text.
 
 | Action | Effect |
 | --- | --- |
-| Middle-drag | Pan (left-drag too, if enabled in Preferences). The grabbed point stays under the cursor. |
+| Left- or middle-drag | Pan (left-drag can be turned off in Preferences). The grabbed point stays under the cursor. |
 | Right-drag | Zoom. |
 | Wheel | Zoom at the cursor, or next/previous image (Preferences). <kbd>Ctrl</kbd>+wheel always zooms. |
 | <kbd>Ctrl</kbd>+left-drag | Scale marks (vertical drag) or quiver length (horizontal drag); the first movement picks the axis. |
