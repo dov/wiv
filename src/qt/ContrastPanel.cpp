@@ -69,17 +69,36 @@ ContrastPanel::ContrastPanel(VulkanViewport* viewport, QWidget* parent) : QWidge
     grid->addWidget(new QLabel("Color table:", this), 3, 0, 1, 2);
     grid->addWidget(colormapCombo_, 3, 2, 1, 3);
 
+    gammaEdit_ = new QLineEdit("1", this);
+    gammaEdit_->setValidator(new QDoubleValidator(0.05, 20.0, 4, gammaEdit_));
+    gammaEdit_->setToolTip("Display gamma: above 1 brightens the midtones, below 1 darkens them");
+    connect(gammaEdit_, &QLineEdit::editingFinished, this, &ContrastPanel::onGammaEdited);
+    auto* gammaReset = new QPushButton("Reset", this);
+    connect(gammaReset, &QPushButton::clicked, this, &ContrastPanel::onGammaReset);
+    grid->addWidget(new QLabel("Gamma:", this), 4, 0, 1, 2);
+    grid->addWidget(gammaEdit_, 4, 2);
+    grid->addWidget(gammaReset, 4, 3, 1, 2);
+
     auto* contrastBox = new QGroupBox("Contrast", this);
     contrastBox->setLayout(grid);
 
     strengthSlider_ = new QSlider(Qt::Vertical, this);
     strengthSlider_->setRange(0, 100);
-    strengthSlider_->setValue(100);
+    strengthSlider_->setValue(0);
     connect(strengthSlider_, &QSlider::valueChanged, this,
             [this](int v) { histogram_->setStrength(v / 100.0); });
 
     histogram_ = new HistogramWidget(this);
+    connect(viewport_, &VulkanViewport::cursorWorldPosition, this, [this](double x, double y) {
+        double v;
+        bool ok = viewport_->nativeSampleAt(x, y, v);
+        histogram_->setCursorValue(ok, v);
+    });
     connect(histogram_, &HistogramWidget::rangeChanged, this, &ContrastPanel::onHandlesDragged);
+    connect(histogram_, &HistogramWidget::gammaChanged, this, [this](float g) {
+        gammaEdit_->setText(QString::number(g, 'g', 4));
+        viewport_->setGamma(g);
+    });
 
     auto* histoLayout = new QGridLayout();
     histoLayout->addWidget(strengthSlider_, 0, 0);
@@ -93,7 +112,15 @@ ContrastPanel::ContrastPanel(VulkanViewport* viewport, QWidget* parent) : QWidge
     histoBox->setLayout(histoLayout);
 
     auto* autoButton = new QPushButton("Auto Contrast", this);
+    autoButton->setToolTip("Stretch to the 0.1%-99.9% percentiles of the current slice");
     connect(autoButton, &QPushButton::clicked, this, &ContrastPanel::onAutoContrast);
+    auto* fullButton = new QPushButton("Full range", this);
+    fullButton->setToolTip("Stretch to the data's absolute min and max");
+    connect(fullButton, &QPushButton::clicked, this, &ContrastPanel::onFullRange);
+    auto* buttonRow = new QHBoxLayout();
+    buttonRow->addStretch(1);
+    buttonRow->addWidget(fullButton);
+    buttonRow->addWidget(autoButton);
 
     auto* layout = new QVBoxLayout(this);
     layout->addWidget(contrastBox);
@@ -101,7 +128,7 @@ ContrastPanel::ContrastPanel(VulkanViewport* viewport, QWidget* parent) : QWidge
     histoBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     histogram_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     layout->addWidget(histoBox);
-    layout->addWidget(autoButton, 0, Qt::AlignRight);
+    layout->addLayout(buttonRow);
     layout->addStretch(1);
     setLayout(layout);
 
@@ -143,6 +170,9 @@ void ContrastPanel::refreshForImage()
     centerEdit_->setText(QString::number((state.min + state.max) / 2.0, 'g', 6));
     windowEdit_->setText(QString::number(state.max - state.min, 'g', 6));
 
+    gammaEdit_->setText(QString::number(state.gamma, 'g', 4));
+    histogram_->setGamma(state.gamma);
+
     {
         QSignalBlocker blocker(colormapCombo_);
         colormapCombo_->setCurrentIndex(
@@ -178,6 +208,34 @@ void ContrastPanel::onUpdateClicked()
 }
 
 void ContrastPanel::onAutoContrast()
+{
+    const giv::LoadedImage* img = viewport_->currentImage();
+    if (!img) return;
+    const auto r = viewport_->clippedRange();
+    applyContrast(r.first, r.second);
+}
+
+void ContrastPanel::onGammaEdited()
+{
+    bool ok = false;
+    const double g = gammaEdit_->text().toDouble(&ok);
+    if (!ok || g <= 0.0)
+    {
+        gammaEdit_->setText(QString::number(viewport_->currentContrastState().gamma, 'g', 4));
+        return;
+    }
+    histogram_->setGamma(static_cast<float>(g));
+    viewport_->setGamma(static_cast<float>(g));
+}
+
+void ContrastPanel::onGammaReset()
+{
+    gammaEdit_->setText("1");
+    histogram_->setGamma(1.0f);
+    viewport_->setGamma(1.0f);
+}
+
+void ContrastPanel::onFullRange()
 {
     const giv::LoadedImage* img = viewport_->currentImage();
     if (!img) return;

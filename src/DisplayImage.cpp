@@ -142,18 +142,36 @@ std::vector<uint8_t> adaptiveLut(const LoadedImage& src, double contrastMin, dou
 } // namespace
 
 std::vector<uint8_t> displayLut(const LoadedImage& src, float contrastMin, float contrastMax, colormaps::Id colormapId,
-                                bool colormapEnabled, int slice)
+                                bool colormapEnabled, int slice, float gamma)
 {
-    if (!colormapEnabled) return {};
-    if (colormaps::isAdaptive(colormapId))
-        return adaptiveLut(src, contrastMin, static_cast<double>(contrastMax) - contrastMin, colormapId, slice);
-    const uint8_t* lut = colormaps::lut(colormapId);
-    return lut ? std::vector<uint8_t>(lut, lut + 256 * 3) : std::vector<uint8_t>();
+    std::vector<uint8_t> base;
+    if (colormapEnabled)
+    {
+        if (colormaps::isAdaptive(colormapId))
+            base = adaptiveLut(src, contrastMin, static_cast<double>(contrastMax) - contrastMin, colormapId, slice);
+        else if (const uint8_t* lut = colormaps::lut(colormapId))
+            base.assign(lut, lut + 256 * 3);
+    }
+    if (!(gamma > 0.0f) || gamma == 1.0f) return base;
+
+    if (base.empty()) // gray ramp
+    {
+        base.resize(256 * 3);
+        for (int i = 0; i < 256; ++i) base[i * 3] = base[i * 3 + 1] = base[i * 3 + 2] = static_cast<uint8_t>(i);
+    }
+    std::vector<uint8_t> out(256 * 3);
+    const double inv = 1.0 / gamma;
+    for (int i = 0; i < 256; ++i)
+    {
+        const int j = std::clamp(static_cast<int>(std::lround(255.0 * std::pow(i / 255.0, inv))), 0, 255);
+        std::copy_n(&base[j * 3], 3, &out[i * 3]);
+    }
+    return out;
 }
 
 void renderDisplayRgba(const LoadedImage& src, float contrastMin, float contrastMax,
                         colormaps::Id colormapId, bool colormapEnabled, PixelBuffer& outRgba,
-                        int slice)
+                        int slice, float gamma)
 {
     if (src.sampleType == WIV_SAMPLE_NONE)
     {
@@ -163,7 +181,7 @@ void renderDisplayRgba(const LoadedImage& src, float contrastMin, float contrast
     const size_t pixelCount = static_cast<size_t>(src.width) * src.height;
     std::vector<uint8_t> rendered(pixelCount * 4);
 
-    const std::vector<uint8_t> lutTable = displayLut(src, contrastMin, contrastMax, colormapId, colormapEnabled, slice);
+    const std::vector<uint8_t> lutTable = displayLut(src, contrastMin, contrastMax, colormapId, colormapEnabled, slice, gamma);
     const uint8_t* lut = lutTable.empty() ? nullptr : lutTable.data();
     const double range = static_cast<double>(contrastMax) - contrastMin;
     const size_t sliceOffset = pixelCount * static_cast<size_t>(std::max(0, slice));
@@ -205,7 +223,7 @@ void renderDisplayRgba(const LoadedImage& src, float contrastMin, float contrast
 }
 
 uint32_t displayRgbaAt(const LoadedImage& src, float contrastMin, float contrastMax, colormaps::Id colormapId,
-                       bool colormapEnabled, size_t sampleIndex)
+                       bool colormapEnabled, size_t sampleIndex, float gamma)
 {
     double v = 0.0;
     switch (src.sampleType)
@@ -216,6 +234,11 @@ uint32_t displayRgbaAt(const LoadedImage& src, float contrastMin, float contrast
         default: break;
     }
     const double range = static_cast<double>(contrastMax) - contrastMin;
+    if (gamma != 1.0f && gamma > 0.0f && (!colormapEnabled || !colormaps::isAdaptive(colormapId)))
+    {
+        const std::vector<uint8_t> t = displayLut(src, contrastMin, contrastMax, colormapId, colormapEnabled, 0, gamma);
+        return packRgba(t.data(), stretch(v, contrastMin, range));
+    }
     if (!colormapEnabled || !colormaps::isAdaptive(colormapId))
         return packRgba(colormapEnabled ? colormaps::lut(colormapId) : nullptr, stretch(v, contrastMin, range));
 
@@ -224,16 +247,17 @@ uint32_t displayRgbaAt(const LoadedImage& src, float contrastMin, float contrast
     static struct
     {
         const void* samples = nullptr;
-        float min = 0, max = 0;
+        float min = 0, max = 0, gamma = 1;
         colormaps::Id id = colormaps::Id::None;
         std::vector<uint8_t> lut;
     } cache;
     const size_t pixelCount = static_cast<size_t>(src.width) * src.height;
     const int slice = pixelCount ? static_cast<int>(sampleIndex / pixelCount) : 0;
-    if (cache.samples != src.samples.data() || cache.min != contrastMin || cache.max != contrastMax || cache.id != colormapId ||
+    if (cache.samples != src.samples.data() || cache.min != contrastMin || cache.max != contrastMax || cache.id != colormapId || cache.gamma != gamma ||
         cache.lut.empty())
     {
-        cache.lut = displayLut(src, contrastMin, contrastMax, colormapId, true, slice);
+        cache.lut = displayLut(src, contrastMin, contrastMax, colormapId, true, slice, gamma);
+        cache.gamma = gamma;
         cache.samples = src.samples.data();
         cache.min = contrastMin;
         cache.max = contrastMax;

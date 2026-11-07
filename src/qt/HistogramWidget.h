@@ -9,6 +9,7 @@
 // x-axis spanning the image's own sampleMin/sampleMax, with a draggable
 // overlay window (the live contrast range) on top.
 //
+#include <QPoint>
 #include <QWidget>
 
 #include <array>
@@ -32,14 +33,24 @@ public:
     // (external state -> widget).
     void setContrastRange(float min, float max);
 
-    // giv's histogram-strength slider: log-scaled bar-height boost, giv's
-    // pow(1000, 1-value), value in [0,1]. Does not affect the contrast math,
+    // Log-scale y zoom, value in [0,1]: 0 fits the whole histogram, 1 multiplies
+    // the counts by 10000. Does not affect the contrast math,
     // only how visible low-count buckets are.
     void setStrength(double value);
+
+    // Pixel value under the image cursor, shown as a red triangle at the top.
+    void setCursorValue(bool valid, double value = 0.0);
+
+    // Display gamma shown as the middle handle between the contrast handles
+    // (without emitting gammaChanged). The handle sits where the gamma curve
+    // reaches 50% output, i.e. at fraction 0.5^gamma of the window.
+    void setGamma(float gamma);
 
 signals:
     // Emitted continuously while a handle is being dragged (widget -> caller).
     void rangeChanged(float min, float max);
+    // Emitted continuously while the middle (gamma) handle is dragged.
+    void gammaChanged(float gamma);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -47,6 +58,7 @@ protected:
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void leaveEvent(QEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
 
 private:
     enum class DragMode
@@ -54,6 +66,7 @@ private:
         None,
         Min,
         Max,
+        Gamma, // the middle handle: the midtone point of the window
         Window // dragging between the two handles shifts both, preserving width
     };
 
@@ -62,7 +75,10 @@ private:
     float axisMax_ = 1.0f;
     float contrastMin_ = 0.0f;
     float contrastMax_ = 1.0f;
-    double strength_ = 1.0;
+    double strength_ = 0.0;
+    float gamma_ = 1.0f;
+    bool hasCursorValue_ = false;
+    double cursorValue_ = 0.0;
 
     DragMode dragMode_ = DragMode::None;
     DragMode hoverMode_ = DragMode::None;
@@ -73,7 +89,8 @@ private:
     float xToValue(int x) const;
     int valueToX(float v) const;
     int handleX(float v) const;
-    DragMode hitTest(int x) const;
+    DragMode hitTest(QPoint pos) const;
+    int gammaX() const;
     void updateCursor(DragMode mode);
 };
 

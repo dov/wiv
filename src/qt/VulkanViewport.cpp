@@ -1453,6 +1453,25 @@ std::string VulkanViewport::currentImageName() const
     return loadedImageNames_[currentImageIndex_];
 }
 
+bool VulkanViewport::nativeSampleAt(double worldX, double worldY, double& value) const
+{
+    if (loadedImages_.empty() || !currentImageSize_ || loadedImages_.front().isPreview()) return false;
+    const giv::LoadedImage& raw = loadedImages_.front();
+    if (raw.sampleType == WIV_SAMPLE_NONE) return false;
+    int px = static_cast<int>(std::floor(worldX));
+    int py = static_cast<int>(std::floor(worldY));
+    if (px < 0 || py < 0 || px >= raw.width || py >= raw.height) return false;
+    const size_t idx = static_cast<size_t>(raw.width) * raw.height * currentSlice_ + static_cast<size_t>(py) * raw.width + px;
+    switch (raw.sampleType)
+    {
+        case WIV_SAMPLE_U8: value = raw.samples[idx]; break;
+        case WIV_SAMPLE_U16: value = reinterpret_cast<const uint16_t*>(raw.samples.data())[idx]; break;
+        case WIV_SAMPLE_FLOAT: value = reinterpret_cast<const float*>(raw.samples.data())[idx]; break;
+        default: return false;
+    }
+    return true;
+}
+
 QString VulkanViewport::pixelValueText(double worldX, double worldY) const
 {
     if (loadedImages_.empty() || displayImages_.empty() || !currentImageSize_ || loadedImages_.front().isPreview()) return {};
@@ -1475,7 +1494,7 @@ QString VulkanViewport::pixelValueText(double worldX, double worldY) const
         // The GPU does the stretch, so work out the colour the shader shows for this one sample.
         const size_t rawIdx = static_cast<size_t>(raw.width) * raw.height * currentSlice_ + sampleIdx;
         const uint32_t rgba = giv::displayRgbaAt(raw, img.display.min, img.display.max, img.display.colormap,
-                                                  img.display.colormapEnabled, rawIdx);
+                                                  img.display.colormapEnabled, rawIdx, img.display.gamma);
         r = rgba & 0xff, g = (rgba >> 8) & 0xff, b = (rgba >> 16) & 0xff, a = 255;
     }
     else
@@ -2145,6 +2164,7 @@ void VulkanViewport::recomputeDisplayImage()
         // Raw samples are windowed and colormapped by the GPU (image_samples.frag): just describe how.
         const ContrastState state = currentContrastState();
         display.display = {state.min, state.max, state.colormapId, state.colormapEnabled, currentSlice_};
+        display.display.gamma = state.gamma;
     }
     display.display.lowContrast = scene_.lowContrast;
     displayImages_ = {std::move(display)};
@@ -2160,7 +2180,7 @@ QImage VulkanViewport::currentViewImage(int maxSize)
     if (src.sampleType != WIV_SAMPLE_NONE)
     {
         const ContrastState state = currentContrastState();
-        giv::renderDisplayRgba(src, state.min, state.max, state.colormapId, state.colormapEnabled, rgba, currentSlice_);
+        giv::renderDisplayRgba(src, state.min, state.max, state.colormapId, state.colormapEnabled, rgba, currentSlice_, state.gamma);
     }
     else
         rgba = src.rgba;
@@ -2190,8 +2210,10 @@ VulkanViewport::ContrastState VulkanViewport::currentContrastState()
         ContrastState defaultState;
         // With Auto Contrast off (giv's do_auto_contrast), a new image keeps
         // the window last dialed in instead of stretching to its own range.
-        defaultState.min = (!autoContrast_ && hasLastContrast_) ? lastContrastMin_ : src.sampleMin;
-        defaultState.max = (!autoContrast_ && hasLastContrast_) ? lastContrastMax_ : src.sampleMax;
+        const bool keepLast = !autoContrast_ && hasLastContrast_;
+        const auto clipped = keepLast ? std::pair<float, float>{} : clippedRange();
+        defaultState.min = keepLast ? lastContrastMin_ : clipped.first;
+        defaultState.max = keepLast ? lastContrastMax_ : clipped.second;
         defaultState.colormapId = lastColormapId_;
         defaultState.colormapEnabled = lastColormapEnabled_;
         // What the user set for this file in an earlier run. The contrast
@@ -2204,6 +2226,7 @@ VulkanViewport::ContrastState VulkanViewport::currentContrastState()
                     defaultState.colormapId = static_cast<giv::colormaps::Id>(saved->colormapId);
                     defaultState.colormapEnabled = saved->colormapEnabled;
                 }
+                if (saved->gamma > 0.0f) defaultState.gamma = saved->gamma;
                 if (!autoContrast_ && saved->max > saved->min)
                 {
                     defaultState.min = saved->min;
@@ -2252,7 +2275,7 @@ void VulkanViewport::setContrast(float min, float max)
     state.max = max;
     contrastState_[contrastKey()] = state;
     if (auto* store = currentPage_ == 0 ? stateStore() : nullptr)
-        store->saveContrast(currentImageName(), {state.min, state.max, static_cast<int>(state.colormapId), state.colormapEnabled});
+        store->saveContrast(currentImageName(), {state.min, state.max, static_cast<int>(state.colormapId), state.colormapEnabled, state.gamma});
     lastContrastMin_ = min;
     lastContrastMax_ = max;
     hasLastContrast_ = true;
@@ -2279,7 +2302,7 @@ void VulkanViewport::setColormap(giv::colormaps::Id id, bool enabled)
     state.colormapEnabled = enabled;
     contrastState_[contrastKey()] = state;
     if (auto* store = currentPage_ == 0 ? stateStore() : nullptr)
-        store->saveContrast(currentImageName(), {state.min, state.max, static_cast<int>(state.colormapId), state.colormapEnabled});
+        store->saveContrast(currentImageName(), {state.min, state.max, static_cast<int>(state.colormapId), state.colormapEnabled, state.gamma});
     lastColormapId_ = id;
     lastColormapEnabled_ = enabled;
 
@@ -2294,6 +2317,24 @@ void VulkanViewport::setColormap(giv::colormaps::Id id, bool enabled)
     const auto perfMs = [](auto a, auto b) { return std::chrono::duration<double, std::milli>(b - a).count(); };
     spdlog::info("[perf] color table change: render {:.1f} ms, apply {:.1f} ms, signal {:.1f} ms", perfMs(perfStart, perfRendered),
                  perfMs(perfRendered, perfApplied), perfMs(perfApplied, std::chrono::steady_clock::now()));
+}
+
+void VulkanViewport::setGamma(float gamma)
+{
+    if (loadedImages_.empty() || loadedImages_.front().sampleType == WIV_SAMPLE_NONE) return;
+    if (!(gamma > 0.0f)) gamma = 1.0f;
+
+    ContrastState state = currentContrastState();
+    state.gamma = gamma;
+    contrastState_[contrastKey()] = state;
+    if (auto* store = currentPage_ == 0 ? stateStore() : nullptr)
+        store->saveContrast(currentImageName(), {state.min, state.max, static_cast<int>(state.colormapId), state.colormapEnabled, state.gamma});
+
+    recomputeDisplayImage();
+    QString error;
+    if (!applyDisplayImage(&error))
+        spdlog::error("Failed to apply gamma: {}", error.toStdString());
+    emit contrastChanged();
 }
 
 std::array<uint32_t, 256> VulkanViewport::computeHistogram(bool wholeVolume) const
@@ -2322,6 +2363,42 @@ std::array<uint32_t, 256> VulkanViewport::computeHistogram(bool wholeVolume) con
         if (idx >= 0 && idx < 256) ++histogram[static_cast<size_t>(idx)];
     }
     return histogram;
+}
+
+std::pair<float, float> VulkanViewport::clippedRange() const
+{
+    if (loadedImages_.empty()) return {0.0f, 1.0f};
+    const giv::LoadedImage& img = loadedImages_.front();
+    const std::pair<float, float> full{img.sampleMin, img.sampleMax};
+    if (img.sampleType == WIV_SAMPLE_NONE) return full;
+
+    constexpr double kClipFraction = 0.001;
+    const size_t pixelCount = static_cast<size_t>(img.width) * img.height;
+    const size_t first = pixelCount * static_cast<size_t>(currentSlice_);
+    std::vector<float> v;
+    v.reserve(pixelCount);
+    for (size_t i = first; i < first + pixelCount; ++i)
+    {
+        float x;
+        switch (img.sampleType)
+        {
+            case WIV_SAMPLE_U8: x = img.samples[i]; break;
+            case WIV_SAMPLE_U16: x = reinterpret_cast<const uint16_t*>(img.samples.data())[i]; break;
+            case WIV_SAMPLE_FLOAT: x = reinterpret_cast<const float*>(img.samples.data())[i]; break;
+            default: x = 0.0f; break;
+        }
+        if (std::isfinite(x)) v.push_back(x);
+    }
+    if (v.size() < 2) return full;
+    const size_t n = v.size();
+    const size_t loIdx = static_cast<size_t>(kClipFraction * (n - 1));
+    const size_t hiIdx = n - 1 - loIdx;
+    std::nth_element(v.begin(), v.begin() + loIdx, v.end());
+    const float lo = v[loIdx];
+    std::nth_element(v.begin(), v.begin() + hiIdx, v.end());
+    const float hi = v[hiIdx];
+    if (!(hi > lo)) return full; // mostly-constant image: clipping would collapse the window
+    return {lo, hi};
 }
 
 void VulkanViewport::decodeCurrentImage()
@@ -3383,7 +3460,10 @@ void VulkanViewport::setAutoContrast(bool enable)
     // Re-stretch the displayed image to its own range, like giv reloading
     // with do_auto_contrast on.
     if (enable && !loadedImages_.empty() && loadedImages_.front().sampleType != WIV_SAMPLE_NONE)
-        setContrast(loadedImages_.front().sampleMin, loadedImages_.front().sampleMax);
+    {
+        const auto r = clippedRange();
+        setContrast(r.first, r.second);
+    }
 }
 
 void VulkanViewport::setBackgroundColor(const QColor& color)

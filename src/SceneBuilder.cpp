@@ -1893,7 +1893,7 @@ void SceneBuilder::fillSampleParams(vsg::vec4Array& out, const LoadedImage& li)
     out.set(0, vsg::vec4(static_cast<float>(typeMax), li.display.min, range != 0.0 ? static_cast<float>(1.0 / range) : 0.0f,
                          range != 0.0 ? 0.0f : 0.5f));
     const std::vector<uint8_t> lutTable =
-        displayLut(li, li.display.min, li.display.max, li.display.colormap, li.display.colormapEnabled, li.display.slice);
+        displayLut(li, li.display.min, li.display.max, li.display.colormap, li.display.colormapEnabled, li.display.slice, li.display.gamma);
     const uint8_t* lut = lutTable.empty() ? nullptr : lutTable.data();
     for (int i = 0; i < 256; ++i)
     {

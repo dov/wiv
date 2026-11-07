@@ -27,6 +27,7 @@ public:
         float max = 0.0f;
         int colormapId = 0;
         bool colormapEnabled = false;
+        float gamma = 1.0f;
     };
     struct View
     {

@@ -97,6 +97,7 @@ struct LoadedImage
         colormaps::Id colormap = colormaps::Id::None;
         bool colormapEnabled = false;
         int slice = 0;
+        float gamma = 1.0f; // display gamma (>1 brightens midtones), baked into the colour table
         bool lowContrast = false; // $low_contrast: shown dimmed (colormap/pixels compressed toward mid-gray)
     } display;
 

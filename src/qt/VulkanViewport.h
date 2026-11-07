@@ -280,6 +280,8 @@ public:
     // for the image pixel underneath it, or an empty string if no image is
     // loaded or the position falls outside its bounds.
     QString pixelValueText(double worldX, double worldY) const;
+    // Native sample value under the cursor (scalar images only); false if none.
+    bool nativeSampleAt(double worldX, double worldY, double& value) const;
 
     // Tools > Adjust Contrast / Color Table - see ContrastDialog.h/
     // ColorTableDialog.h. Per-image state (giv's do_auto_contrast default:
@@ -293,6 +295,7 @@ public:
         float max = 0.0f;
         giv::colormaps::Id colormapId = giv::colormaps::Id::None;
         bool colormapEnabled = false;
+        float gamma = 1.0f;
     };
 
     // The raw (undisplayed) currently-decoded image - nullptr if none, or if
@@ -361,6 +364,8 @@ public:
     // raw sample buffer.
     void setContrast(float min, float max);
     void setColormap(giv::colormaps::Id id, bool enabled);
+    // Display gamma of the current image (>0, 1 = linear, >1 brightens midtones); remembered per image.
+    void setGamma(float gamma);
 
     // 256-bucket histogram of the current image's raw samples, binned
     // against its own sampleMin/sampleMax (a fixed axis, independent of the
@@ -369,6 +374,11 @@ public:
     // `wholeVolume`: of every slice of a multi-slice image instead of just the
     // current one (the same as the default for a single-slice image).
     std::array<uint32_t, 256> computeHistogram(bool wholeVolume = false) const;
+
+    // Auto-contrast range of the current slice: the 0.1% / 99.9% percentiles
+    // of its finite samples, so outliers and near-zero noise don't stretch the
+    // window. Falls back to sampleMin/sampleMax if that would be empty.
+    std::pair<float, float> clippedRange() const;
 
     // json-rpc giv_string command: parses `text` as a .giv scene-description
     // buffer (see GivParser::parseString()) and merges it into the current

@@ -56,6 +56,7 @@ private:
     QLineEdit* centerEdit_ = nullptr;
     QLineEdit* windowEdit_ = nullptr;
     QSlider* strengthSlider_ = nullptr;
+    QLineEdit* gammaEdit_ = nullptr;
     QComboBox* colormapCombo_ = nullptr;
     QCheckBox* volumeHistogramCheck_ = nullptr; // shown only for multi-slice images
 
@@ -64,6 +65,9 @@ private:
     void onRadioToggled();
     void onUpdateClicked();
     void onAutoContrast();
+    void onFullRange();
+    void onGammaEdited();
+    void onGammaReset();
     void onColormapPicked(int row);
     void onHandlesDragged(float min, float max);
 

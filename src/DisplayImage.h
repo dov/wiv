@@ -32,20 +32,23 @@ class PixelBuffer;
 // selects which of src's stacked slices to render - see WivPluginImage::depth.
 void renderDisplayRgba(const LoadedImage& src, float contrastMin, float contrastMax,
                         colormaps::Id colormapId, bool colormapEnabled, PixelBuffer& outRgba,
-                        int slice = 0);
+                        int slice = 0, float gamma = 1.0f);
 
 // The 256*3 RGB table applied after the contrast stretch, or empty for a plain
 // gray ramp. Equalize/Normalize have no fixed table: like giv, theirs comes from
 // the contrast-stretched 8-bit image of `slice`, so it depends on the samples.
+// `gamma` (>0, 1 = linear; >1 brightens midtones) is applied to the stretched level
+// before the table lookup, so a non-unit gamma always yields a table (a gray ramp
+// when there is no colormap).
 std::vector<uint8_t> displayLut(const LoadedImage& src, float contrastMin, float contrastMax, colormaps::Id colormapId,
-                                bool colormapEnabled, int slice);
+                                bool colormapEnabled, int slice, float gamma = 1.0f);
 
 // The colour the display shows for sample `sampleIndex` of src.samples (an
 // index into the whole slice-major buffer): the same stretch as
 // renderDisplayRgba() and the GPU shader, for one sample. Packed so the low
 // byte is R, then G, B, A (255).
 uint32_t displayRgbaAt(const LoadedImage& src, float contrastMin, float contrastMax, colormaps::Id colormapId,
-                       bool colormapEnabled, size_t sampleIndex);
+                       bool colormapEnabled, size_t sampleIndex, float gamma = 1.0f);
 
 // $low_contrast: compresses RGBA bytes toward mid-gray (alpha untouched) so overlaid
 // vectors stand out. One byte value -> the matching dimmed byte.
