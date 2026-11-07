@@ -403,6 +403,10 @@ public:
     // with the window shown. Returns false and sets *error on failure.
     bool exportImage(const QString& path, int width, int height, const ExportView& view, QString* error = nullptr);
 
+    // Size in device pixels of what the view currently shows (excludes scroll bars and any
+    // masked-off part of the render window): the export size that reproduces the on-screen view.
+    QSize visibleSizePx() const;
+
 signals:
     void sceneLoaded();
     // The view's mirroring changed (View menu or a $hflip/$vflip directive).

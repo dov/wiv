@@ -3057,6 +3057,13 @@ void VulkanViewport::setTransformation(double scaleX, double scaleY, double shif
     keepViewOffCenter_ = false;
 }
 
+QSize VulkanViewport::visibleSizePx() const
+{
+    if (!window_ || !window_->windowAdapter) return size() * devicePixelRatioF();
+    const VkExtent2D e = viewportExtent();
+    return QSize(static_cast<int>(e.width), static_cast<int>(e.height));
+}
+
 bool VulkanViewport::exportImage(const QString& path, int width, int height, const ExportView& view, QString* error)
 {
     auto fail = [&](const QString& message) {
@@ -3075,7 +3082,9 @@ bool VulkanViewport::exportImage(const QString& path, int width, int height, con
     double scale = 1.0, centerX = 0.0, centerY = 0.0;
     if (view.kind == ExportView::Kind::Current)
     {
-        scale = windowExtent.width / (projection_->right - projection_->left);
+        // The projection spans the visible part of the render window (viewportExtent()), which is
+        // smaller than the window when scroll bars or the clip mask are in effect.
+        scale = viewportExtent().width / (projection_->right - projection_->left);
         centerX = lookAt->center.x;
         centerY = lookAt->center.y;
     }

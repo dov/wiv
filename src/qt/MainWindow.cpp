@@ -71,6 +71,9 @@
 #include <QCoreApplication>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QStyle>
+#include <QRadioButton>
+#include <QPushButton>
 #include <QSettings>
 #include <QShowEvent>
 #include <QStatusBar>
@@ -1148,16 +1151,119 @@ void MainWindow::exportImage()
     QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
     QString lastDir = settings.value("lastExportDir", QDir::currentPath()).toString();
     QString suggested = QDir(lastDir).filePath(QFileInfo(loadedBaseName_.section(", ", 0, 0)).completeBaseName() + ".png");
+
+    // Default: the viewed area, as on screen, at the size of the view.
+    QSize size = viewport_->visibleSizePx();
+    VulkanViewport::ExportView view;
+    view.kind = VulkanViewport::ExportView::Kind::Current;
+
+    // With an image displayed (opened directly or via a $image directive) the
+    // viewed area can also be saved with one pixel per image pixel, or the
+    // entire image can be saved uncropped.
+    constexpr int kMaxExportSide = 16384; // what VulkanViewport::exportImage() accepts
+    auto fits = [&](double w, double h) { return w >= 1 && h >= 1 && w <= kMaxExportSide && h <= kMaxExportSide; };
+    const auto imageSize = viewport_->currentImageSize();
+    if (imageSize)
+    {
+        double scaleX, scaleY, centerX, centerY;
+        viewport_->getTransformation(scaleX, scaleY, centerX, centerY);
+        // The viewed area in image pixels (world units are image pixels).
+        const double viewW = size.width() / scaleX, viewH = size.height() / scaleY;
+        const QSize viewedNative(static_cast<int>(std::lround(viewW)), static_cast<int>(std::lround(viewH)));
+        const bool offerViewedNative = fits(viewW, viewH) && viewedNative != size;
+        const bool offerEntire = fits(imageSize->first, imageSize->second);
+        const QSize entire(static_cast<int>(std::lround(imageSize->first)), static_cast<int>(std::lround(imageSize->second)));
+
+        if (offerViewedNative || offerEntire)
+        {
+            // "\u00d7" is the multiplication sign.
+            auto dims = [](const QSize& s) { return QString("%1\u00d7%2").arg(s.width()).arg(s.height()); };
+            enum Choice { Viewed, ViewedNative, Entire };
+            struct Option { Choice choice; QString title, detail; };
+            std::vector<Option> options;
+            options.push_back({Viewed, "Viewed area",
+                               QString("What the window shows now, at screen resolution (%1)").arg(dims(size))});
+            if (offerViewedNative)
+                options.push_back({ViewedNative, "Viewed area at image resolution",
+                                   QString("The same area with one pixel per image pixel (%1)").arg(dims(viewedNative))});
+            if (offerEntire)
+                options.push_back({Entire, "Entire image",
+                                   QString("The whole image, not cropped, at its own size (%1)").arg(dims(entire))});
+
+            QSettings exportSettings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+            const int lastChoice = exportSettings.value("exportChoice", int(Viewed)).toInt();
+
+            QDialog dialog(this);
+            dialog.setWindowTitle("Export Image");
+            // Wrapping labels report a tiny preferred width, so say how wide the dialog should be.
+            dialog.setMinimumWidth(dialog.fontMetrics().horizontalAdvance(QString(60, QChar('x'))));
+            auto* layout = new QVBoxLayout(&dialog);
+            layout->addWidget(new QLabel("What do you want to save?"));
+            layout->addSpacing(6);
+            std::vector<QRadioButton*> radios;
+            for (const Option& o : options)
+            {
+                auto* radio = new QRadioButton(o.title);
+                QFont f = radio->font();
+                f.setBold(true);
+                radio->setFont(f);
+                auto* detail = new QLabel(o.detail);
+                detail->setWordWrap(true);
+                // Subdued but readable: halfway between the text and the background colour
+                // (the palette's disabled colour is nearly invisible in some themes).
+                QPalette pal = detail->palette();
+                const QColor fg = pal.color(QPalette::WindowText), bg = pal.color(QPalette::Window);
+                pal.setColor(QPalette::WindowText, QColor((fg.red() + bg.red()) / 2, (fg.green() + bg.green()) / 2,
+                                                          (fg.blue() + bg.blue()) / 2));
+                detail->setPalette(pal);
+                detail->setContentsMargins(radio->style()->pixelMetric(QStyle::PM_ExclusiveIndicatorWidth) + 8, 0, 0, 6);
+                layout->addWidget(radio);
+                layout->addWidget(detail);
+                radios.push_back(radio);
+            }
+            // The last choice if it is still offered, else the viewed area.
+            QRadioButton* initial = radios.front();
+            for (size_t i = 0; i < options.size(); ++i)
+                if (options[i].choice == lastChoice) initial = radios[i];
+            initial->setChecked(true);
+            auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+            connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+            connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+            layout->addWidget(buttons);
+
+            if (dialog.exec() != QDialog::Accepted) return; // cancelled
+            Choice choice = Viewed;
+            for (size_t i = 0; i < options.size(); ++i)
+                if (radios[i]->isChecked()) choice = options[i].choice;
+            exportSettings.setValue("exportChoice", int(choice));
+
+            if (choice == ViewedNative)
+            {
+                // The same view, rendered at 1 pixel per world unit.
+                view.kind = VulkanViewport::ExportView::Kind::Explicit;
+                view.scale = 1.0;
+                view.centerX = centerX;
+                view.centerY = centerY;
+                size = viewedNative;
+            }
+            else if (choice == Entire)
+            {
+                // 1 pixel per world unit, centered on the image (the camera's world is Y-up).
+                view.kind = VulkanViewport::ExportView::Kind::Explicit;
+                view.scale = 1.0;
+                view.centerX = imageSize->first * 0.5;
+                view.centerY = -imageSize->second * 0.5;
+                size = entire;
+            }
+        }
+    }
+
     QString path = QFileDialog::getSaveFileName(this, "Export Image", suggested,
                                                 "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp)");
     if (path.isEmpty()) return;
     if (QFileInfo(path).suffix().isEmpty()) path += ".png";
     settings.setValue("lastExportDir", QFileInfo(path).absolutePath());
 
-    // What is on screen, at the size of the view.
-    QSize size = viewport_->size() * viewport_->devicePixelRatioF();
-    VulkanViewport::ExportView view;
-    view.kind = VulkanViewport::ExportView::Kind::Current;
     QString error;
     if (!viewport_->exportImage(path, size.width(), size.height(), view, &error))
         QMessageBox::critical(this, "Export", QString("Could not export the image: %1").arg(error));

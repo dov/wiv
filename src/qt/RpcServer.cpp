@@ -199,7 +199,7 @@ QJsonValue RpcServer::dispatch(const QString& method, const QJsonArray& params, 
         }
         // The current view (scale and center) at the given size, by default
         // the size of the viewport.
-        QSize size = viewport_->size() * viewport_->devicePixelRatioF();
+        QSize size = viewport_->visibleSizePx();
         if (params.size() >= 3) size = QSize(params[1].toInt(), params[2].toInt());
         VulkanViewport::ExportView view;
         view.kind = VulkanViewport::ExportView::Kind::Current;
