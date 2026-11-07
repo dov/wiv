@@ -840,6 +840,8 @@ void expandSvgMarks(SceneData& scene, size_t startIdx, const std::filesystem::pa
                             c.spriteY += ds.y[k];
                             c.isVisible = ds.isVisible;
                             c.frame = ds.frame;
+                            c.balloon = ds.balloon; // hovering a mark shows the owner's tooltip
+                            c.pathName = ds.pathName;
                             out.push_back(std::move(c));
                         }
                         continue;
@@ -850,6 +852,8 @@ void expandSvgMarks(SceneData& scene, size_t startIdx, const std::filesystem::pa
                     merged.op.clear();
                     merged.isVisible = ds.isVisible;
                     merged.frame = ds.frame;
+                    merged.balloon = ds.balloon; // hovering a mark shows the owner's tooltip
+                    merged.pathName = ds.pathName;
                     merged.reserve(d.pointCount() * anchors.size());
                     for (size_t k : anchors)
                         for (size_t j = 0; j < d.pointCount(); ++j)
