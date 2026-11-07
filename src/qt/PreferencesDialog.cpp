@@ -133,6 +133,7 @@ void PreferencesDialog::saveNavigationView(NavigationView v)
 {
     auto s = settings();
     s.setValue("view/navigation", static_cast<int>(v));
+    s.remove("view/autoFit"); // the mode alone decides Auto Fit again; the View menu toggle re-sets it
 }
 
 int PreferencesDialog::loadMsaaSamples()

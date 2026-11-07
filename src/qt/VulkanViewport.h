@@ -108,6 +108,9 @@ public:
     // views are forgotten.
     void setRememberViewPerFile(bool enable);
     bool rememberViewPerFile() const { return rememberView_; }
+    // True when the current pan/zoom is a user view (set by hand, or restored from a remembered
+    // one) rather than the plain fit-to-window; such a view must not be replaced by a re-fit.
+    bool viewIsUserSet() const { return viewDirty_; }
 
     void setMouseSettings(const MouseSettings& m) { mouse_ = m; }
 

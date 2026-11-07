@@ -624,6 +624,9 @@ void MainWindow::buildMenus()
         PreferencesDialog::saveNavigationView(rememberViewAction_->isChecked() ? NavigationView::PerFile
                                               : autoFitAction_->isChecked()    ? NavigationView::Fit
                                                                                : NavigationView::Keep);
+        // The pair above cannot say "remember per file, but Auto Fit off"; keep that bit on its own.
+        QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+        settings.setValue("view/autoFit", autoFitAction_->isChecked());
     };
     connect(autoFitAction_, &QAction::triggered, this, saveNavigationView);
     connect(rememberViewAction_, &QAction::triggered, this, saveNavigationView);
@@ -1148,9 +1151,6 @@ void MainWindow::loadFiles(const std::vector<std::string>& paths)
 void MainWindow::exportImage()
 {
     spdlog::info("User invoked File > Export...");
-    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
-    QString lastDir = settings.value("lastExportDir", QDir::currentPath()).toString();
-    QString suggested = QDir(lastDir).filePath(QFileInfo(loadedBaseName_.section(", ", 0, 0)).completeBaseName() + ".png");
 
     // Default: the viewed area, as on screen, at the size of the view.
     QSize size = viewport_->visibleSizePx();
@@ -1258,6 +1258,9 @@ void MainWindow::exportImage()
         }
     }
 
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+    QString lastDir = settings.value("lastExportDir", QDir::currentPath()).toString();
+    QString suggested = QDir(lastDir).filePath(QFileInfo(loadedBaseName_.section(", ", 0, 0)).completeBaseName() + ".png");
     QString path = QFileDialog::getSaveFileName(this, "Export Image", suggested,
                                                 "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp)");
     if (path.isEmpty()) return;
@@ -1331,8 +1334,8 @@ void MainWindow::showEvent(QShowEvent* event)
             }
             else if (startupActualPixels_)
                 viewport_->zoomActualPixels();
-            else
-                viewport_->fitToWindow();
+            else if (!viewport_->viewIsUserSet())
+                viewport_->fitToWindow(); // else keep the remembered view that was restored at load
 
             if (!startupExportPath_.isEmpty())
             {
@@ -1917,7 +1920,9 @@ void MainWindow::goLastImage()
 
 void MainWindow::applyNavigationView(NavigationView v)
 {
-    const bool fit = v != NavigationView::Keep;
+    // "Remember per file" implies Auto Fit unless the user switched it off on its own (see saveNavigationView).
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+    const bool fit = v == NavigationView::Fit || (v == NavigationView::PerFile && settings.value("view/autoFit", true).toBool());
     const bool perFile = v == NavigationView::PerFile;
     autoFitAction_->setChecked(fit);
     rememberViewAction_->setChecked(perFile);
