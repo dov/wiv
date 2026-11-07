@@ -178,12 +178,27 @@ void ThumbnailStrip::setFiles(const QStringList& files, int current)
             item->setSizeHint(gridSize());
         }
     }
+    updateCentering();
     if (current >= 0 && current < count())
     {
         setCurrentRow(current);
         scrollToItem(item(current), QAbstractItemView::PositionAtCenter);
     }
     loadVisibleThumbnails();
+}
+
+void ThumbnailStrip::updateCentering()
+{
+    // Items fill a column of `perColumn` cells, then wrap to the next column.
+    const int cell = gridSize().width();
+    const int cellH = gridSize().height();
+    const int perColumn = std::max(1, height() / std::max(1, cellH));
+    const int columns = (count() + perColumn - 1) / perColumn;
+    const int content = columns * cell;
+    const int avail = width();
+    const int margin = (count() > 0 && content < avail) ? (avail - content) / 2 : 0;
+    if (viewportMargins().left() != margin)
+        setViewportMargins(margin, 0, 0, 0);
 }
 
 int ThumbnailStrip::rowHeight() const
@@ -214,6 +229,7 @@ void ThumbnailStrip::setThumbSize(int size)
             item(i)->setData(kThumbRole, makeSquareThumbnail(image, thumbSize_, devicePixelRatioF(), background_));
     }
     setUniformItemSizes(true);
+    updateCentering();
     scheduleDelayedItemsLayout();
     if (currentRow() >= 0) scrollToItem(currentItem(), QAbstractItemView::PositionAtCenter);
     viewport()->update();
@@ -336,6 +352,7 @@ void ThumbnailStrip::wheelEvent(QWheelEvent* event)
 void ThumbnailStrip::resizeEvent(QResizeEvent* event)
 {
     QListWidget::resizeEvent(event);
+    updateCentering();
     loadVisibleThumbnails();
 }
 

@@ -61,6 +61,8 @@ protected:
 
 private:
     void loadVisibleThumbnails();
+    // Centers the thumbnails when they don't fill the strip's width (left margin on the viewport).
+    void updateCentering();
     // Drops the cached thumbnails of `rows` (on disk and in memory) and decodes them again.
     void regenerate(const QList<int>& rows);
 
