@@ -94,6 +94,12 @@ public:
     void setLineWidthZoom(float zoom) { lineWidthZoom_ = zoom; }
     float lineWidthZoom() const { return lineWidthZoom_; }
 
+    // Transparency checkerboard under an image / SVG (checker.vert): 0 = off,
+    // 1 = light shades, 2 = dark shades. Second vec4's .w; takes effect on the
+    // next update() call.
+    void setCheckerboard(int mode) { checkerboard_ = mode; }
+    int checkerboard() const { return checkerboard_; }
+
     // Global alpha multiplier for marks, lines and fills (result clamped to
     // 1; the 'A' force-opaque toggle still overrides), second vec4's .z.
     void setAlphaScale(float scale) { alphaScale_ = scale; }
@@ -106,6 +112,7 @@ private:
     float alphaScale_ = 1.0f;
     bool forceOpaque_ = false;
     bool showPixelGrid_ = false;
+    int checkerboard_ = 0;
 };
 
 // Switches every loaded $image's texture sampler between nearest and
@@ -232,6 +239,7 @@ private:
     vsg::ref_ptr<vsg::Data> sampleTexture_; // only for a volume (see setSampleSlice())
     static vsg::ref_ptr<vsg::Data> makeSampleTexture(const LoadedImage& li);
     vsg::ref_ptr<vsg::BindGraphicsPipeline> gridBind_;
+    vsg::ref_ptr<vsg::BindGraphicsPipeline> checkerBind_;
     vsg::ref_ptr<vsg::Sampler> nearestSampler_;
     vsg::ref_ptr<vsg::Sampler> linearSampler_;
 };

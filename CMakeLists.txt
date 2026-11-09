@@ -118,6 +118,8 @@ set(WIV_SHADER_SOURCES
   ${CMAKE_SOURCE_DIR}/shaders/image_label.frag
   ${CMAKE_SOURCE_DIR}/shaders/grid.vert
   ${CMAKE_SOURCE_DIR}/shaders/grid.frag
+  ${CMAKE_SOURCE_DIR}/shaders/checker.vert
+  ${CMAKE_SOURCE_DIR}/shaders/checker.frag
 )
 
 set(WIV_SPIRV_BINARIES)

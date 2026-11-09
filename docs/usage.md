@@ -585,6 +585,14 @@ Horizontal and vertical flip, Auto Fit, Remember View Per File, Auto Reload,
 Vertical Zoom Lock, Colormap Bar and Auto Contrast are in the View menu.
 Toggles such as Auto Contrast and Pixel Grid are saved and restored at startup.
 
+**View > Transparency Background** sets what shows behind the translucent pixels of
+an image or an SVG: a checkerboard in light or dark shades following the theme
+(the default), the flat theme colour, the Preferences background colour, white or
+black. <kbd>Shift</kbd>+<kbd>B</kbd> cycles through them. The choice is saved. A
+`.giv` file ignores it and keeps giv's convention: its own `$background`, else
+the Preferences colour (white by default). Exports keep the image's own
+transparency, without the checkerboard.
+
 **Input**, [`colors.giv`](../examples/colors.giv) (first 12 lines):
 
 ```

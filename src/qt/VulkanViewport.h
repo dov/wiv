@@ -232,6 +232,22 @@ public:
     void toggleForceOpaque();
     bool forceOpaque() const { return forceOpaque_; }
 
+    // What shows behind translucent pixels of a raster image or an SVG (a
+    // .giv/.marks file keeps giv's convention: the Preferences color, white by
+    // default, or its own $background). Takes effect immediately.
+    enum class TransparencyBackground
+    {
+        Checkerboard, // theme-brightness checkerboard under the image / SVG, theme color around it
+        Theme,        // flat theme color
+        Preferences,  // the Preferences background color
+        White,
+        Black,
+    };
+    void setTransparencyBackground(TransparencyBackground mode);
+    TransparencyBackground transparencyBackground() const { return transparencyBackground_; }
+    // The Preferences background color changed (Preferences dialog, not yet saved).
+    void setPreferencesBackground(const QColor& color);
+
     // giv's 'g' key (do_show_grid): outlines every image pixel once the view
     // is zoomed in far enough. Takes effect immediately, no scene rebuild.
     void toggleShowPixelGrid();
@@ -513,6 +529,11 @@ private:
     bool lastColormapEnabled_ = false;
     bool globalShowMarks_ = true;
     bool forceOpaque_ = false;
+    TransparencyBackground transparencyBackground_ = TransparencyBackground::Checkerboard;
+    QColor preferencesBackground_ = Qt::white;
+    int checkerboard_ = 0; // 0 = off, 1 = light, 2 = dark: what applyBackground() last chose
+    // Sets the clear color and checkerboard for the loaded file kind (see setTransparencyBackground()).
+    void applyBackground();
     bool showPixelGrid_ = false;
     float glyphScale_[kGlyphScaleCount] = {1.0f, 1.0f, 1.0f, 1.0f}; // see GlyphScale
     bool flipHorizontal_ = false;

@@ -188,7 +188,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         loadFiles(paths);
     });
 
-    viewport_->setBackgroundColor(PreferencesDialog::loadBackgroundColor());
+    viewport_->setPreferencesBackground(PreferencesDialog::loadBackgroundColor());
     thumbnailStrip_->setBackgroundColor(PreferencesDialog::loadBackgroundColor());
 
     buildInfoDock();
@@ -540,6 +540,44 @@ void MainWindow::buildMenus()
     forceOpaqueAction_->setCheckable(true);
     forceOpaqueAction_->setShortcut(QKeySequence("A"));
 
+    // What shows behind translucent pixels of an image or SVG (not .giv files).
+    {
+        using TB = VulkanViewport::TransparencyBackground;
+        auto* menu = viewMenu->addMenu("Transparency Background");
+        auto* group = new QActionGroup(this);
+        const std::pair<const char*, TB> modes[] = {
+            {"Checkerboard", TB::Checkerboard}, {"Theme Color", TB::Theme},         {"Preferences Color", TB::Preferences},
+            {"White", TB::White},               {"Black", TB::Black},
+        };
+        QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+        const int saved = settings.value("view/transparencyBackground", 0).toInt();
+        std::vector<QAction*> actions;
+        for (size_t i = 0; i < std::size(modes); ++i)
+        {
+            auto* a = menu->addAction(modes[i].first);
+            a->setCheckable(true);
+            a->setActionGroup(group);
+            a->setChecked(static_cast<int>(i) == saved);
+            actions.push_back(a);
+            connect(a, &QAction::triggered, this, [this, i, mode = modes[i].second]() {
+                viewport_->setTransparencyBackground(mode);
+                QSettings s(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+                s.setValue("view/transparencyBackground", static_cast<int>(i));
+            });
+        }
+        if (saved >= 0 && saved < static_cast<int>(std::size(modes))) viewport_->setTransparencyBackground(modes[saved].second);
+        else actions.front()->setChecked(true);
+
+        // One key cycles through the modes.
+        auto* cycle = menu->addAction("Next Transparency Background", this, [actions]() {
+            size_t cur = 0;
+            for (size_t i = 0; i < actions.size(); ++i)
+                if (actions[i]->isChecked()) cur = i;
+            actions[(cur + 1) % actions.size()]->trigger();
+        });
+        cycle->setShortcut(QKeySequence("Shift+B"));
+    }
+
     pixelGridAction_ = viewMenu->addAction("Pixel Grid", viewport_, &VulkanViewport::toggleShowPixelGrid);
     pixelGridAction_->setCheckable(true);
     pixelGridAction_->setShortcut(QKeySequence("G"));
@@ -837,11 +875,12 @@ void MainWindow::buildMenus()
     editMenu->addAction("Preferences...", this, [this]() {
         spdlog::info("Preferences dialog opened");
         PreferencesDialog dlg(bindableActions_, this);
-        connect(&dlg, &PreferencesDialog::backgroundColorChanged, viewport_, &VulkanViewport::setBackgroundColor);
+        connect(&dlg, &PreferencesDialog::backgroundColorChanged, viewport_, &VulkanViewport::setPreferencesBackground);
         connect(&dlg, &PreferencesDialog::backgroundColorChanged, thumbnailStrip_, &ThumbnailStrip::setBackgroundColor);
         connect(&dlg, &PreferencesDialog::mouseSettingsChanged, viewport_, &VulkanViewport::setMouseSettings);
         connect(&dlg, &PreferencesDialog::navigationViewChanged, this, &MainWindow::applyNavigationView);
         dlg.exec();
+        viewport_->setTransparencyBackground(viewport_->transparencyBackground()); // the theme may have changed
         applyDockShortcuts();
         updateOpenWithMenu();
         spdlog::info("Preferences dialog closed");

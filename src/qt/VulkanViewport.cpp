@@ -4,6 +4,7 @@
 #include "ToggleCapture.h"
 
 #include <QFileInfo>
+#include <QPalette>
 #include <QSettings>
 #include <QMouseEvent>
 #include <QNativeGestureEvent>
@@ -778,10 +779,7 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     // $hflip/$vflip (and no* forms): only when the file says so, like $pixelsize.
     if (scene_.hflip) setFlipHorizontal(*scene_.hflip);
     if (scene_.vflip) setFlipVertical(*scene_.vflip);
-    if (scene_.background)
-        setBackgroundColor(QColor::fromRgbF(scene_.background->r, scene_.background->g, scene_.background->b));
-    else
-        setBackgroundColor(PreferencesDialog::loadBackgroundColor());
+    preferencesBackground_ = PreferencesDialog::loadBackgroundColor();
     loadedImageNames_ = std::move(newLoadedImageNames);
     loadedImageFrameSel_ = std::move(newLoadedImageFrameSel);
     markFrameImage_ = std::move(newMarkFrameImage);
@@ -790,6 +788,7 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     currentImageIndex_ = 0;
     viewKeyFallback_ = paths.empty() ? std::string() : paths.front();
     scenePaths_ = paths;
+    applyBackground(); // $background / Preferences / transparency mode, by file kind
     // With Remember View Per File, a multi-image scene reopens on the image it was left on.
     if (rememberView_ && loadedImageNames_.size() > 1 && !scenePaths_.empty())
         if (auto* store = stateStore())
@@ -1089,6 +1088,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     viewer_->viewParams = builder.viewParams();
     viewer_->viewParams->setForceOpaque(forceOpaque_);
     viewer_->viewParams->setShowPixelGrid(showPixelGrid_);
+    applyBackground();
     applyGlyphScales();
     viewer_->imageFilterAnimator = builder.imageFilterAnimator();
 
@@ -3241,6 +3241,7 @@ bool VulkanViewport::exportImage(const QString& path, int width, int height, con
         // viewer_->worldPerPixel. The window shows that scale for this one
         // frame, then the next regular frame restores it.
         exportWorldPerPixel_ = static_cast<float>(1.0 / scale);
+        if (viewer_->viewParams) viewer_->viewParams->setCheckerboard(0); // an export keeps the image's own transparency
         viewer_->recordAndSubmitTasks.clear();
         viewer_->presentations.clear();
         viewer_->assignRecordAndSubmitTaskAndPresentation({exportCommandGraph, labelPicker_->commandGraph(), mainCommandGraph_});
@@ -3268,6 +3269,7 @@ bool VulkanViewport::exportImage(const QString& path, int width, int height, con
     // Put the window's own tasks back (the export's graph and target are
     // released once nothing in flight uses them).
     exportWorldPerPixel_ = 0.0f;
+    if (viewer_->viewParams) viewer_->viewParams->setCheckerboard(checkerboard_);
     try
     {
         waitForGpuIdle();
@@ -3464,6 +3466,60 @@ void VulkanViewport::setAutoContrast(bool enable)
         const auto r = clippedRange();
         setContrast(r.first, r.second);
     }
+}
+
+void VulkanViewport::setTransparencyBackground(TransparencyBackground mode)
+{
+    transparencyBackground_ = mode;
+    applyBackground();
+}
+
+void VulkanViewport::setPreferencesBackground(const QColor& color)
+{
+    preferencesBackground_ = color;
+    applyBackground();
+}
+
+// Picks the flat clear color and whether the checkerboard shows. A .giv/.marks
+// file keeps giv's convention - its own $background, else the Preferences color
+// (white by default); only a bare raster image or an SVG follows the
+// transparency mode.
+void VulkanViewport::applyBackground()
+{
+    const bool themeDark = QGuiApplication::palette().color(QPalette::Base).lightnessF() < 0.5;
+    const QColor themeColor = themeDark ? QColor::fromRgbF(0.12f, 0.12f, 0.12f) : QColor(Qt::white);
+
+    bool isGiv = false;
+    for (const auto& f : scenePaths_)
+    {
+        std::string ext = giv::pathToUtf8(giv::utf8ToPath(f).extension());
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
+        isGiv = isGiv || ext == ".giv" || ext == ".marks";
+    }
+
+    QColor color = preferencesBackground_;
+    int checker = 0;
+    if (isGiv)
+    {
+        if (scene_.background) color = QColor::fromRgbF(scene_.background->r, scene_.background->g, scene_.background->b);
+    }
+    else
+    {
+        switch (transparencyBackground_)
+        {
+        case TransparencyBackground::Checkerboard:
+            color = themeColor;
+            checker = themeDark ? 2 : 1;
+            break;
+        case TransparencyBackground::Theme: color = themeColor; break;
+        case TransparencyBackground::Preferences: break;
+        case TransparencyBackground::White: color = Qt::white; break;
+        case TransparencyBackground::Black: color = Qt::black; break;
+        }
+    }
+    checkerboard_ = checker;
+    if (viewer_ && viewer_->viewParams) viewer_->viewParams->setCheckerboard(checker);
+    setBackgroundColor(color);
 }
 
 void VulkanViewport::setBackgroundColor(const QColor& color)

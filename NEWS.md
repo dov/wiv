@@ -22,6 +22,10 @@
 - Left-drag pans by default.
 - Fix cropped export; wiv asks what to save when an image is displayed.
 - SVG mark sprites are hoverable and show the owner's balloon.
+- Transparent images and SVGs are shown on a checkerboard that follows the theme's brightness,
+  instead of a fixed white canvas. View > Transparency Background chooses between the
+  checkerboard, the theme color, the Preferences color, white and black (Shift+B cycles them).
+  `.giv` files keep giv's convention (Preferences color, white by default, or `$background`).
 
 ### Formats
 - New netCDF image plugin.

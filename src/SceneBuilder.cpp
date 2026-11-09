@@ -32,7 +32,7 @@ void ViewParams::update(float worldPerPixel)
 {
     if (!value) return;
     value->set(0, vsg::vec4(worldPerPixel, forceOpaque_ ? 1.0f : 0.0f, showPixelGrid_ ? 1.0f : 0.0f, markZoom_));
-    value->set(1, vsg::vec4(quiverZoom_, lineWidthZoom_, alphaScale_, 0.0f));
+    value->set(1, vsg::vec4(quiverZoom_, lineWidthZoom_, alphaScale_, static_cast<float>(checkerboard_)));
     // Written (16 bytes, whatever the scene's size) and dirtied on *every*
     // frame, not just when the value actually changes: vsg::TransferTask
     // keeps one GPU copy of a DYNAMIC_DATA buffer per in-flight frame and
@@ -932,6 +932,39 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
     auto root = vsg::StateGroup::create();
     root->add(bindViewParams);
 
+    // Transparency checkerboard (checker.vert/frag): a quad under an image or
+    // an SVG's content. Shares the vector batches' pipeline layout (it reads
+    // ViewParams), re-binding that set itself since it is drawn after an image
+    // pipeline has been bound.
+    auto makeCheckerGroup = [&](float x0, float y0, float x1, float y1) {
+        if (!checkerBind_)
+        {
+            vsg::VertexInputState::Bindings checkerBindings{
+                VkVertexInputBindingDescription{0, sizeof(vsg::vec2), VK_VERTEX_INPUT_RATE_VERTEX}};
+            vsg::VertexInputState::Attributes checkerAttributes{
+                VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32_SFLOAT, 0}};
+            checkerBind_ = makePipeline(shaderDir, "checker.vert.spv", "checker.frag.spv", checkerBindings, checkerAttributes,
+                                        vectorPipelineLayout, /*blend=*/false);
+        }
+        auto positions = vsg::vec2Array::create({{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}});
+        auto draw = vsg::Commands::create();
+        draw->addChild(vsg::BindVertexBuffers::create(0, vsg::DataList{positions}));
+        draw->addChild(vsg::BindIndexBuffer::create(vsg::ushortArray::create({0, 1, 2, 2, 3, 0})));
+        draw->addChild(vsg::DrawIndexed::create(6, 1, 0, 0, 0));
+        auto group = vsg::StateGroup::create();
+        group->add(checkerBind_);
+        group->add(bindViewParams);
+        group->addChild(draw);
+        return group;
+    };
+
+    // An SVG has no image to put it under: cover its content bounds instead
+    // (data is y-down, the world y-up - see the image quad below).
+    if (images.empty() && scene.hasBounds() &&
+        std::any_of(scene.datasets.begin(), scene.datasets.end(), [](const Dataset& ds) { return ds.fromSvg; }))
+        root->addChild(makeCheckerGroup(static_cast<float>(scene.minX), static_cast<float>(-scene.maxY),
+                                        static_cast<float>(scene.maxX), static_cast<float>(-scene.minY)));
+
     // -------------------------------------------------------------
     // Image batch ($image references) - added first so vector data
     // (marks/lines/fill/text, appended to root below) always draws on
@@ -1103,6 +1136,7 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
             gridGroup->addChild(gridDraw);
 
             auto imageNode = vsg::Group::create();
+            imageNode->addChild(makeCheckerGroup(0.0f, 0.0f, w, -h)); // under the image, so only translucent pixels show it
             imageNode->addChild(innerSwitch);
             imageNode->addChild(gridGroup);
             imageSwitch_->addChild(true, imageNode);
