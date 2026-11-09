@@ -54,6 +54,8 @@ public:
 
 signals:
     void updateFromViewRequested(int row); // context menu on the open image's thumbnail
+    // Context menu: use the open image's contrast and colormap for every file of its type.
+    void applyContrastToSameTypeRequested();
     void fileClicked(int index);
     void stepRequested(int direction); // wheel over the strip: +1 next, -1 previous
     void thumbSizeChanged(int size);   // Ctrl+wheel zoom

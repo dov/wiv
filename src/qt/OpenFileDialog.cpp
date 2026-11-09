@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Dov Grobgeld
 #include "OpenFileDialog.h"
 
+#include "DisplayImage.h"
 #include "GivThumbnailRenderer.h"
 #include "ImageDownsample.h"
 #include "ImagePluginHost.h"
@@ -314,6 +315,19 @@ QImage decodeThumbnail(const QString& path, const std::atomic<bool>* cancel = nu
 void storeFileThumbnail(const QString& path, const QImage& image)
 {
     if (!image.isNull()) saveCachedThumbnail(path, image);
+}
+
+QImage renderContrastThumbnail(const QString& path, float min, float max, int colormapId, bool colormapEnabled, float gamma)
+{
+    auto loaded = giv::ImagePluginHost::load(path.toStdString());
+    if (!loaded || loaded->sampleType == WIV_SAMPLE_NONE || loaded->width <= 0 || loaded->height <= 0) return QImage();
+    if (colormapId < 0 || colormapId >= static_cast<int>(giv::colormaps::Id::Count)) return QImage();
+    giv::PixelBuffer rgba;
+    giv::renderDisplayRgba(*loaded, min, max, static_cast<giv::colormaps::Id>(colormapId), colormapEnabled, rgba, 0, gamma);
+    QImage full(rgba.data(), loaded->width, loaded->height, loaded->width * 4, QImage::Format_RGBA8888);
+    const QImage thumb = giv::downscaleToFit(full, kThumbnailDecodeSize, kThumbnailDecodeSize);
+    if (!thumb.isNull()) saveCachedThumbnail(path, thumb);
+    return thumb;
 }
 
 QImage decodeFileThumbnail(const QString& path, bool regenerate, const std::atomic<bool>* cancel)

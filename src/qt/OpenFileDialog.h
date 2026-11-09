@@ -56,6 +56,10 @@ namespace givqt
 QImage decodeFileThumbnail(const QString& path, bool regenerate = false, const std::atomic<bool>* cancel = nullptr);
 // Replaces `path`'s disk-cached thumbnail with `image` (e.g. rendered from the current view).
 void storeFileThumbnail(const QString& path, const QImage& image);
+// Renders `path`'s thumbnail through the given contrast window / colormap / gamma, stores it in the disk
+// cache and returns it. Null for files without raw sample data (colour images, .giv, .svg), whose
+// thumbnails don't depend on contrast. Safe to call from a worker thread.
+QImage renderContrastThumbnail(const QString& path, float min, float max, int colormapId, bool colormapEnabled, float gamma);
 
 enum class ThumbnailState { Queued, Ready, Failed };
 

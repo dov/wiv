@@ -64,6 +64,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QLabel>
+#include <QtConcurrent>
+#include <QPointer>
 #include <QMenu>
 #include <QMenuBar>
 #include <QActionGroup>
@@ -176,6 +178,54 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         if (image.isNull()) return;
         storeFileThumbnail(directoryFiles_[row], image);
         thumbnailStrip_->setThumbnail(row, image);
+    });
+    connect(thumbnailStrip_, &ThumbnailStrip::applyContrastToSameTypeRequested, this, [this] {
+        const int cur = thumbnailStrip_->currentRow();
+        if (cur < 0 || cur >= directoryFiles_.size() || !viewport_->currentImage()) return;
+        const QFileInfo curInfo(directoryFiles_[cur]);
+        std::vector<std::string> others;
+        for (int i = 0; i < directoryFiles_.size(); ++i)
+            if (i != cur && QFileInfo(directoryFiles_[i]).suffix().compare(curInfo.suffix(), Qt::CaseInsensitive) == 0)
+                others.push_back(directoryFiles_[i].toStdString());
+        if (others.empty())
+        {
+            QMessageBox::information(this, tr("Use Contrast && Colormap"),
+                                     tr("There are no other .%1 files in this folder.").arg(curInfo.suffix()));
+            return;
+        }
+        const auto answer = QMessageBox::question(
+            this, tr("Use Contrast && Colormap"),
+            tr("Apply the current contrast and colormap to %n other .%1 file(s) in this folder?\n\n"
+               "Their remembered settings will be replaced, and the thumbnails of all .%1 files, "
+               "including the current one, will be updated.", nullptr, static_cast<int>(others.size())).arg(curInfo.suffix()),
+            QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
+        if (answer != QMessageBox::Yes) return;
+        viewport_->copyContrastStateTo(others);
+        // The current file's thumbnail, from what is on screen.
+        const QImage curImage = viewport_->currentViewImage(ThumbnailStrip::kMaxThumbSize);
+        if (!curImage.isNull())
+        {
+            storeFileThumbnail(directoryFiles_[cur], curImage);
+            thumbnailStrip_->setThumbnail(cur, curImage);
+        }
+        // Redraw the other files' thumbnails with the new settings, off the GUI thread.
+        const auto state = viewport_->currentContrastState();
+        QList<QPair<int, QString>> jobs;
+        for (int i = 0; i < directoryFiles_.size(); ++i)
+            if (i != cur && QFileInfo(directoryFiles_[i]).suffix().compare(curInfo.suffix(), Qt::CaseInsensitive) == 0)
+                jobs.append({i, directoryFiles_[i]});
+        QPointer<MainWindow> self(this);
+        QPointer<ThumbnailStrip> strip(thumbnailStrip_);
+        (void)QtConcurrent::run([=] {
+            for (const auto& job : jobs)
+            {
+                const QImage img = renderContrastThumbnail(job.second, state.min, state.max, static_cast<int>(state.colormapId),
+                                                           state.colormapEnabled, state.gamma);
+                if (img.isNull() || !strip) continue;
+                QMetaObject::invokeMethod(strip, [strip, row = job.first, img] { if (strip) strip->setThumbnail(row, img); },
+                                          Qt::QueuedConnection);
+            }
+        });
     });
     connect(thumbnailStrip_, &ThumbnailStrip::stepRequested, this, [this](int dir) {
         if (dir > 0) goNextImage(); else goPreviousImage();

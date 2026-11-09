@@ -458,6 +458,18 @@ void ThumbnailStrip::contextMenuEvent(QContextMenuEvent* event)
     const bool isOpenImage = under && row(under) == currentRow() && !files_[row(under)].endsWith(".giv", Qt::CaseInsensitive) &&
                              !files_[row(under)].endsWith(".svg", Qt::CaseInsensitive);
     QAction* fromView = isOpenImage ? menu.addAction(tr("Update Thumbnail from Current View")) : nullptr;
+    QAction* applyAll = nullptr;
+    if (isOpenImage)
+    {
+        const QString ext = QFileInfo(files_[currentRow()]).suffix();
+        if (!ext.isEmpty())
+        {
+            applyAll = menu.addAction(tr("Use Contrast && Colormap for All .%1 Files").arg(ext));
+            applyAll->setStatusTip(tr("Applies the current contrast and colormap to every .%1 file in this folder").arg(ext));
+            applyAll->setToolTip(applyAll->statusTip());
+        }
+        menu.addSeparator();
+    }
     QAction* one = menu.addAction(tr("Regenerate Thumbnail"));
     one->setEnabled(under != nullptr);
     QAction* all = menu.addAction(tr("Regenerate All Thumbnails"));
@@ -466,6 +478,10 @@ void ThumbnailStrip::contextMenuEvent(QContextMenuEvent* event)
     if (fromView && chosen == fromView)
     {
         emit updateFromViewRequested(row(under));
+    }
+    else if (applyAll && chosen == applyAll)
+    {
+        emit applyContrastToSameTypeRequested();
     }
     else if (chosen == one && under)
     {

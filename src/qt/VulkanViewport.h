@@ -385,6 +385,9 @@ public:
     void setColormap(giv::colormaps::Id id, bool enabled);
     // Display gamma of the current image (>0, 1 = linear, >1 brightens midtones); remembered per image.
     void setGamma(float gamma);
+    // Gives each of `paths` (other files) the current image's contrast window, colour table and gamma,
+    // in memory and in the remembered state. Returns how many were set.
+    int copyContrastStateTo(const std::vector<std::string>& paths);
 
     // 256-bucket histogram of the current image's raw samples, binned
     // against its own sampleMin/sampleMax (a fixed axis, independent of the

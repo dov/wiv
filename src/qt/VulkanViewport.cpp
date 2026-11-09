@@ -2454,6 +2454,25 @@ bool VulkanViewport::applySlice(QString* error)
     return rebuildSceneGraph(error, /*isInitialLoad=*/false);
 }
 
+int VulkanViewport::copyContrastStateTo(const std::vector<std::string>& paths)
+{
+    if (loadedImages_.empty()) return 0;
+    const ContrastState state = currentContrastState();
+    const std::string self = contrastKey();
+    auto* store = stateStore();
+    int n = 0;
+    for (const std::string& path : paths)
+    {
+        const std::string key = giv::ImageStateStore::canonicalPath(path);
+        if (key == self) continue;
+        contrastState_[key] = state;
+        if (store)
+            store->saveContrast(path, {state.min, state.max, static_cast<int>(state.colormapId), state.colormapEnabled, state.gamma});
+        ++n;
+    }
+    return n;
+}
+
 void VulkanViewport::setContrast(float min, float max)
 {
     if (loadedImages_.empty() || loadedImages_.front().sampleType == WIV_SAMPLE_NONE) return;
