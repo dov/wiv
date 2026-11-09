@@ -1,5 +1,23 @@
 # NEWS
 
+## Changes since v0.1.1 (version 0.1.2)
+
+### Viewer
+- Transparent images and SVGs are shown on a checkerboard that follows the theme's brightness,
+  instead of a fixed white canvas. View > Transparency Background chooses between the
+  checkerboard, the theme color, the Preferences color, white and black (Shift+B cycles them).
+  `.giv` files keep giv's convention (Preferences color, white by default, or `$background`).
+- New splash/loading page, a margin color preference, an SVG backdrop fix and a Docks menu.
+- Files with no remembered view are fitted when Auto Fit is off.
+- The version and commit id are logged at startup; wiv exits cleanly when Qt can't reach a display.
+
+### Thumbnails
+- New thumbnail context-menu item that applies the current contrast and colormap to all files of
+  the same type.
+
+### Build
+- Fix plugins not finding their bundled libraries in the AppImage.
+
 ## Changes since v0.1.0 (version 0.1.1)
 
 ### Thumbnails
@@ -22,10 +40,6 @@
 - Left-drag pans by default.
 - Fix cropped export; wiv asks what to save when an image is displayed.
 - SVG mark sprites are hoverable and show the owner's balloon.
-- Transparent images and SVGs are shown on a checkerboard that follows the theme's brightness,
-  instead of a fixed white canvas. View > Transparency Background chooses between the
-  checkerboard, the theme color, the Preferences color, white and black (Shift+B cycles them).
-  `.giv` files keep giv's convention (Preferences color, white by default, or `$background`).
 
 ### Formats
 - New netCDF image plugin.
