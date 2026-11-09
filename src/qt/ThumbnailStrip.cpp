@@ -4,6 +4,8 @@
 
 #include "OpenFileDialog.h"
 
+#include "ImageDownsample.h"
+
 #include <QApplication>
 #include <QContextMenuEvent>
 #include <QDrag>
@@ -11,16 +13,17 @@
 #include <QUrl>
 #include <QMenu>
 #include <QFileInfo>
-#include <QFutureWatcher>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
 #include <QStyledItemDelegate>
 #include <QScrollBar>
 #include <QWheelEvent>
-#include <QtConcurrentRun>
+#include <QThread>
 
 #include <algorithm>
+#include <mutex>
+#include <vector>
 
 namespace givqt
 {
@@ -50,11 +53,14 @@ QPixmap makeSquareThumbnail(const QImage& image, int size, qreal dpr, const QCol
     {
         const int side = std::min(image.width(), image.height());
         const QRect src((image.width() - side) / 2, (image.height() - side) / 2, side, side);
-        p.drawImage(QRect(0, 0, px, px), image, src);
+        if (px < side)
+            p.drawImage(0, 0, giv::downscaleToFit(image.copy(src), px, px)); // area average: no aliasing
+        else
+            p.drawImage(QRect(0, 0, px, px), image, src);
     }
     else
     {
-        const QImage scaled = image.scaled(px, px, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        const QImage scaled = giv::downscaleToFit(image, px, px);
         p.drawImage((px - scaled.width()) / 2, (px - scaled.height()) / 2, scaled);
     }
     p.end();
@@ -96,8 +102,36 @@ public:
 };
 } // namespace
 
-ThumbnailStrip::ThumbnailStrip(QWidget* parent) : QListWidget(parent)
+struct ThumbnailStrip::Queue
 {
+    struct Job
+    {
+        int row = 0;
+        QString path;
+        bool fresh = false;
+        int serial = 0;
+        int gen = 0;
+        int rank = 0; // lower runs first
+        std::shared_ptr<std::atomic<bool>> token;
+    };
+    std::mutex mutex;
+    std::vector<Job> pending;
+};
+
+namespace
+{
+constexpr int kMarginRank = 1 << 20; // ranks at or above this are the off-screen margin, behind everything exposed
+}
+
+ThumbnailStrip::ThumbnailStrip(QWidget* parent) : QListWidget(parent), queue_(std::make_shared<Queue>())
+{
+    // Each in-flight decode holds a full-resolution image, so the worker count is bounded (and a
+    // core is left for the GUI) rather than using one thread per core.
+    pool_.setMaxThreadCount(std::clamp(QThread::idealThreadCount() - 1, 2, 8));
+    scrollTimer_.setSingleShot(true);
+    scrollTimer_.setInterval(0);
+    connect(&scrollTimer_, &QTimer::timeout, this, [this]() { loadVisibleThumbnails(); });
+
     setViewMode(QListView::IconMode);
     setFlow(QListView::TopToBottom); // fills a column, then wraps to the next: several rows, scrolled sideways
     setWrapping(true);
@@ -127,7 +161,14 @@ ThumbnailStrip::ThumbnailStrip(QWidget* parent) : QListWidget(parent)
         if (ignoreClick_) return;
         emit fileClicked(row(item));
     });
-    connect(horizontalScrollBar(), &QScrollBar::valueChanged, this, [this]() { loadVisibleThumbnails(); });
+    connect(horizontalScrollBar(), &QScrollBar::valueChanged, this, [this]() { scrollTimer_.start(); });
+}
+
+ThumbnailStrip::~ThumbnailStrip()
+{
+    cancelAllJobs();
+    pool_.clear();
+    pool_.waitForDone(); // workers post their results back to this object
 }
 
 void ThumbnailStrip::mousePressEvent(QMouseEvent* event)
@@ -167,9 +208,11 @@ void ThumbnailStrip::setFiles(const QStringList& files, int current)
 {
     if (files != files_)
     {
+        cancelAllJobs();
         files_ = files;
         ++generation_;
         requested_.clear();
+        regenerate_.clear();
         clear();
         for (const QString& f : files)
         {
@@ -250,31 +293,130 @@ void ThumbnailStrip::setBackgroundColor(const QColor& color)
     viewport()->update();
 }
 
+void ThumbnailStrip::cancelJob(int row)
+{
+    const auto it = jobs_.find(row);
+    if (it == jobs_.end()) return;
+    const JobInfo info = it.value();
+    jobs_.erase(it);
+    info.token->store(true); // a running decode that hasn't loaded yet gives up; its result is ignored
+    {
+        const std::lock_guard<std::mutex> lock(queue_->mutex);
+        std::erase_if(queue_->pending, [&](const Queue::Job& j) { return j.token == info.token; });
+    }
+    requested_.remove(row); // so it is asked for again when it is next exposed
+    if (info.fresh) regenerate_.insert(row);
+}
+
+void ThumbnailStrip::cancelAllJobs()
+{
+    {
+        const std::lock_guard<std::mutex> lock(queue_->mutex);
+        queue_->pending.clear();
+    }
+    for (auto it = jobs_.begin(); it != jobs_.end(); ++it)
+    {
+        it->token->store(true);
+        requested_.remove(it.key());
+        if (it->fresh) regenerate_.insert(it.key());
+    }
+    jobs_.clear();
+}
+
+void ThumbnailStrip::jobDone(int row, int gen, int serial, const std::shared_ptr<std::atomic<bool>>& token, const QImage& image)
+{
+    const auto it = jobs_.find(row);
+    if (it != jobs_.end() && it->token == token) jobs_.erase(it);
+    if (token->load() || gen != generation_ || row >= count() || image.isNull()) return;
+    if (item(row)->data(kSerialRole).toInt() != serial) return; // regenerated meanwhile
+    item(row)->setData(kImageRole, image);
+    item(row)->setData(kThumbRole, makeSquareThumbnail(image, thumbSize_, devicePixelRatioF(), background_));
+    viewport()->update();
+}
+
 void ThumbnailStrip::loadVisibleThumbnails()
 {
-    if (!isVisible()) return;
-    const QRect view = viewport()->rect();
-    for (int i = 0; i < count(); ++i)
+    if (!isVisible())
     {
-        if (requested_.contains(i)) continue;
-        // Load a little beyond the visible edge so scrolling doesn't show blanks.
-        if (!visualItemRect(item(i)).adjusted(-view.width() / 2, 0, view.width() / 2, 0).intersects(view)) continue;
+        cancelAllJobs();
+        return;
+    }
+    const QRect view = viewport()->rect();
+    const int margin = view.width() / 2; // a little beyond the visible edge so scrolling doesn't show blanks
+    const int viewCentre = view.center().x();
+
+    // Items fill columns top to bottom, so the rows near the view are a contiguous block; only those
+    // are examined (with a couple of columns of slack), then placed exactly by their real rectangle.
+    const int cellW = std::max(1, gridSize().width());
+    const int perColumn = std::max(1, view.height() / std::max(1, gridSize().height()));
+    const int scrollX = horizontalScrollBar()->value();
+    const int firstCol = std::max(0, (scrollX - margin) / cellW - 2);
+    const int lastCol = (scrollX + view.width() + margin) / cellW + 2;
+    const int firstRow = std::min(count(), firstCol * perColumn);
+    const int endRow = std::min(count(), (lastCol + 1) * perColumn);
+
+    QHash<int, int> wanted; // row -> rank
+    for (int i = firstRow; i < endRow; ++i)
+    {
+        const QRect r = visualItemRect(item(i));
+        const int dist = std::abs(r.center().x() - viewCentre);
+        if (r.intersects(view)) wanted.insert(i, dist);
+        else if (r.adjusted(-margin, 0, margin, 0).intersects(view)) wanted.insert(i, kMarginRank + dist);
+    }
+
+    // Anything queued or running for rows no longer wanted is abandoned: all effort goes to what is exposed.
+    QList<int> stale;
+    for (auto it = jobs_.cbegin(); it != jobs_.cend(); ++it)
+        if (!wanted.contains(it.key())) stale.append(it.key());
+    for (int row : stale) cancelJob(row);
+
+    std::vector<Queue::Job> added;
+    for (auto it = wanted.cbegin(); it != wanted.cend(); ++it)
+    {
+        const int i = it.key();
+        if (requested_.contains(i)) continue; // done, or queued/running (re-ranked below)
         requested_.insert(i);
-        const QString path = files_[i];
-        const bool fresh = regenerate_.remove(i);
-        const int serial = item(i)->data(kSerialRole).toInt();
-        auto* watcher = new QFutureWatcher<QImage>(this);
-        const int gen = generation_;
-        connect(watcher, &QFutureWatcher<QImage>::finished, this, [this, watcher, i, gen, serial]() {
-            const QImage image = watcher->result();
-            watcher->deleteLater();
-            if (gen != generation_ || i >= count() || image.isNull()) return;
-            if (item(i)->data(kSerialRole).toInt() != serial) return; // regenerated meanwhile
-            item(i)->setData(kImageRole, image);
-            item(i)->setData(kThumbRole, makeSquareThumbnail(image, thumbSize_, devicePixelRatioF(), background_));
-            viewport()->update();
+        Queue::Job job;
+        job.row = i;
+        job.path = files_[i];
+        job.fresh = regenerate_.remove(i);
+        job.serial = item(i)->data(kSerialRole).toInt();
+        job.gen = generation_;
+        job.rank = it.value();
+        job.token = std::make_shared<std::atomic<bool>>(false);
+        jobs_.insert(i, JobInfo{job.token, job.fresh});
+        added.push_back(std::move(job));
+    }
+    const size_t nAdded = added.size();
+    {
+        const std::lock_guard<std::mutex> lock(queue_->mutex);
+        for (Queue::Job& j : queue_->pending) // rows that stayed wanted may have changed rank
+            if (const auto w = wanted.constFind(j.row); w != wanted.cend()) j.rank = w.value();
+        for (Queue::Job& j : added) queue_->pending.push_back(std::move(j));
+    }
+
+    // One worker task per new job. A task takes whichever pending job currently ranks best, so the
+    // job it ends up running is the most urgent one, not the one it was submitted for.
+    for (size_t k = 0; k < nAdded; ++k)
+    {
+        pool_.start([q = queue_, this]() {
+            Queue::Job job;
+            {
+                const std::lock_guard<std::mutex> lock(q->mutex);
+                if (q->pending.empty()) return; // the job this task was for was dropped
+                auto best = std::min_element(q->pending.begin(), q->pending.end(), [](const Queue::Job& a, const Queue::Job& b) {
+                    return a.rank != b.rank ? a.rank < b.rank : a.row < b.row;
+                });
+                job = std::move(*best);
+                *best = std::move(q->pending.back());
+                q->pending.pop_back();
+            }
+            QImage image;
+            if (!job.token->load(std::memory_order_relaxed)) image = decodeFileThumbnail(job.path, job.fresh, job.token.get());
+            QMetaObject::invokeMethod(
+                this, [this, row = job.row, gen = job.gen, serial = job.serial, token = job.token, image]() { jobDone(row, gen, serial, token, image); },
+                Qt::QueuedConnection);
         });
-        watcher->setFuture(QtConcurrent::run(decodeFileThumbnail, path, fresh));
     }
 }
 
@@ -283,6 +425,7 @@ void ThumbnailStrip::regenerate(const QList<int>& rows)
     for (int i : rows)
     {
         if (i < 0 || i >= count()) continue;
+        cancelJob(i);
         QListWidgetItem* it = item(i);
         it->setData(kSerialRole, it->data(kSerialRole).toInt() + 1);
         it->setData(kThumbRole, QVariant());
@@ -297,6 +440,8 @@ void ThumbnailStrip::regenerate(const QList<int>& rows)
 void ThumbnailStrip::setThumbnail(int row, const QImage& image)
 {
     if (row < 0 || row >= count() || image.isNull()) return;
+    cancelJob(row);
+    regenerate_.remove(row);
     QListWidgetItem* it = item(row);
     it->setData(kSerialRole, it->data(kSerialRole).toInt() + 1); // drop any decode still in flight
     it->setData(kImageRole, image);

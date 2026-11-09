@@ -30,6 +30,8 @@
 #include <QSet>
 #include <QString>
 
+#include <atomic>
+
 class QAbstractItemView;
 class QListView;
 class QTreeView;
@@ -49,7 +51,9 @@ namespace givqt
 // Thumbnail (<= 256 px, disk-cached) for any file wiv can open; null if it
 // can't be decoded. Safe to call from a worker thread. `regenerate` discards
 // the cached thumbnail first, e.g. after the decoder for the format changed.
-QImage decodeFileThumbnail(const QString& path, bool regenerate = false);
+// `cancel`, when set before the decode starts, makes it return a null image without decoding (a
+// decode already running can't be interrupted, so it finishes and is cached as usual).
+QImage decodeFileThumbnail(const QString& path, bool regenerate = false, const std::atomic<bool>* cancel = nullptr);
 // Replaces `path`'s disk-cached thumbnail with `image` (e.g. rendered from the current view).
 void storeFileThumbnail(const QString& path, const QImage& image);
 

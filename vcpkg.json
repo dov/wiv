@@ -70,6 +70,7 @@
     "tiff",
     "libjpeg-turbo",
     "libwebp",
+    "highway",
     "zlib",
     "spdlog",
     "cfitsio",

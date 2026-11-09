@@ -3,6 +3,7 @@
 #include "OpenFileDialog.h"
 
 #include "GivThumbnailRenderer.h"
+#include "ImageDownsample.h"
 #include "ImagePluginHost.h"
 #include "PathUtils.h"
 #include "QtPathUtils.h"
@@ -58,6 +59,7 @@
 #include <QtConcurrentRun>
 
 #include <algorithm>
+#include <atomic>
 #include <filesystem>
 #include <spdlog/spdlog.h>
 #include <thread>
@@ -217,29 +219,32 @@ QImage decodeRasterThumbnail(const QString& path)
     if (loaded->sampleType != WIV_SAMPLE_NONE && loaded->samples.data() && loaded->sampleMax > loaded->sampleMin)
     {
         const size_t n = static_cast<size_t>(loaded->width) * loaded->height; // slice 0
-        const double lo = loaded->sampleMin, scale = 255.0 / (static_cast<double>(loaded->sampleMax) - lo);
+        const float lo = static_cast<float>(loaded->sampleMin);
+        const float scale = static_cast<float>(255.0 / (static_cast<double>(loaded->sampleMax) - loaded->sampleMin));
         const void* src = loaded->samples.data();
         std::vector<unsigned char> windowed(n * 4);
-        for (size_t i = 0; i < n; ++i)
-        {
-            double v;
-            switch (loaded->sampleType)
+        // The sample type is switched on once, outside the per-pixel loop, so the compiler can vectorise it.
+        auto window = [&](auto* typed) {
+            unsigned char* px = windowed.data();
+            for (size_t i = 0; i < n; ++i, px += 4)
             {
-                case WIV_SAMPLE_U8: v = static_cast<const unsigned char*>(src)[i]; break;
-                case WIV_SAMPLE_U16: v = static_cast<const unsigned short*>(src)[i]; break;
-                default: v = static_cast<const float*>(src)[i]; break;
+                const float g = std::clamp((static_cast<float>(typed[i]) - lo) * scale, 0.0f, 255.0f);
+                px[0] = px[1] = px[2] = static_cast<unsigned char>(g + 0.5f);
+                px[3] = 255;
             }
-            const double g = std::clamp((v - lo) * scale, 0.0, 255.0);
-            unsigned char* px = windowed.data() + i * 4;
-            px[0] = px[1] = px[2] = static_cast<unsigned char>(g + 0.5);
-            px[3] = 255;
+        };
+        switch (loaded->sampleType)
+        {
+            case WIV_SAMPLE_U8: window(static_cast<const unsigned char*>(src)); break;
+            case WIV_SAMPLE_U16: window(static_cast<const unsigned short*>(src)); break;
+            default: window(static_cast<const float*>(src)); break;
         }
         QImage full(windowed.data(), loaded->width, loaded->height, loaded->width * 4, QImage::Format_RGBA8888);
-        return full.scaled(kThumbnailDecodeSize, kThumbnailDecodeSize, Qt::KeepAspectRatio, Qt::SmoothTransformation).copy();
+        return giv::downscaleToFit(full, kThumbnailDecodeSize, kThumbnailDecodeSize);
     }
 
     QImage full(loaded->rgba.data(), loaded->width, loaded->height, loaded->width * 4, QImage::Format_RGBA8888);
-    return full.scaled(kThumbnailDecodeSize, kThumbnailDecodeSize, Qt::KeepAspectRatio, Qt::SmoothTransformation).copy();
+    return giv::downscaleToFit(full, kThumbnailDecodeSize, kThumbnailDecodeSize);
 }
 
 // Renders a .giv scene straight to a thumbnail via GivThumbnailRenderer - a
@@ -265,7 +270,7 @@ QString thumbnailCacheDir(const QString& path)
 
 QString thumbnailCachePath(const QString& path)
 {
-    return thumbnailCacheDir(path) + QLatin1Char('/') + QFileInfo(path).fileName() + QStringLiteral(".v7.png") /* v7: .svg thumbnails with <style>/animation use the scene renderer; v6: .svg thumbnails draw CSS styles, dashes, textPath/textLength; v5: .giv thumbnails draw text like the viewer (markup, shadow, rotation, fonts); v4: raw-sample images use the viewer's min..max window; v2: .giv thumbnails include the $image; v3: .svg thumbnails fit the drawn content, not the page */;
+    return thumbnailCacheDir(path) + QLatin1Char('/') + QFileInfo(path).fileName() + QStringLiteral(".v8.png") /* v8: raster thumbnails are area-averaged (ImageDownsample), not Qt bilinear; v7: .svg thumbnails with <style>/animation use the scene renderer; v6: .svg thumbnails draw CSS styles, dashes, textPath/textLength; v5: .giv thumbnails draw text like the viewer (markup, shadow, rotation, fonts); v4: raw-sample images use the viewer's min..max window; v2: .giv thumbnails include the $image; v3: .svg thumbnails fit the drawn content, not the page */;
 }
 
 QImage loadCachedThumbnail(const QString& path)
@@ -283,10 +288,12 @@ void saveCachedThumbnail(const QString& path, const QImage& image)
 }
 
 // Runs on a QtConcurrent worker thread - must not touch any QWidget.
-QImage decodeThumbnail(const QString& path)
+QImage decodeThumbnail(const QString& path, const std::atomic<bool>* cancel = nullptr)
 {
     const QImage cached = loadCachedThumbnail(path);
     if (!cached.isNull()) return cached;
+    // Cancelling only helps before the (uninterruptible) decode starts; a finished decode is kept and cached.
+    if (cancel && cancel->load(std::memory_order_relaxed)) return QImage();
 
     QImage image;
     if (path.endsWith(".giv", Qt::CaseInsensitive)) image = decodeGivThumbnail(path);
@@ -309,10 +316,11 @@ void storeFileThumbnail(const QString& path, const QImage& image)
     if (!image.isNull()) saveCachedThumbnail(path, image);
 }
 
-QImage decodeFileThumbnail(const QString& path, bool regenerate)
+QImage decodeFileThumbnail(const QString& path, bool regenerate, const std::atomic<bool>* cancel)
 {
+    if (cancel && cancel->load(std::memory_order_relaxed)) return QImage();
     if (regenerate) QFile::remove(thumbnailCachePath(path));
-    return decodeThumbnail(path);
+    return decodeThumbnail(path, cancel);
 }
 
 // Paints an inline thumbnail (or a folder/file/queued/failed fallback icon)
@@ -1574,7 +1582,7 @@ void OpenFileDialog::requestThumbnail(const QString& path, quint64 generation)
         const QImage image = watcher->result();
         onThumbnailReady(path, image, !image.isNull(), generation);
     });
-    watcher->setFuture(QtConcurrent::run(decodeThumbnail, path));
+    watcher->setFuture(QtConcurrent::run([path]() { return decodeThumbnail(path); }));
 }
 
 void OpenFileDialog::onThumbnailReady(const QString& path, const QImage& image, bool success, quint64 generation)

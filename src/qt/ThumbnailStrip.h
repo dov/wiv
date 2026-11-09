@@ -10,8 +10,14 @@
 #include <QColor>
 #include <QImage>
 #include <QListWidget>
+#include <QHash>
 #include <QSet>
 #include <QStringList>
+#include <QThreadPool>
+#include <QTimer>
+
+#include <atomic>
+#include <memory>
 
 namespace givqt
 {
@@ -26,6 +32,7 @@ public:
     static constexpr int kMaxThumbSize = 256; // the decode size
 
     explicit ThumbnailStrip(QWidget* parent = nullptr);
+    ~ThumbnailStrip() override;
 
     // Shows `files` with `current` highlighted and scrolled into view.
     // Rebuilds the items only when the list itself changed.
@@ -63,7 +70,13 @@ protected:
     void startDrag(Qt::DropActions supportedActions) override;
 
 private:
+    // Re-aims the decoders at what is on screen now: exposed rows first (nearest the middle of the
+    // view first), then a margin of half a viewport each side; queued decodes for rows that have
+    // scrolled out of that range are dropped and running ones are told to stop.
     void loadVisibleThumbnails();
+    void cancelJob(int row);   // stop (or ignore) the decode of one row, if any
+    void cancelAllJobs();      // ... of every row
+    void jobDone(int row, int gen, int serial, const std::shared_ptr<std::atomic<bool>>& token, const QImage& image);
     // Centers the thumbnails when they don't fill the strip's width (left margin on the viewport).
     void updateCentering();
     // Drops the cached thumbnails of `rows` (on disk and in memory) and decodes them again.
@@ -76,6 +89,20 @@ private:
     QSet<int> regenerate_; // rows whose next decode must bypass the disk cache
     bool ignoreClick_ = false; // the release ending a double-click must not select again
     int generation_ = 0;  // invalidates results of a previous file list
+
+    // Decode scheduling. The queue is shared with the worker threads (which pop the best-ranked
+    // job themselves, so re-ranking is just rewriting the ranks); jobs_ is the GUI thread's view of
+    // the rows that are queued or running, with the token that cancels each.
+    struct Queue;
+    struct JobInfo
+    {
+        std::shared_ptr<std::atomic<bool>> token;
+        bool fresh = false;
+    };
+    std::shared_ptr<Queue> queue_;
+    QHash<int, JobInfo> jobs_;
+    QThreadPool pool_;
+    QTimer scrollTimer_; // coalesces the per-pixel scroll signals into one re-prioritisation
 };
 
 } // namespace givqt

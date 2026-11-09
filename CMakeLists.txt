@@ -48,6 +48,30 @@ if(MINGW AND MINGW_DEPS_PREFIX)
   list(APPEND CMAKE_FIND_ROOT_PATH ${MINGW_DEPS_PREFIX})
 endif()
 
+# Google Highway: portable SIMD with run-time dispatch to the CPU's best instruction set
+# (thumbnail downsampling, src/ImageDownsample.cpp). A system/vcpkg copy is used when present,
+# otherwise it is fetched and built as a static library.
+find_package(hwy CONFIG QUIET)
+if(NOT TARGET hwy::hwy AND NOT TARGET hwy)
+  set(HWY_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+  set(HWY_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(HWY_ENABLE_CONTRIB OFF CACHE BOOL "" FORCE)
+  set(HWY_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+  set(HWY_FORCE_STATIC_LIBS ON CACHE BOOL "" FORCE)
+  include(FetchContent)
+  FetchContent_Declare(highway
+    GIT_REPOSITORY https://github.com/google/highway.git
+    GIT_TAG 1.2.0
+    GIT_SHALLOW TRUE
+  )
+  FetchContent_MakeAvailable(highway)
+endif()
+if(TARGET hwy::hwy)
+  set(WIV_HWY_TARGET hwy::hwy)
+else()
+  set(WIV_HWY_TARGET hwy)
+endif()
+
 # The system-wide vsgQt install (/usr/local) was built against Qt5, so it
 # can't be used by this (Qt6) app - vsgQt is a thin library, so build it
 # from source against our own Qt6 + the system vsg instead of vendoring a
@@ -157,6 +181,7 @@ add_library(wiv_lib OBJECT
   src/OffscreenTarget.cpp
   src/BalloonController.cpp
   src/ImagePluginHost.cpp
+  src/ImageDownsample.cpp
   src/Colormaps.cpp
   src/ExifReader.cpp
   src/ImageStateStore.cpp
@@ -201,7 +226,7 @@ endif()
 add_dependencies(wiv_lib wiv_shaders)
 
 target_include_directories(wiv_lib PUBLIC src ${CMAKE_SOURCE_DIR}/third_party)
-target_link_libraries(wiv_lib PUBLIC vsg::vsg vsgXchange::vsgXchange vsgQt::vsgQt Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent Qt6::Network QtAwesome spdlog::spdlog SQLite::SQLite3 EXPAT::EXPAT PkgConfig::HARFBUZZ PkgConfig::FRIBIDI)
+target_link_libraries(wiv_lib PUBLIC vsg::vsg vsgXchange::vsgXchange vsgQt::vsgQt Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent Qt6::Network QtAwesome ${WIV_HWY_TARGET} spdlog::spdlog SQLite::SQLite3 EXPAT::EXPAT PkgConfig::HARFBUZZ PkgConfig::FRIBIDI)
 if(NOT WIN32)
   target_link_libraries(wiv_lib PUBLIC PkgConfig::FONTCONFIG)
 endif()
