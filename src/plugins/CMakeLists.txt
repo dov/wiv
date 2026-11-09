@@ -15,6 +15,9 @@ function(wiv_add_plugin name)
   if(WIN32)
     install(TARGETS wiv_plugin_${name} RUNTIME DESTINATION lib/wiv/plugins)
   else()
+    # Installed in <prefix>/lib/wiv/plugins: look next to the plugin and in <prefix>/lib, where a
+    # relocatable bundle (the AppImage) keeps the shared libraries the plugin depends on.
+    set_target_properties(wiv_plugin_${name} PROPERTIES INSTALL_RPATH "$ORIGIN;$ORIGIN/../..")
     install(TARGETS wiv_plugin_${name} LIBRARY DESTINATION lib/wiv/plugins)
   endif()
 endfunction()
