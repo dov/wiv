@@ -956,7 +956,26 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
 
     auto buildStart = std::chrono::steady_clock::now();
     if (!rebuildSceneGraph(error, /*isInitialLoad=*/true)) return false;
-    tryRestoreView();
+    // With Auto Fit off a load normally keeps the current zoom/pan, but pure
+    // vector content (.giv/.marks/.svg) with no remembered view of its own has
+    // no sensible "previous state": fit it by default.
+    if (!tryRestoreView() && !autoFit_ && hasScene_)
+    {
+        // Remembering views per file: a file with no record (a fit view is
+        // never recorded) opens fitted. Otherwise only pure vector files do.
+        bool vectorFile = loadedImageNames_.empty() && scene_.hasBounds();
+        if (vectorFile)
+        {
+            vectorFile = false;
+            for (const auto& f : paths)
+            {
+                std::string ext = giv::pathToUtf8(giv::utf8ToPath(f).extension());
+                std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
+                vectorFile = vectorFile || ext == ".giv" || ext == ".marks" || ext == ".svg";
+            }
+        }
+        if (rememberView_ || vectorFile) fitContentToWindow();
+    }
     double buildMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - buildStart).count();
 
     spdlog::info(
@@ -2621,7 +2640,7 @@ void VulkanViewport::switchToImage(int index)
     {
         // back to where the user left this image
     }
-    else if (autoFit_)
+    else if (autoFit_ || rememberView_)
     {
         fitContentToWindow();
     }
