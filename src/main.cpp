@@ -6,6 +6,7 @@
 // dock panel/status bar/preferences, wrapping a VulkanViewport that owns the
 // actual VSG/Vulkan rendering. CLI subset (see plan/README): positional
 // .giv file(s); --geometry WxH sets the initial window size.
+#include "BuildInfo.h"
 #include "Logging.h"
 #include "SceneBuilder.h"
 #include "qt/MainWindow.h"
@@ -27,6 +28,9 @@
 #include <vsg/all.h>
 #include <vsgXchange/all.h>
 
+#include <QtGlobal>
+#include <cstdlib>
+#include <cstdio>
 #include <string>
 
 #ifndef _WIN32
@@ -172,11 +176,32 @@ int main(int argc, char** argv)
         }
     }
 
+    // Qt reports unrecoverable startup errors (e.g. a DISPLAY that can't be
+    // reached, no platform plugin) via qFatal(), which abort()s and dumps core.
+    // Print the message and exit with a status instead.
+    qInstallMessageHandler([](QtMsgType type, const QMessageLogContext&, const QString& msg) {
+        fprintf(stderr, "%s\n", qPrintable(msg));
+        if (type == QtFatalMsg) std::_Exit(1);
+    });
+#if defined(Q_OS_LINUX)
+    // Without a display Qt's platform plugin aborts (SIGABRT, core dump) inside
+    // the QApplication constructor; report it and exit normally instead. An
+    // explicit QT_QPA_PLATFORM (e.g. offscreen, vnc) is the user's choice.
+    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM") && qEnvironmentVariableIsEmpty("DISPLAY") &&
+        qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY"))
+    {
+        fprintf(stderr, "wiv: no display available (neither DISPLAY nor WAYLAND_DISPLAY is set).\n");
+        return 1;
+    }
+#endif
+
     QApplication app(filteredArgc, filteredArgv.data());
     QApplication::setOrganizationName("wiv");
     QApplication::setApplicationName("wiv");
     QApplication::setWindowIcon(QIcon(":/wiv-app-icon.png"));
     givqt::PreferencesDialog::applyTheme();
+
+    spdlog::info("Version: {}  Commit: {}", giv::kVersion, giv::kCommitId);
 
     // Diagnostic: WIV_LOG_KEYS=1 logs every key press with the modifiers Qt
     // sees and the native virtual key / scan code (e.g. to debug key
