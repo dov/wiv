@@ -28,8 +28,7 @@
 
 #include <spdlog/spdlog.h>
 
-#include "nanosvg.h"
-#include "nanosvgrast.h"
+#include "LogoPixmap.h"
 
 #include <algorithm>
 #include <vector>
@@ -189,6 +188,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     });
 
     viewport_->setPreferencesBackground(PreferencesDialog::loadBackgroundColor());
+    viewport_->setMarginColor(PreferencesDialog::loadMarginColor());
     thumbnailStrip_->setBackgroundColor(PreferencesDialog::loadBackgroundColor());
 
     buildInfoDock();
@@ -616,14 +616,14 @@ void MainWindow::buildMenus()
     showMarksAction_->setChecked(true);
     showMarksAction_->setShortcut(QKeySequence("M"));
 
+    // Every dock panel lives in this submenu. Each uses the dock's own
+    // checkable toggle, which stays in sync with the panel's visibility.
+    auto* docksMenu = viewMenu->addMenu("&Docks");
     markBrowserDock_->toggleViewAction()->setShortcut(QKeySequence("O"));
-    viewMenu->addAction(markBrowserDock_->toggleViewAction());
-
-    viewMenu->addSeparator();
-    // The dock's own checkable toggle: stays in sync with the panel's visibility.
-    // Alt+Enter (the usual "Properties" key) toggles it too.
+    docksMenu->addAction(markBrowserDock_->toggleViewAction());
+    // Alt+Enter (the usual "Properties" key) toggles the info panel too.
     infoDock_->toggleViewAction()->setShortcuts({QKeySequence("I"), QKeySequence("Alt+Return")});
-    viewMenu->addAction(infoDock_->toggleViewAction());
+    docksMenu->addAction(infoDock_->toggleViewAction());
 
     viewMenu->addSeparator();
     // giv's do_auto_fit_marks: on (default), next/previousImage() re-fits
@@ -857,17 +857,16 @@ void MainWindow::buildMenus()
     });
 
     calibrateDock_->toggleViewAction()->setShortcut(QKeySequence("S")); // pixel Size
-    toolsMenu->addAction(calibrateDock_->toggleViewAction());
+    docksMenu->addAction(calibrateDock_->toggleViewAction());
 
-    toolsMenu->addSeparator();
-    // The docks' own checkable toggles; disabled until an image with raw
+    // The contrast and color table docks' toggles; disabled until an image with raw
     // samples is shown (see updateContrastToolsEnabled()).
     contrastAction_ = contrastDock_->toggleViewAction();
     colorTableAction_ = colorTableDock_->toggleViewAction();
     contrastAction_->setShortcut(QKeySequence("C"));
     colorTableAction_->setShortcut(QKeySequence("P")); // Palette
-    toolsMenu->addAction(contrastAction_);
-    toolsMenu->addAction(colorTableAction_);
+    docksMenu->addAction(contrastAction_);
+    docksMenu->addAction(colorTableAction_);
     contrastAction_->setEnabled(false);
     colorTableAction_->setEnabled(false);
 
@@ -876,10 +875,12 @@ void MainWindow::buildMenus()
         spdlog::info("Preferences dialog opened");
         PreferencesDialog dlg(bindableActions_, this);
         connect(&dlg, &PreferencesDialog::backgroundColorChanged, viewport_, &VulkanViewport::setPreferencesBackground);
+        connect(&dlg, &PreferencesDialog::marginColorChanged, viewport_, &VulkanViewport::setMarginColor);
         connect(&dlg, &PreferencesDialog::backgroundColorChanged, thumbnailStrip_, &ThumbnailStrip::setBackgroundColor);
         connect(&dlg, &PreferencesDialog::mouseSettingsChanged, viewport_, &VulkanViewport::setMouseSettings);
         connect(&dlg, &PreferencesDialog::navigationViewChanged, this, &MainWindow::applyNavigationView);
         dlg.exec();
+        viewport_->setMarginColor(PreferencesDialog::loadMarginColor()); // Cancel drops a previewed change
         viewport_->setTransparencyBackground(viewport_->transparencyBackground()); // the theme may have changed
         applyDockShortcuts();
         updateOpenWithMenu();
@@ -996,49 +997,6 @@ void MainWindow::closeEvent(QCloseEvent* event)
     QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
     settings.setValue("windowState", saveState());
     QMainWindow::closeEvent(event);
-}
-
-// Rasterizes the vector mascot (cropped to its drawn extent) at the screen's
-// physical resolution so it stays sharp on high-DPI displays.
-static QPixmap renderLogoPixmap(int logicalSize, qreal dpr)
-{
-    QFile f(":/giv-logo.svg");
-    if (!f.open(QIODevice::ReadOnly))
-        return QPixmap();
-    QByteArray svg = f.readAll();
-    svg.append('\0');
-
-    NSVGimage* image = nsvgParse(svg.data(), "px", 96.0f);
-    if (!image)
-        return QPixmap();
-
-    float minX = 1e30f, minY = 1e30f, maxX = -1e30f, maxY = -1e30f;
-    for (NSVGshape* s = image->shapes; s; s = s->next)
-    {
-        minX = std::min(minX, s->bounds[0]);
-        minY = std::min(minY, s->bounds[1]);
-        maxX = std::max(maxX, s->bounds[2]);
-        maxY = std::max(maxY, s->bounds[3]);
-    }
-    QPixmap result;
-    if (maxX > minX && maxY > minY)
-    {
-        const int px = std::max(1, static_cast<int>(logicalSize * dpr));
-        const float scale = px / std::max(maxX - minX, maxY - minY);
-        const int w = std::max(1, static_cast<int>((maxX - minX) * scale));
-        const int h = std::max(1, static_cast<int>((maxY - minY) * scale));
-        if (NSVGrasterizer* rast = nsvgCreateRasterizer())
-        {
-            std::vector<unsigned char> buf(static_cast<size_t>(w) * h * 4, 0);
-            nsvgRasterize(rast, image, -minX * scale, -minY * scale, scale, buf.data(), w, h, w * 4);
-            result = QPixmap::fromImage(
-                QImage(buf.data(), w, h, w * 4, QImage::Format_RGBA8888).copy());
-            result.setDevicePixelRatio(dpr);
-            nsvgDeleteRasterizer(rast);
-        }
-    }
-    nsvgDelete(image);
-    return result;
 }
 
 void MainWindow::showAboutDialog()

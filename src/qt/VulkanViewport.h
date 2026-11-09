@@ -22,6 +22,7 @@
 #include "PanZoomHandler.h"
 #include "ViewFlip.h"
 #include "SceneBuilder.h"
+#include "SplashPage.h"
 
 #include <functional>
 #include <vsgQt/Window.h>
@@ -247,6 +248,8 @@ public:
     TransparencyBackground transparencyBackground() const { return transparencyBackground_; }
     // The Preferences background color changed (Preferences dialog, not yet saved).
     void setPreferencesBackground(const QColor& color);
+    // Color of the margin around a raster image / SVG; invalid = automatic (a neutral, theme-aware grey).
+    void setMarginColor(const QColor& color);
 
     // giv's 'g' key (do_show_grid): outlines every image pixel once the view
     // is zoomed in far enough. Takes effect immediately, no scene rebuild.
@@ -531,7 +534,8 @@ private:
     bool forceOpaque_ = false;
     TransparencyBackground transparencyBackground_ = TransparencyBackground::Checkerboard;
     QColor preferencesBackground_ = Qt::white;
-    int checkerboard_ = 0; // 0 = off, 1 = light, 2 = dark: what applyBackground() last chose
+    QColor marginColor_; // invalid = automatic
+    int checkerboard_ = 0; // 0 = off, 1 = light, 2 = dark, >= 100 flat (see checker.vert): what applyBackground() last chose
     // Sets the clear color and checkerboard for the loaded file kind (see setTransparencyBackground()).
     void applyBackground();
     bool showPixelGrid_ = false;
@@ -578,6 +582,27 @@ private:
     QTimer* zoomTimer_ = nullptr; // ticks panZoom_->advance() during a wheel-zoom motion
     vsg::ref_ptr<giv::LabelPicker> labelPicker_;
     QLabel* balloonLabel_ = nullptr; // top-level Qt::ToolTip popup, see BalloonController.h
+    // The empty-window / "Loading..." page, shown as an (animated) image in the
+    // Vulkan scene - see showSplashScene().
+    SplashPainter splashPainter_;
+    bool splashMode_ = false;  // the scene currently shows the splash image
+    bool splashLoading_ = false;
+    bool splashArmed_ = false; // the event loop is running
+    QSize splashSize_;
+    qreal splashDpr_ = 1.0;
+    QElapsedTimer splashClock_;
+    QTimer* splashTimer_ = nullptr;
+    QTimer* splashResizeTimer_ = nullptr;
+    bool loading_ = false;
+    void showSplashScene();
+    void updateSplashFrame();
+    void setSplashLoading(bool loading);
+    void endSplashScene();
+    void beginLoading();
+    void endLoading();
+    // Decodes the first image of a new scene on a worker thread, keeping the
+    // GUI (the splash animation) alive, and puts it in imageCache_.
+    void predecodeInBackground();
     vsg::ref_ptr<giv::BalloonController> balloonController_;
 
     vsg::ref_ptr<giv::CaliperTool> caliperTool_;

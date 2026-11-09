@@ -4,6 +4,7 @@
 #extension GL_ARB_separate_shader_objects : enable
 
 layout(location = 0) in flat float fragDark;
+layout(location = 1) in flat vec3 fragFlat;
 layout(location = 0) out vec4 outColor;
 
 // Cell size in screen pixels: fixed, so the pattern neither balloons when
@@ -19,6 +20,11 @@ const vec3 kDarkB = vec3(0.26);
 
 void main()
 {
+    if (fragFlat.r >= 0.0)
+    {
+        outColor = vec4(fragFlat, 1.0);
+        return;
+    }
     ivec2 c = ivec2(floor(gl_FragCoord.xy / kCell));
     bool odd = ((c.x + c.y) & 1) != 0;
     vec3 a = fragDark > 0.5 ? kDarkA : kLightA;

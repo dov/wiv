@@ -36,6 +36,11 @@
 #include <QUrl>
 #include <QGridLayout>
 #include <QLabel>
+#include <QEventLoop>
+#include <QFutureWatcher>
+#include <QTimer>
+#include <optional>
+#include "SplashPage.h"
 #include <QScreen>
 #include <QScrollBar>
 #include <QSignalBlocker>
@@ -239,6 +244,17 @@ VulkanViewport::VulkanViewport(QWidget* parent) : QWidget(parent)
     container_->installEventFilter(this);
     // Same grid cell, added after the container so it sits above it.
 #ifndef _WIN32
+    // The empty-window splash is an image in the Vulkan scene, shown once the
+    // event loop runs (the constructor's own loadFiles({}) bootstrap sets
+    // hasScene_, so "empty" means no files loaded). Redone shortly after, once
+    // the window has settled at its final size.
+    QTimer::singleShot(0, this, [this] {
+        splashArmed_ = true;
+        if (scenePaths_.empty()) showSplashScene();
+    });
+    QTimer::singleShot(300, this, [this] {
+        if (scenePaths_.empty() && !loading_) showSplashScene();
+    });
     auto* dropOverlay = new DropOverlay(this, [this](QStringList f) { emit filesDropped(f); });
     layout->addWidget(dropOverlay, 0, 0);
     dropOverlay->raise();
@@ -659,6 +675,130 @@ bool VulkanViewport::checkResizeSettling()
     return true;
 }
 
+// The empty-window / loading splash. It is drawn into an RGBA buffer (see
+// SplashPainter) and shown as an ordinary animated image in the Vulkan scene:
+// nothing is ever stacked over, or hidden from, the native Vulkan window, which
+// breaks its presenting on some drivers. The loading animation repaints that
+// same texture per frame (the animated-image path used for GIFs).
+void VulkanViewport::showSplashScene()
+{
+    if (!window_ || !window_->windowAdapter) return;
+    const VkExtent2D extent = viewportExtent();
+    if (extent.width < 16 || extent.height < 16) return;
+    const qreal dpr = devicePixelRatioF();
+    const QSize logical(static_cast<int>(std::lround(extent.width / dpr)), static_cast<int>(std::lround(extent.height / dpr)));
+
+    if (splashMode_ && splashSize_ == logical && splashDpr_ == dpr && animTexture_)
+    {
+        updateSplashFrame(); // already built at this size: just repaint
+        return;
+    }
+    const QImage img = splashPainter_.render(logical, dpr, splashLoading_, 0.0);
+    giv::LoadedImage li;
+    li.width = img.width();
+    li.height = img.height();
+    li.animated = true; // gives the scene a texture that is rewritten per frame
+    li.rgba.assign(img.constBits(), img.constBits() + static_cast<size_t>(img.width()) * img.height() * 4);
+    loadedImages_ = {li};
+    displayImages_ = {std::move(li)};
+    currentImageSize_ = std::make_pair(static_cast<double>(img.width()), static_cast<double>(img.height()));
+    splashMode_ = true;
+    splashSize_ = logical;
+    splashDpr_ = dpr;
+    QString error;
+    if (!rebuildSceneGraph(&error, /*isInitialLoad=*/false))
+    {
+        spdlog::error("Failed to show the splash: {}", error.toStdString());
+        splashMode_ = false;
+        return;
+    }
+    fitContentToWindow();
+}
+
+void VulkanViewport::updateSplashFrame()
+{
+    if (!splashMode_ || !animTexture_) return;
+    const double t = splashClock_.isValid() ? splashClock_.elapsed() / 1000.0 : 0.0;
+    const QImage img = splashPainter_.render(splashSize_, splashDpr_, splashLoading_, t);
+    const size_t bytes = static_cast<size_t>(img.width()) * img.height() * 4;
+    if (animTexture_->dataSize() != bytes) return;
+    std::memcpy(animTexture_->dataPointer(), img.constBits(), bytes);
+    // vsg keeps a GPU copy per frame in flight; flag the change on the next few frames (see showAnimationFrame()).
+    animTextureDirty_ = 4;
+    if (viewer_) viewer_->request();
+}
+
+// "Loading..." and its animation, on the splash if it is what is showing.
+void VulkanViewport::setSplashLoading(bool loading)
+{
+    if (!splashMode_) return;
+    splashLoading_ = loading;
+    if (!splashTimer_)
+    {
+        splashTimer_ = new QTimer(this);
+        splashTimer_->setInterval(16);
+        connect(splashTimer_, &QTimer::timeout, this, &VulkanViewport::updateSplashFrame);
+    }
+    if (loading)
+    {
+        splashClock_.restart();
+        splashTimer_->start();
+    }
+    else
+        splashTimer_->stop();
+    updateSplashFrame();
+}
+
+// A real file is replacing the splash (the scene build that follows draws it).
+void VulkanViewport::endSplashScene()
+{
+    if (splashTimer_) splashTimer_->stop();
+    splashMode_ = false;
+    splashLoading_ = false;
+}
+
+void VulkanViewport::beginLoading()
+{
+    loading_ = true;
+    QGuiApplication::setOverrideCursor(Qt::BusyCursor);
+}
+
+void VulkanViewport::endLoading()
+{
+    loading_ = false;
+    QGuiApplication::restoreOverrideCursor();
+    if (scenePaths_.empty() && splashArmed_)
+    {
+        // Nothing loaded (e.g. a failed first load): back to the idle splash.
+        if (splashMode_)
+            setSplashLoading(false);
+        else
+            showSplashScene();
+    }
+}
+
+void VulkanViewport::predecodeInBackground()
+{
+    if (loadedImageNames_.empty()) return;
+    const std::string name = loadedImageNames_[static_cast<size_t>(std::clamp(currentImageIndex_, 0, static_cast<int>(loadedImageNames_.size()) - 1))];
+    if (imageCache_.contains(name)) return;
+
+    // Only a slow decode shows "Loading..." (if the splash is what is on screen): after a short delay.
+    QTimer showTimer;
+    showTimer.setSingleShot(true);
+    connect(&showTimer, &QTimer::timeout, this, [this] { setSplashLoading(true); });
+    showTimer.start(200);
+
+    QEventLoop loop;
+    QFutureWatcher<std::optional<giv::LoadedImage>> watcher;
+    connect(&watcher, &QFutureWatcher<std::optional<giv::LoadedImage>>::finished, &loop, &QEventLoop::quit);
+    watcher.setFuture(QtConcurrent::run([name] { return giv::ImagePluginHost::load(name, 0); }));
+    if (!watcher.isFinished()) loop.exec(QEventLoop::ExcludeUserInputEvents);
+    showTimer.stop();
+    if (auto img = watcher.result()) imageCache_.put(name, 0, std::move(*img));
+    // On failure decodeImageAt() simply decodes (and fails) again, as before.
+}
+
 bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* error)
 {
     if (!window_ || !window_->windowAdapter)
@@ -666,6 +806,18 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
         if (error) *error = "Vulkan viewport is not yet initialized";
         return false;
     }
+
+    if (loading_)
+    {
+        if (error) *error = "another file is still loading";
+        return false;
+    }
+    beginLoading();
+    struct LoadingGuard
+    {
+        VulkanViewport* v;
+        ~LoadingGuard() { v->endLoading(); }
+    } loadingGuard{this};
 
     saveCurrentView(); // the view of the file being replaced (see setRememberViewPerFile())
 
@@ -780,6 +932,7 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     if (scene_.hflip) setFlipHorizontal(*scene_.hflip);
     if (scene_.vflip) setFlipVertical(*scene_.vflip);
     preferencesBackground_ = PreferencesDialog::loadBackgroundColor();
+    marginColor_ = PreferencesDialog::loadMarginColor();
     loadedImageNames_ = std::move(newLoadedImageNames);
     loadedImageFrameSel_ = std::move(newLoadedImageFrameSel);
     markFrameImage_ = std::move(newMarkFrameImage);
@@ -797,6 +950,8 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
                 currentImageIndex_ = *saved;
                 spdlog::info("Restored remembered image {}/{}", currentImageIndex_ + 1, loadedImageNames_.size());
             }
+    predecodeInBackground();
+    endSplashScene();
     decodeCurrentImage();
 
     auto buildStart = std::chrono::steady_clock::now();
@@ -1230,6 +1385,20 @@ bool VulkanViewport::eventFilter(QObject* watched, QEvent* event)
 {
     if (watched == container_ && event->type() == QEvent::Resize) handleViewportResize();
     if (watched == clip_ && event->type() == QEvent::Resize) layoutRenderWindow();
+    if (watched == clip_ && event->type() == QEvent::Resize && splashMode_ && !loading_)
+    {
+        // Repaint the splash for the new size, once the resize has settled.
+        if (!splashResizeTimer_)
+        {
+            splashResizeTimer_ = new QTimer(this);
+            splashResizeTimer_->setSingleShot(true);
+            splashResizeTimer_->setInterval(150);
+            connect(splashResizeTimer_, &QTimer::timeout, this, [this] {
+                if (splashMode_ && !loading_) showSplashScene();
+            });
+        }
+        splashResizeTimer_->start();
+    }
     if (watched == window_)
     {
         switch (event->type())
@@ -3474,6 +3643,12 @@ void VulkanViewport::setTransparencyBackground(TransparencyBackground mode)
     applyBackground();
 }
 
+void VulkanViewport::setMarginColor(const QColor& color)
+{
+    marginColor_ = color;
+    applyBackground();
+}
+
 void VulkanViewport::setPreferencesBackground(const QColor& color)
 {
     preferencesBackground_ = color;
@@ -3486,6 +3661,14 @@ void VulkanViewport::setPreferencesBackground(const QColor& color)
 // transparency mode.
 void VulkanViewport::applyBackground()
 {
+    if (splashMode_)
+    {
+        // The splash image is opaque and spans the window: the margin is its own page color.
+        checkerboard_ = 0;
+        if (viewer_ && viewer_->viewParams) viewer_->viewParams->setCheckerboard(0);
+        setBackgroundColor(SplashPainter::backgroundColor());
+        return;
+    }
     const bool themeDark = QGuiApplication::palette().color(QPalette::Base).lightnessF() < 0.5;
     const QColor themeColor = themeDark ? QColor::fromRgbF(0.12f, 0.12f, 0.12f) : QColor(Qt::white);
 
@@ -3497,25 +3680,36 @@ void VulkanViewport::applyBackground()
         isGiv = isGiv || ext == ".giv" || ext == ".marks";
     }
 
-    QColor color = preferencesBackground_;
-    int checker = 0;
+    // Around the image: the margin color - the user's override, else a neutral
+    // grey that stays visibly apart from both the page and the image's own
+    // backdrop, so the edge of the image is easy to see. A .giv file keeps
+    // giv's single background instead.
+    const QColor autoMargin = themeDark ? QColor::fromRgbF(0.07f, 0.07f, 0.07f) : QColor::fromRgbF(0.72f, 0.72f, 0.72f);
+    const QColor margin = marginColor_.isValid() ? marginColor_ : autoMargin;
+
+    QColor color = preferencesBackground_; // clear color (everything outside the image)
+    int checker = 0;                       // what is drawn under translucent pixels of the image itself
     if (isGiv)
     {
         if (scene_.background) color = QColor::fromRgbF(scene_.background->r, scene_.background->g, scene_.background->b);
     }
     else
     {
+        QColor behind = themeColor;
         switch (transparencyBackground_)
         {
-        case TransparencyBackground::Checkerboard:
-            color = themeColor;
-            checker = themeDark ? 2 : 1;
-            break;
-        case TransparencyBackground::Theme: color = themeColor; break;
-        case TransparencyBackground::Preferences: break;
-        case TransparencyBackground::White: color = Qt::white; break;
-        case TransparencyBackground::Black: color = Qt::black; break;
+        case TransparencyBackground::Checkerboard: checker = themeDark ? 2 : 1; break;
+        case TransparencyBackground::Theme: break;
+        case TransparencyBackground::Preferences: behind = preferencesBackground_; break;
+        case TransparencyBackground::White: behind = Qt::white; break;
+        case TransparencyBackground::Black: behind = Qt::black; break;
         }
+        if (checker == 0)
+        {
+            const auto q = [](double v) { return static_cast<int>(std::lround(std::clamp(v, 0.0, 1.0) * 127.0)); };
+            checker = 100 + ((q(behind.redF()) << 14) | (q(behind.greenF()) << 7) | q(behind.blueF()));
+        }
+        color = margin;
     }
     checkerboard_ = checker;
     if (viewer_ && viewer_->viewParams) viewer_->viewParams->setCheckerboard(checker);

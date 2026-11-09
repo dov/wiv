@@ -40,6 +40,8 @@ public:
 
     // Reads current values from QSettings ("wiv", "wiv").
     static QColor loadBackgroundColor();
+    // Margin around a raster image / SVG; an invalid color means automatic (theme-aware grey).
+    static QColor loadMarginColor();
     static int loadMsaaSamples();
     static MouseSettings loadMouseSettings();
     static NavigationView loadNavigationView();
@@ -60,12 +62,16 @@ public:
 
 signals:
     void backgroundColorChanged(const QColor& color);
+    void marginColorChanged(const QColor& color); // invalid = automatic
     void mouseSettingsChanged(const MouseSettings& m);
     void navigationViewChanged(NavigationView v);
 
 private:
     QColor backgroundColor_;
     QPushButton* colorButton_ = nullptr;
+    QColor marginColor_; // invalid = automatic
+    QPushButton* marginButton_ = nullptr;
+    QCheckBox* marginAutoCheck_ = nullptr;
     QComboBox* msaaCombo_ = nullptr;
     QComboBox* navViewCombo_ = nullptr;
     QComboBox* wheelCombo_ = nullptr;

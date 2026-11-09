@@ -47,6 +47,12 @@ QColor PreferencesDialog::loadBackgroundColor()
     return s.value("backgroundColor", QColor(Qt::white)).value<QColor>();
 }
 
+QColor PreferencesDialog::loadMarginColor()
+{
+    auto s = settings();
+    return s.contains("marginColor") ? s.value("marginColor").value<QColor>() : QColor();
+}
+
 MouseSettings PreferencesDialog::loadMouseSettings()
 {
     auto s = settings();
@@ -226,6 +232,33 @@ PreferencesDialog::PreferencesDialog(const QList<QAction*>& bindable, QWidget* p
         }
     });
 
+    marginColor_ = loadMarginColor();
+    marginButton_ = new QPushButton(this);
+    marginAutoCheck_ = new QCheckBox("Automatic (follows the theme)", this);
+    marginAutoCheck_->setChecked(!marginColor_.isValid());
+    if (!marginColor_.isValid()) marginColor_ = QColor(128, 128, 128);
+    auto updateMargin = [this]() {
+        marginButton_->setEnabled(!marginAutoCheck_->isChecked());
+        marginButton_->setStyleSheet(QString("background-color: %1").arg(marginColor_.name()));
+        emit marginColorChanged(marginAutoCheck_->isChecked() ? QColor() : marginColor_);
+    };
+    marginButton_->setEnabled(!marginAutoCheck_->isChecked());
+    marginButton_->setStyleSheet(QString("background-color: %1").arg(marginColor_.name()));
+    connect(marginAutoCheck_, &QCheckBox::toggled, this, updateMargin);
+    connect(marginButton_, &QPushButton::clicked, this, [this, updateMargin]() {
+        QColor c = QColorDialog::getColor(marginColor_, this, "Margin Color");
+        if (c.isValid())
+        {
+            marginColor_ = c;
+            updateMargin();
+        }
+    });
+    auto marginRow = new QWidget(this);
+    auto marginLayout = new QHBoxLayout(marginRow);
+    marginLayout->setContentsMargins(0, 0, 0, 0);
+    marginLayout->addWidget(marginButton_, 1);
+    marginLayout->addWidget(marginAutoCheck_);
+
     msaaCombo_ = new QComboBox(this);
     msaaCombo_->addItem("Off (1x)", 1);
     msaaCombo_->addItem("2x", 2);
@@ -237,6 +270,7 @@ PreferencesDialog::PreferencesDialog(const QList<QAction*>& bindable, QWidget* p
 
     auto form = new QFormLayout();
     form->addRow("Background color:", colorButton_);
+    form->addRow("Margin around images:", marginRow);
     form->addRow("Antialiasing (restart required):", msaaCombo_);
 
     navViewCombo_ = new QComboBox(this);
@@ -601,6 +635,10 @@ void PreferencesDialog::save()
 {
     auto s = settings();
     s.setValue("backgroundColor", backgroundColor_);
+    if (marginAutoCheck_->isChecked())
+        s.remove("marginColor");
+    else
+        s.setValue("marginColor", marginColor_);
     s.setValue("msaaSamples", msaaSamples());
     s.setValue("startup/action", startupCombo_->currentData().toInt());
     s.setValue("view/theme", themeCombo_->currentData().toInt());

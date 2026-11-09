@@ -1328,6 +1328,7 @@ void populateScene(const NSVGimage* svgConst, const SvgNode* dom, const std::str
             Dataset& ds = scene.datasets.back();
             ds.pathName = shape->id[0] ? shape->id : ("svg shape " + std::to_string(shapeIndex));
             ds.color = paintColor(shape->fill, shape->opacity);
+            ds.fromSvg = true; // also marks the file as an SVG for the transparency backdrop (see SceneBuilder)
             ds.doDrawLines = false;
             ds.doDrawPolygon = true;
             ds.doDrawMarks = false;

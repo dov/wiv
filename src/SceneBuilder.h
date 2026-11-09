@@ -95,7 +95,8 @@ public:
     float lineWidthZoom() const { return lineWidthZoom_; }
 
     // Transparency checkerboard under an image / SVG (checker.vert): 0 = off,
-    // 1 = light shades, 2 = dark shades. Second vec4's .w; takes effect on the
+    // 1 = light shades, 2 = dark shades, >= 100 a flat colour
+    // (100 + 7-bit r,g,b packed, see checker.vert). Second vec4's .w; takes effect on the
     // next update() call.
     void setCheckerboard(int mode) { checkerboard_ = mode; }
     int checkerboard() const { return checkerboard_; }
