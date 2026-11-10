@@ -28,7 +28,9 @@
 #include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
+#include <chrono>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -39,6 +41,25 @@ namespace
 // libnetcdf (and the HDF5 under it) is not reliably thread-safe; the host
 // decodes on several worker threads, so serialize every call into it.
 std::mutex g_ncMutex;
+
+// Per-thread breakdown of the last load, for wiv_plugin_last_timing().
+thread_local std::string t_timing;
+
+struct PhaseTimer
+{
+    using Clock = std::chrono::steady_clock;
+    Clock::time_point last = Clock::now();
+    // Appends "name X ms" for the time since the previous mark.
+    void mark(const char* name)
+    {
+        const auto now = Clock::now();
+        char buf[64];
+        std::snprintf(buf, sizeof buf, "%s%s %.1f", t_timing.empty() ? "" : ", ", name,
+                      std::chrono::duration<double, std::milli>(now - last).count());
+        t_timing += buf;
+        last = now;
+    }
+};
 
 bool hasExtension(const std::string& filename, const char* ext)
 {
@@ -254,6 +275,8 @@ WivPluginImage* fail(WivPluginImage* img, char** error_msg, const char* fmt, con
 
 WivPluginImage* loadVariable(int ncid, const Candidate& c, char** error_msg)
 {
+    PhaseTimer timer;
+    t_timing.clear();
     const int w = int(c.dims[c.ndims - 1]);
     const int h = int(c.dims[c.ndims - 2]);
     size_t depthSz = 1;
@@ -278,8 +301,10 @@ WivPluginImage* loadVariable(int ncid, const Candidate& c, char** error_msg)
     else if (!packed && c.type == NC_USHORT)
         st = WIV_SAMPLE_U16;
 
+    timer.mark("attrs");
     WivPluginImage* img = wiv_plugin::allocImage(w, h);
     wiv_plugin::allocSamples(img, st, depth);
+    timer.mark("alloc");
     if (!img->samples)
         return fail(img, error_msg, "netcdf: out of memory reading %s", c.name);
 
@@ -290,6 +315,7 @@ WivPluginImage* loadVariable(int ncid, const Candidate& c, char** error_msg)
         rc = nc_get_var_ushort(ncid, c.varid, static_cast<unsigned short*>(img->samples));
     else
         rc = nc_get_var_float(ncid, c.varid, static_cast<float*>(img->samples));
+    timer.mark("nc_get_var");
     // NC_ERANGE: some values didn't fit the conversion; the rest were still read.
     if (rc != NC_NOERR && rc != NC_ERANGE)
         return fail(img, error_msg, "netcdf: failed to read variable %s", c.name);
@@ -312,6 +338,7 @@ WivPluginImage* loadVariable(int ncid, const Candidate& c, char** error_msg)
         }
     }
 
+    timer.mark("scale/offset/nan");
     if (rowsAscendNorthward(ncid, c))
     {
         if (st == WIV_SAMPLE_U8)
@@ -322,6 +349,7 @@ WivPluginImage* loadVariable(int ncid, const Candidate& c, char** error_msg)
             flipRows(static_cast<float*>(img->samples), w, h, depth);
     }
 
+    timer.mark("flip");
     // Slice-0 preview, scaled to its own range (the host redraws from the samples).
     float lo, hi;
     if (st == WIV_SAMPLE_U8)
@@ -342,6 +370,7 @@ WivPluginImage* loadVariable(int ncid, const Candidate& c, char** error_msg)
         minMax(p, plane, lo, hi);
         fillPreview(img, p, lo, hi);
     }
+    timer.mark("preview");
     return img;
 }
 
@@ -393,6 +422,11 @@ extern "C" WivPluginImage* wiv_plugin_load_page(const char* filename, int page, 
         return nullptr;
     }
     return loadVariable(nf.ncid, nf.candidates[page], error_msg);
+}
+
+extern "C" const char* wiv_plugin_last_timing(void)
+{
+    return t_timing.empty() ? nullptr : t_timing.c_str();
 }
 
 extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** error_msg)

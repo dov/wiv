@@ -27,6 +27,7 @@
 #endif
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include "PathUtils.h"
@@ -56,6 +57,7 @@ using SupportsFileFn = bool (*)(const char*);
 using SniffFileFn = bool (*)(const char*);
 using LoadImageFn = WivPluginImage* (*)(const char*, char**);
 using PageCountFn = int (*)(const char*);
+using LastTimingFn = const char* (*)();
 using LoadPageFn = WivPluginImage* (*)(const char*, int, char**);
 using LoadPreviewFn = WivPluginImage* (*)(const char*, int, int*, int*, char**);
 using LoadCancellableFn = WivPluginImage* (*)(const char*, int, const volatile int*, char**);
@@ -74,6 +76,7 @@ struct Plugin
     SniffFileFn sniffFile = nullptr; // optional
     LoadImageFn loadImage = nullptr;
     PageCountFn pageCount = nullptr; // optional, with loadPage
+    LastTimingFn lastTiming = nullptr; // optional, diagnostics
     LoadPageFn loadPage = nullptr;
     LoadCancellableFn loadCancellable = nullptr; // optional
     LoadPreviewFn loadPreview = nullptr;         // optional
@@ -273,6 +276,7 @@ std::vector<Plugin> scanPlugins()
         plugin.sniffFile = reinterpret_cast<SniffFileFn>(dlsym(handle, "wiv_plugin_sniff_file"));
         plugin.loadImage = reinterpret_cast<LoadImageFn>(dlsym(handle, "wiv_plugin_load_image"));
         plugin.pageCount = reinterpret_cast<PageCountFn>(dlsym(handle, "wiv_plugin_page_count"));
+        plugin.lastTiming = reinterpret_cast<LastTimingFn>(dlsym(handle, "wiv_plugin_last_timing"));
         plugin.loadPage = reinterpret_cast<LoadPageFn>(dlsym(handle, "wiv_plugin_load_page"));
         if (!plugin.pageCount || !plugin.loadPage) plugin.pageCount = nullptr, plugin.loadPage = nullptr;
         plugin.loadCancellable = reinterpret_cast<LoadCancellableFn>(dlsym(handle, "wiv_plugin_load_page_cancellable"));
@@ -313,6 +317,9 @@ std::vector<Plugin>& loadedPlugins()
 
 std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename, int page, const volatile int* cancel)
 {
+    using Clock = std::chrono::steady_clock;
+    const auto msSince = [](Clock::time_point t) { return std::chrono::duration<double, std::milli>(Clock::now() - t).count(); };
+    const auto t0 = Clock::now();
     const auto cancelled = [cancel]() { return cancel && *cancel != 0; };
     // Sniffing opens the file, so only fall back to it once no plugin
     // claims the name; a suffix match is still preferred.
@@ -325,9 +332,11 @@ std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename, in
 
         char* errorMsg = nullptr;
         const int pageCount = plugin.pageCount ? std::max(1, plugin.pageCount(filename.c_str())) : 1;
+        const double msPageCount = msSince(t0);
         if (cancelled())
             return std::nullopt;
         const int wantedPage = (plugin.loadPage && page > 0 && page < pageCount) ? page : 0;
+        const auto tPlugin = Clock::now();
         WivPluginImage* img = plugin.loadCancellable ? plugin.loadCancellable(filename.c_str(), wantedPage, cancel, &errorMsg)
                                : wantedPage > 0      ? plugin.loadPage(filename.c_str(), wantedPage, &errorMsg)
                                                      : plugin.loadImage(filename.c_str(), &errorMsg);
@@ -350,6 +359,9 @@ std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename, in
             return std::nullopt;
         }
 
+        const double msPlugin = msSince(tPlugin);
+        const std::string pluginTiming = plugin.lastTiming && plugin.lastTiming() ? plugin.lastTiming() : "";
+        const auto tCopy = Clock::now();
         LoadedImage result;
         result.width = img->width;
         result.height = img->height;
@@ -364,11 +376,21 @@ std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename, in
             const auto* samplesBytes = static_cast<const uint8_t*>(img->samples);
             result.samples.assign(samplesBytes, samplesBytes + bytes);
         }
+        const double msCopy = msSince(tCopy);
         rememberFormat(filename, plugin.format);
         const int orientation = img->orientation;
+        const auto tFree = Clock::now();
         plugin.freeImage(img);
+        const double msFree = msSince(tFree);
+        const auto tOrient = Clock::now();
         applyOrientation(result, orientation);
+        const double msOrient = msSince(tOrient);
+        const auto tMinMax = Clock::now();
         computeSampleMinMax(result);
+        spdlog::info("[perf] ImagePluginHost::load {} {}x{}: total {:.1f} ms = page count {:.1f}, plugin {:.1f}, copy into host {:.1f}, "
+                     "free {:.1f}, orientation {:.1f}, min/max {:.1f}{}{}",
+                     plugin.format, result.width, result.height, msSince(t0), msPageCount, msPlugin, msCopy, msFree, msOrient,
+                     msSince(tMinMax), pluginTiming.empty() ? "" : "; plugin: ", pluginTiming);
         return result;
     }
 

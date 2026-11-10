@@ -93,6 +93,11 @@ extern "C"
     WIV_PLUGIN_API int wiv_plugin_page_count(const char* filename);
     WIV_PLUGIN_API WivPluginImage* wiv_plugin_load_page(const char* filename, int page, char** error_msg);
 
+    // OPTIONAL, diagnostics only: a one-line breakdown of where the calling
+    // thread's most recent load spent its time (the host logs it as-is), or
+    // NULL. The string stays valid until that thread's next load.
+    WIV_PLUGIN_API const char* wiv_plugin_last_timing(void);
+
     // OPTIONAL, for plugins whose decode can take long enough that the host
     // wants to abandon it (background prefetch of a neighbour the user has
     // already navigated away from). Like wiv_plugin_load_page (`page` is 0

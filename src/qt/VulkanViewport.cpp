@@ -54,6 +54,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <mutex>
+#include <thread>
 #include <functional>
 #include <string>
 
@@ -777,22 +779,62 @@ void VulkanViewport::endLoading()
     }
 }
 
+namespace
+{
+std::array<uint32_t, 256> histogramOf(const giv::LoadedImage& img, size_t first, size_t last);
+std::pair<float, float> clippedRangeOf(const giv::LoadedImage& img, int slice);
+} // namespace
+
 void VulkanViewport::predecodeInBackground()
 {
     if (loadedImageNames_.empty()) return;
     const std::string name = loadedImageNames_[static_cast<size_t>(std::clamp(currentImageIndex_, 0, static_cast<int>(loadedImageNames_.size()) - 1))];
     if (imageCache_.contains(name)) return;
 
-    // Only a slow decode shows "Loading..." (if the splash is what is on screen): after a short delay.
+    // Only a slow decode shows "Loading...", after a short delay.
     QTimer showTimer;
     showTimer.setSingleShot(true);
-    connect(&showTimer, &QTimer::timeout, this, [this] { setSplashLoading(true); });
+    connect(&showTimer, &QTimer::timeout, this, [this] {
+        if (!splashMode_)
+        {
+            // Another image (or nothing yet, for a command-line file loaded
+            // before the event loop ran) is what's in the window: put the
+            // splash up in its place for the wait. scene_ already holds the
+            // incoming file by now, so build the splash against an empty one.
+            giv::SceneData incoming;
+            std::swap(scene_, incoming);
+            showSplashScene();
+            std::swap(scene_, incoming);
+        }
+        setSplashLoading(true);
+    });
     showTimer.start(200);
 
     QEventLoop loop;
     QFutureWatcher<std::optional<giv::LoadedImage>> watcher;
     connect(&watcher, &QFutureWatcher<std::optional<giv::LoadedImage>>::finished, &loop, &QEventLoop::quit);
-    watcher.setFuture(QtConcurrent::run([name] { return giv::ImagePluginHost::load(name, 0); }));
+    // The histogram and auto-contrast range of a raw-sample image are what
+    // the GUI thread would otherwise compute (seconds, for a huge image) the
+    // moment the image arrives: do them here, behind the animating splash.
+    const bool wantClip = autoContrast_;
+    watcher.setFuture(QtConcurrent::run([this, name, wantClip] {
+        using Clock = std::chrono::steady_clock;
+        const auto ms = [](Clock::time_point a, Clock::time_point b) { return std::chrono::duration<double, std::milli>(b - a).count(); };
+        const auto t0 = Clock::now();
+        auto img = giv::ImagePluginHost::load(name, 0);
+        const auto t1 = Clock::now();
+        if (img && img->sampleType != WIV_SAMPLE_NONE)
+        {
+            const size_t plane = static_cast<size_t>(img->width) * img->height;
+            sampleStatsCache_.putHistogram(img->samples, 0, histogramOf(*img, 0, plane));
+            const auto t2 = Clock::now();
+            if (wantClip) sampleStatsCache_.putClip(img->samples, 0, clippedRangeOf(*img, 0));
+            const auto t3 = Clock::now();
+            spdlog::info("[perf] predecode worker: load {:.1f} ms, histogram {:.1f} ms, auto-contrast range {:.1f} ms", ms(t0, t1),
+                         ms(t1, t2), ms(t2, t3));
+        }
+        return img;
+    }));
     if (!watcher.isFinished()) loop.exec(QEventLoop::ExcludeUserInputEvents);
     showTimer.stop();
     if (auto img = watcher.result()) imageCache_.put(name, 0, std::move(*img));
@@ -2544,6 +2586,147 @@ void VulkanViewport::setGamma(float gamma)
     emit contrastChanged();
 }
 
+namespace
+{
+
+// Runs fn(first, last) over [begin, end) split across the hardware threads
+// (one call when the range is small).
+template <typename Fn>
+void parallelRanges(size_t begin, size_t end, Fn fn)
+{
+    const size_t n = end - begin;
+    const size_t threads = n < (size_t(1) << 20) ? 1 : std::min<size_t>(8, std::max(1u, std::thread::hardware_concurrency()));
+    if (threads == 1)
+    {
+        fn(begin, end);
+        return;
+    }
+    std::vector<std::thread> pool;
+    for (size_t t = 0; t < threads; ++t)
+        pool.emplace_back([=, &fn] { fn(begin + n * t / threads, begin + n * (t + 1) / threads); });
+    for (auto& th : pool) th.join();
+}
+
+// Calls f(const T* samples, size_t count) with the image's samples as their real type.
+template <typename F>
+void withSamples(const giv::LoadedImage& img, size_t first, size_t last, F f)
+{
+    switch (img.sampleType)
+    {
+        case WIV_SAMPLE_U8: f(img.samples.data() + first, last - first); break;
+        case WIV_SAMPLE_U16: f(reinterpret_cast<const uint16_t*>(img.samples.data()) + first, last - first); break;
+        case WIV_SAMPLE_FLOAT: f(reinterpret_cast<const float*>(img.samples.data()) + first, last - first); break;
+        default: break;
+    }
+}
+
+std::array<uint32_t, 256> histogramOf(const giv::LoadedImage& img, size_t first, size_t last)
+{
+    std::array<uint32_t, 256> histogram{};
+    if (img.sampleType == WIV_SAMPLE_NONE) return histogram;
+    const float range = img.sampleMax - img.sampleMin;
+    if (range == 0.0f)
+    {
+        // Every sample lands in bin 0 (as the general formula would put them).
+        histogram[0] = static_cast<uint32_t>(last - first);
+        return histogram;
+    }
+    const double lo = img.sampleMin, scale = 255.0 / range;
+    std::mutex mergeMutex;
+    withSamples(img, first, last, [&](const auto* p, size_t count) {
+        parallelRanges(0, count, [&](size_t b, size_t e) {
+            std::array<uint32_t, 256> local{};
+            for (size_t i = b; i < e; ++i)
+            {
+                const double v = static_cast<double>(p[i]);
+                if (!std::isfinite(v)) continue;
+                const int idx = static_cast<int>(std::floor((v - lo) * scale));
+                if (idx >= 0 && idx < 256) ++local[static_cast<size_t>(idx)];
+            }
+            std::lock_guard<std::mutex> lock(mergeMutex);
+            for (size_t k = 0; k < 256; ++k) histogram[k] += local[k];
+        });
+    });
+    return histogram;
+}
+
+std::pair<float, float> clippedRangeOf(const giv::LoadedImage& img, int slice)
+{
+    const std::pair<float, float> full{img.sampleMin, img.sampleMax};
+    if (img.sampleType == WIV_SAMPLE_NONE) return full;
+
+    constexpr double kClipFraction = 0.001;
+    const size_t pixelCount = static_cast<size_t>(img.width) * img.height;
+    const size_t first = pixelCount * static_cast<size_t>(slice);
+
+    // Small images: the exact percentiles of the finite samples.
+    constexpr size_t kExactMax = size_t(4) << 20;
+    // Bigger ones: bin the samples (one bin per value for 8/16-bit data, so
+    // still exact; 64k bins across the value range for floats) rather than
+    // copy and partially sort a buffer as large as the image.
+    constexpr size_t kBins = 65536;
+    if (img.sampleType == WIV_SAMPLE_FLOAT && pixelCount <= kExactMax)
+    {
+        const float* p = reinterpret_cast<const float*>(img.samples.data()) + first;
+        std::vector<float> v;
+        v.reserve(pixelCount);
+        for (size_t i = 0; i < pixelCount; ++i)
+            if (std::isfinite(p[i])) v.push_back(p[i]);
+        if (v.size() < 2) return full;
+        const size_t n = v.size();
+        const size_t loIdx = static_cast<size_t>(kClipFraction * (n - 1));
+        const size_t hiIdx = n - 1 - loIdx;
+        std::nth_element(v.begin(), v.begin() + loIdx, v.end());
+        const float lo = v[loIdx];
+        std::nth_element(v.begin(), v.begin() + hiIdx, v.end());
+        const float hi = v[hiIdx];
+        return hi > lo ? std::pair<float, float>{lo, hi} : full;
+    }
+
+    const bool isFloat = img.sampleType == WIV_SAMPLE_FLOAT;
+    const double vmin = isFloat ? img.sampleMin : 0.0;
+    const double vspan = isFloat ? double(img.sampleMax) - img.sampleMin : 1.0;
+    const double binScale = isFloat && vspan > 0 ? (kBins - 1) / vspan : 1.0;
+    std::vector<uint64_t> bins(img.sampleType == WIV_SAMPLE_U8 ? 256 : kBins, 0);
+    std::mutex mergeMutex;
+    withSamples(img, first, first + pixelCount, [&](const auto* p, size_t count) {
+        parallelRanges(0, count, [&](size_t b, size_t e) {
+            std::vector<uint32_t> local(bins.size(), 0);
+            for (size_t i = b; i < e; ++i)
+            {
+                const double v = static_cast<double>(p[i]);
+                if (!std::isfinite(v)) continue;
+                const double pos = isFloat ? (v - vmin) * binScale : v;
+                const size_t bin = pos <= 0 ? 0 : std::min(bins.size() - 1, static_cast<size_t>(pos));
+                ++local[bin];
+            }
+            std::lock_guard<std::mutex> lock(mergeMutex);
+            for (size_t k = 0; k < local.size(); ++k) bins[k] += local[k];
+        });
+    });
+    uint64_t n = 0;
+    for (uint64_t c : bins) n += c;
+    if (n < 2) return full;
+    const uint64_t loIdx = static_cast<uint64_t>(kClipFraction * (n - 1));
+    const uint64_t hiIdx = n - 1 - loIdx;
+    auto valueAt = [&](uint64_t idx) {
+        uint64_t seen = 0;
+        for (size_t k = 0; k < bins.size(); ++k)
+        {
+            seen += bins[k];
+            if (seen > idx) return isFloat ? static_cast<float>(vmin + (k + 0.5) / binScale) : static_cast<float>(k);
+        }
+        return static_cast<float>(img.sampleMax);
+    };
+    const float lo = valueAt(loIdx), hi = valueAt(hiIdx);
+    return hi > lo ? std::pair<float, float>{lo, hi} : full; // mostly-constant image: clipping would collapse the window
+}
+
+} // namespace
+
+// The histogram and auto-contrast range of a big image take seconds to
+// compute, and several panels ask for them in a row: remember the last ones,
+// per sample buffer and slice (-1: whole volume for the histogram).
 std::array<uint32_t, 256> VulkanViewport::computeHistogram(bool wholeVolume) const
 {
     std::array<uint32_t, 256> histogram{};
@@ -2552,23 +2735,13 @@ std::array<uint32_t, 256> VulkanViewport::computeHistogram(bool wholeVolume) con
     const giv::LoadedImage& img = loadedImages_.front();
     if (img.sampleType == WIV_SAMPLE_NONE) return histogram;
 
-    const float range = img.sampleMax - img.sampleMin;
+    const int slice = wholeVolume ? -1 : currentSlice_;
+    if (const auto* hit = sampleStatsCache_.findHistogram(img.samples, slice)) return *hit;
     const size_t pixelCount = static_cast<size_t>(img.width) * img.height;
     const size_t first = wholeVolume ? 0 : pixelCount * static_cast<size_t>(currentSlice_);
     const size_t last = wholeVolume ? pixelCount * static_cast<size_t>(std::max(1, img.depth)) : first + pixelCount;
-    for (size_t i = first; i < last; ++i)
-    {
-        double v;
-        switch (img.sampleType)
-        {
-            case WIV_SAMPLE_U8: v = img.samples[i]; break;
-            case WIV_SAMPLE_U16: v = reinterpret_cast<const uint16_t*>(img.samples.data())[i]; break;
-            case WIV_SAMPLE_FLOAT: v = reinterpret_cast<const float*>(img.samples.data())[i]; break;
-            default: v = 0.0; break;
-        }
-        int idx = range != 0.0f ? static_cast<int>(std::floor((v - img.sampleMin) / range * 255.0)) : 0;
-        if (idx >= 0 && idx < 256) ++histogram[static_cast<size_t>(idx)];
-    }
+    histogram = histogramOf(img, first, last);
+    sampleStatsCache_.putHistogram(img.samples, slice, histogram);
     return histogram;
 }
 
@@ -2576,36 +2749,11 @@ std::pair<float, float> VulkanViewport::clippedRange() const
 {
     if (loadedImages_.empty()) return {0.0f, 1.0f};
     const giv::LoadedImage& img = loadedImages_.front();
-    const std::pair<float, float> full{img.sampleMin, img.sampleMax};
-    if (img.sampleType == WIV_SAMPLE_NONE) return full;
-
-    constexpr double kClipFraction = 0.001;
-    const size_t pixelCount = static_cast<size_t>(img.width) * img.height;
-    const size_t first = pixelCount * static_cast<size_t>(currentSlice_);
-    std::vector<float> v;
-    v.reserve(pixelCount);
-    for (size_t i = first; i < first + pixelCount; ++i)
-    {
-        float x;
-        switch (img.sampleType)
-        {
-            case WIV_SAMPLE_U8: x = img.samples[i]; break;
-            case WIV_SAMPLE_U16: x = reinterpret_cast<const uint16_t*>(img.samples.data())[i]; break;
-            case WIV_SAMPLE_FLOAT: x = reinterpret_cast<const float*>(img.samples.data())[i]; break;
-            default: x = 0.0f; break;
-        }
-        if (std::isfinite(x)) v.push_back(x);
-    }
-    if (v.size() < 2) return full;
-    const size_t n = v.size();
-    const size_t loIdx = static_cast<size_t>(kClipFraction * (n - 1));
-    const size_t hiIdx = n - 1 - loIdx;
-    std::nth_element(v.begin(), v.begin() + loIdx, v.end());
-    const float lo = v[loIdx];
-    std::nth_element(v.begin(), v.begin() + hiIdx, v.end());
-    const float hi = v[hiIdx];
-    if (!(hi > lo)) return full; // mostly-constant image: clipping would collapse the window
-    return {lo, hi};
+    if (img.sampleType == WIV_SAMPLE_NONE) return {img.sampleMin, img.sampleMax};
+    if (const auto* hit = sampleStatsCache_.findClip(img.samples, currentSlice_)) return *hit;
+    const auto r = clippedRangeOf(img, currentSlice_);
+    sampleStatsCache_.putClip(img.samples, currentSlice_, r);
+    return r;
 }
 
 void VulkanViewport::decodeCurrentImage()

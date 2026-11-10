@@ -39,6 +39,7 @@
 
 #include <algorithm>
 #include <array>
+#include <mutex>
 #include <atomic>
 #include <map>
 #include <memory>
@@ -587,6 +588,58 @@ private:
     QLabel* balloonLabel_ = nullptr; // top-level Qt::ToolTip popup, see BalloonController.h
     // The empty-window / "Loading..." page, shown as an (animated) image in the
     // Vulkan scene - see showSplashScene().
+    // Histogram / auto-contrast results for the current sample buffer (see
+    // computeHistogram()). Keyed by the immutable buffer itself, so a new
+    // image never sees a stale entry. Filled from the decode worker thread too.
+    class SampleStatsCache
+    {
+    public:
+        const std::array<uint32_t, 256>* findHistogram(const giv::PixelBuffer& b, int slice) const
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!matches(b)) return nullptr;
+            for (const auto& h : hists_) if (h.first == slice) return &h.second;
+            return nullptr;
+        }
+        const std::pair<float, float>* findClip(const giv::PixelBuffer& b, int slice) const
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!matches(b)) return nullptr;
+            for (const auto& c : clips_) if (c.first == slice) return &c.second;
+            return nullptr;
+        }
+        void putHistogram(const giv::PixelBuffer& b, int slice, const std::array<uint32_t, 256>& h)
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            reset(b);
+            hists_.emplace_back(slice, h);
+        }
+        void putClip(const giv::PixelBuffer& b, int slice, std::pair<float, float> r)
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            reset(b);
+            clips_.emplace_back(slice, r);
+        }
+    private:
+        bool matches(const giv::PixelBuffer& b) const
+        {
+            const auto live = buf_.lock();
+            return live && live == b.owner();
+        }
+        void reset(const giv::PixelBuffer& b)
+        {
+            if (matches(b)) return;
+            buf_ = b.owner();
+            hists_.clear();
+            clips_.clear();
+        }
+        mutable std::mutex mutex_;
+        std::weak_ptr<const std::vector<uint8_t>> buf_;
+        std::vector<std::pair<int, std::array<uint32_t, 256>>> hists_;
+        std::vector<std::pair<int, std::pair<float, float>>> clips_;
+    };
+    mutable SampleStatsCache sampleStatsCache_;
+
     SplashPainter splashPainter_;
     bool splashMode_ = false;  // the scene currently shows the splash image
     bool splashLoading_ = false;
