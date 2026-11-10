@@ -28,6 +28,9 @@ namespace giv
 // happens every time one moves from the decode cache to the viewport and on
 // to the texture - then costs a refcount instead of a copy of tens of
 // megabytes. Never modified once built: write a new buffer and assign it.
+// The bytes are either owned (built from a vector) or borrowed from memory
+// that `owner` keeps alive (see adopt(): a plugin's own buffer, taken over
+// without a copy).
 class PixelBuffer
 {
 public:
@@ -35,25 +38,32 @@ public:
     PixelBuffer(std::vector<uint8_t>&& bytes) { *this = std::move(bytes); }
     PixelBuffer& operator=(std::vector<uint8_t>&& bytes)
     {
-        buf_ = std::make_shared<const std::vector<uint8_t>>(std::move(bytes));
+        auto buf = std::make_shared<const std::vector<uint8_t>>(std::move(bytes));
+        data_ = buf->data();
+        size_ = buf->size();
+        owner_ = std::move(buf);
         return *this;
     }
-    void assign(const uint8_t* begin, const uint8_t* end) { buf_ = std::make_shared<const std::vector<uint8_t>>(begin, end); }
-
-    const uint8_t* data() const { return buf_ ? buf_->data() : nullptr; }
-    size_t size() const { return buf_ ? buf_->size() : 0; }
-    bool empty() const { return size() == 0; }
-    const uint8_t& operator[](size_t i) const { return (*buf_)[i]; }
-    const std::vector<uint8_t>& vec() const
+    void assign(const uint8_t* begin, const uint8_t* end) { *this = std::vector<uint8_t>(begin, end); }
+    // Uses `size` bytes at `data` as they are; `owner` keeps them valid and frees them.
+    void adopt(std::shared_ptr<const void> owner, const uint8_t* data, size_t size)
     {
-        static const std::vector<uint8_t> kEmpty;
-        return buf_ ? *buf_ : kEmpty;
+        owner_ = std::move(owner);
+        data_ = data;
+        size_ = size;
     }
+
+    const uint8_t* data() const { return data_; }
+    size_t size() const { return size_; }
+    bool empty() const { return size_ == 0; }
+    const uint8_t& operator[](size_t i) const { return data_[i]; }
     // For handing the bytes to something that must keep them alive (a GPU texture's CPU-side data).
-    const std::shared_ptr<const std::vector<uint8_t>>& owner() const { return buf_; }
+    const std::shared_ptr<const void>& owner() const { return owner_; }
 
 private:
-    std::shared_ptr<const std::vector<uint8_t>> buf_;
+    std::shared_ptr<const void> owner_;
+    const uint8_t* data_ = nullptr;
+    size_t size_ = 0;
 };
 
 struct LoadedImage

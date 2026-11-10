@@ -95,11 +95,11 @@ struct Plugin
 // sensor-order pixels plus an orientation value instead of each
 // reimplementing this. Returns the buffer unchanged (by value-move) if
 // `orientation` is 1 ("normal") or out of range.
-std::vector<uint8_t> reorderBuffer(const std::vector<uint8_t>& in, int w, int h, size_t elemSize,
+std::vector<uint8_t> reorderBuffer(const PixelBuffer& in, int w, int h, size_t elemSize,
                                     int orientation)
 {
     if (orientation <= 1 || orientation > 8 || in.empty())
-        return in;
+        return std::vector<uint8_t>(in.data(), in.data() + in.size());
 
     const bool swapDims = orientation >= 5;
     const int newW = swapDims ? h : w;
@@ -145,8 +145,9 @@ void applyOrientation(LoadedImage& image, int orientation)
     const int w = image.width;
     const int h = image.height;
     if (!image.samples.empty())
-        image.samples = reorderBuffer(image.samples.vec(), w, h, wiv_plugin::sampleTypeSize(image.sampleType), orientation);
-    image.rgba = reorderBuffer(image.rgba.vec(), w, h, 4, orientation);
+        image.samples = reorderBuffer(image.samples, w, h, wiv_plugin::sampleTypeSize(image.sampleType), orientation);
+    if (!image.rgba.empty())
+        image.rgba = reorderBuffer(image.rgba, w, h, 4, orientation);
 
     const bool swapDims = orientation >= 5;
     if (swapDims)
@@ -365,31 +366,33 @@ std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename, in
         LoadedImage result;
         result.width = img->width;
         result.height = img->height;
-        result.rgba.assign(img->rgba, img->rgba + static_cast<size_t>(img->width) * img->height * 4);
         result.sampleType = img->sampleType;
         result.depth = std::max(1, img->depth);
         result.pageCount = pageCount;
+        // The plugin's buffers are taken over as they are (no multi-GB copy);
+        // the plugin's own free runs when the last of them is released.
+        const std::shared_ptr<WivPluginImage> owner(img, [freeImage = plugin.freeImage](WivPluginImage* p) { freeImage(p); });
+        // A raw-sample image may come without its RGBA8 preview (rgba == NULL): it is displayed from the samples.
+        if (img->rgba)
+            result.rgba.adopt(std::shared_ptr<const void>(owner, img->rgba), img->rgba,
+                              static_cast<size_t>(img->width) * img->height * 4);
         if (img->sampleType != WIV_SAMPLE_NONE && img->samples)
         {
             const size_t bytes = static_cast<size_t>(img->width) * img->height * result.depth *
                                   wiv_plugin::sampleTypeSize(img->sampleType);
-            const auto* samplesBytes = static_cast<const uint8_t*>(img->samples);
-            result.samples.assign(samplesBytes, samplesBytes + bytes);
+            result.samples.adopt(std::shared_ptr<const void>(owner, img->samples), static_cast<const uint8_t*>(img->samples), bytes);
         }
         const double msCopy = msSince(tCopy);
         rememberFormat(filename, plugin.format);
         const int orientation = img->orientation;
-        const auto tFree = Clock::now();
-        plugin.freeImage(img);
-        const double msFree = msSince(tFree);
         const auto tOrient = Clock::now();
         applyOrientation(result, orientation);
         const double msOrient = msSince(tOrient);
         const auto tMinMax = Clock::now();
         computeSampleMinMax(result);
-        spdlog::info("[perf] ImagePluginHost::load {} {}x{}: total {:.1f} ms = page count {:.1f}, plugin {:.1f}, copy into host {:.1f}, "
-                     "free {:.1f}, orientation {:.1f}, min/max {:.1f}{}{}",
-                     plugin.format, result.width, result.height, msSince(t0), msPageCount, msPlugin, msCopy, msFree, msOrient,
+        spdlog::info("[perf] ImagePluginHost::load {} {}x{}: total {:.1f} ms = page count {:.1f}, plugin {:.1f}, adopt buffers {:.1f}, "
+                     "orientation {:.1f}, min/max {:.1f}{}{}",
+                     plugin.format, result.width, result.height, msSince(t0), msPageCount, msPlugin, msCopy, msOrient,
                      msSince(tMinMax), pluginTiming.empty() ? "" : "; plugin: ", pluginTiming);
         return result;
     }

@@ -38,7 +38,10 @@ extern "C"
     {
         int width;
         int height;
-        unsigned char* rgba; // width*height*4 bytes, top-to-bottom row order
+        unsigned char* rgba; // width*height*4 bytes, top-to-bottom row order.
+                             // MAY be NULL, but only when sampleType != WIV_SAMPLE_NONE: a
+                             // raw-sample image too large for its preview to be worth the
+                             // memory and time is displayed from `samples` alone.
 
         // EXIF/TIFF Orientation tag value (1-8, see the Exif spec's table),
         // or 1 ("normal", no transform) if the plugin doesn't parse one.

@@ -273,6 +273,9 @@ WivPluginImage* fail(WivPluginImage* img, char** error_msg, const char* fmt, con
     return nullptr;
 }
 
+// Planes above this get no RGBA8 preview (see WivPluginImage::rgba).
+constexpr size_t kPreviewMaxPixels = size_t(4) << 20;
+
 WivPluginImage* loadVariable(int ncid, const Candidate& c, char** error_msg)
 {
     PhaseTimer timer;
@@ -302,7 +305,8 @@ WivPluginImage* loadVariable(int ncid, const Candidate& c, char** error_msg)
         st = WIV_SAMPLE_U16;
 
     timer.mark("attrs");
-    WivPluginImage* img = wiv_plugin::allocImage(w, h);
+    // The host displays from the samples; an RGBA8 preview of a big variable is just wasted time and memory.
+    WivPluginImage* img = wiv_plugin::allocImage(w, h, plane <= kPreviewMaxPixels);
     wiv_plugin::allocSamples(img, st, depth);
     timer.mark("alloc");
     if (!img->samples)
@@ -351,6 +355,11 @@ WivPluginImage* loadVariable(int ncid, const Candidate& c, char** error_msg)
 
     timer.mark("flip");
     // Slice-0 preview, scaled to its own range (the host redraws from the samples).
+    if (!img->rgba)
+    {
+        timer.mark("preview (skipped)");
+        return img;
+    }
     float lo, hi;
     if (st == WIV_SAMPLE_U8)
     {

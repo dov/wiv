@@ -244,6 +244,8 @@ QImage decodeRasterThumbnail(const QString& path)
         return giv::downscaleToFit(full, kThumbnailDecodeSize, kThumbnailDecodeSize);
     }
 
+    // A raw-sample image can come without an RGBA8 preview (and had no usable range to window above).
+    if (loaded->rgba.size() < static_cast<size_t>(loaded->width) * loaded->height * 4) return QImage();
     QImage full(loaded->rgba.data(), loaded->width, loaded->height, loaded->width * 4, QImage::Format_RGBA8888);
     return giv::downscaleToFit(full, kThumbnailDecodeSize, kThumbnailDecodeSize);
 }

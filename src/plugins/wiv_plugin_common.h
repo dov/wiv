@@ -83,12 +83,14 @@ inline std::string asciiSafePath(const char* utf8)
 #else
 inline std::string asciiSafePath(const char* utf8) { return utf8; }
 #endif
-inline WivPluginImage* allocImage(int width, int height)
+// `withPreview` false leaves rgba NULL: for a raw-sample image too big for an
+// RGBA8 preview to be worth its memory and time (see WivPluginImage::rgba).
+inline WivPluginImage* allocImage(int width, int height, bool withPreview = true)
 {
     auto* img = static_cast<WivPluginImage*>(std::malloc(sizeof(WivPluginImage)));
     img->width = width;
     img->height = height;
-    img->rgba = static_cast<unsigned char*>(std::malloc(static_cast<size_t>(width) * height * 4));
+    img->rgba = withPreview ? static_cast<unsigned char*>(std::malloc(static_cast<size_t>(width) * height * 4)) : nullptr;
     img->orientation = 1;
     img->sampleType = WIV_SAMPLE_NONE;
     img->samples = nullptr;

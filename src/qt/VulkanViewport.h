@@ -634,7 +634,7 @@ private:
             clips_.clear();
         }
         mutable std::mutex mutex_;
-        std::weak_ptr<const std::vector<uint8_t>> buf_;
+        std::weak_ptr<const void> buf_;
         std::vector<std::pair<int, std::array<uint32_t, 256>>> hists_;
         std::vector<std::pair<int, std::pair<float, float>>> clips_;
     };
