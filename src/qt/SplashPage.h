@@ -33,6 +33,9 @@ class SplashPainter
 public:
     static QColor backgroundColor() { return QGuiApplication::palette().color(QPalette::Base); }
 
+    // The big line shown while loading (the default is "Loading...").
+    void setLoadingText(const QString& text) { loadingText_ = text; }
+
     // `logical` is the page size in device-independent pixels; the image has
     // logical * dpr pixels (RGBA8888, opaque). `seconds` drives the animation.
     QImage render(QSize logical, qreal dpr, bool loading, double seconds)
@@ -48,6 +51,8 @@ public:
     }
 
 private:
+    QString loadingText_;
+
     void paint(QPainter& p, QSize size, qreal dpr, bool loading, double seconds)
     {
         const int width = size.width(), height = size.height();
@@ -118,7 +123,7 @@ private:
         y += gap;
         p.setFont(big);
         p.setPen(mid);
-        p.drawText(QRect(0, y, width, bigH), Qt::AlignHCenter | Qt::AlignVCenter, QObject::tr("Loading..."));
+        p.drawText(QRect(0, y, width, bigH), Qt::AlignHCenter | Qt::AlignVCenter, loadingText_.isEmpty() ? QObject::tr("Loading...") : loadingText_);
         y += bigH + animGap;
         paintChase(p, mid, QPointF(width / 2.0, y + animSize / 2.0), animSize / 2.0 - 4.0, seconds);
     }

@@ -751,9 +751,30 @@ void VulkanViewport::setSplashLoading(bool loading)
     updateSplashFrame();
 }
 
+// The decode is done, but putting the image on screen (uploading it to the GPU)
+// blocks this thread for a while with nothing able to animate: say so, in a
+// frame presented right now, so the still splash reads as working rather than hung.
+void VulkanViewport::showSplashUploading()
+{
+    if (!splashMode_ || !splashLoading_ || !viewer_) return;
+    if (splashTimer_) splashTimer_->stop();
+    splashPainter_.setLoadingText(tr("Uploading to GPU..."));
+    updateSplashFrame();
+    try
+    {
+        viewer_->request();
+        viewer_->render();
+    }
+    catch (const vsg::Exception& e)
+    {
+        spdlog::warn("could not present the upload notice: {} (VkResult {})", e.message, e.result);
+    }
+}
+
 // A real file is replacing the splash (the scene build that follows draws it).
 void VulkanViewport::endSplashScene()
 {
+    splashPainter_.setLoadingText({});
     if (splashTimer_) splashTimer_->stop();
     splashMode_ = false;
     splashLoading_ = false;
@@ -993,6 +1014,7 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
                 spdlog::info("Restored remembered image {}/{}", currentImageIndex_ + 1, loadedImageNames_.size());
             }
     predecodeInBackground();
+    showSplashUploading();
     endSplashScene();
     decodeCurrentImage();
 

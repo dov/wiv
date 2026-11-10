@@ -653,6 +653,7 @@ private:
     void showSplashScene();
     void updateSplashFrame();
     void setSplashLoading(bool loading);
+    void showSplashUploading();
     void endSplashScene();
     void beginLoading();
     void endLoading();
