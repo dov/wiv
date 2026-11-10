@@ -35,6 +35,8 @@
 #include <limits>
 #include <mutex>
 #include <string>
+#include <thread>
+#include <vector>
 
 namespace giv
 {
@@ -154,42 +156,59 @@ void applyOrientation(LoadedImage& image, int orientation)
         std::swap(image.width, image.height);
 }
 
-// Reads flat sample `idx` (0..width*height*depth) as a double, regardless
-// of sampleType - mirrors giv's giv_image_get_value().
-double sampleValue(const LoadedImage& image, size_t idx)
-{
-    switch (image.sampleType)
-    {
-        case WIV_SAMPLE_U8:
-            return image.samples[idx];
-        case WIV_SAMPLE_U16:
-            return reinterpret_cast<const uint16_t*>(image.samples.data())[idx];
-        case WIV_SAMPLE_FLOAT:
-            return reinterpret_cast<const float*>(image.samples.data())[idx];
-        default:
-            return 0.0;
-    }
-}
-
 // Full linear scan (over every slice) for the image's native-value min/max -
-// mirrors giv's giv_image_get_min_max() (no shortcuts/caching there either).
+// mirrors giv's giv_image_get_min_max() (no shortcuts/caching there either),
+// split over the cores: a big image is a few hundred million samples.
 void computeSampleMinMax(LoadedImage& image)
 {
     if (image.samples.empty())
         return;
 
-    double lo = std::numeric_limits<double>::max();
-    double hi = std::numeric_limits<double>::lowest();
     const size_t count = static_cast<size_t>(image.width) * image.height * image.depth;
-    for (size_t idx = 0; idx < count; ++idx)
+    const size_t threads = count < (size_t(1) << 20) ? 1 : std::min<size_t>(16, std::max(1u, std::thread::hardware_concurrency()));
+    struct Range
     {
-        double v = sampleValue(image, idx);
-        lo = std::min(lo, v);
-        hi = std::max(hi, v);
-    }
+        double lo = std::numeric_limits<double>::max();
+        double hi = std::numeric_limits<double>::lowest();
+    };
+    std::vector<Range> parts(threads);
 
-    image.sampleMin = static_cast<float>(lo);
-    image.sampleMax = static_cast<float>(hi);
+    // NaNs compare false both ways, so they are skipped, as std::min/max did.
+    const auto scan = [&](auto* p, size_t t) {
+        const size_t b = count * t / threads, e = count * (t + 1) / threads;
+        double lo = parts[t].lo, hi = parts[t].hi;
+        for (size_t i = b; i < e; ++i)
+        {
+            const double v = static_cast<double>(p[i]);
+            if (v < lo) lo = v;
+            if (v > hi) hi = v;
+        }
+        parts[t] = {lo, hi};
+    };
+    const auto run = [&](size_t t) {
+        switch (image.sampleType)
+        {
+            case WIV_SAMPLE_U8: scan(image.samples.data(), t); break;
+            case WIV_SAMPLE_U16: scan(reinterpret_cast<const uint16_t*>(image.samples.data()), t); break;
+            case WIV_SAMPLE_FLOAT: scan(reinterpret_cast<const float*>(image.samples.data()), t); break;
+            default: break;
+        }
+    };
+    std::vector<std::thread> pool;
+    for (size_t t = 1; t < threads; ++t)
+        pool.emplace_back(run, t);
+    run(0);
+    for (auto& th : pool)
+        th.join();
+
+    Range all;
+    for (const Range& r : parts)
+    {
+        all.lo = std::min(all.lo, r.lo);
+        all.hi = std::max(all.hi, r.hi);
+    }
+    image.sampleMin = static_cast<float>(all.lo);
+    image.sampleMax = static_cast<float>(all.hi);
 }
 
 // "dicom" from ".../dicom.so", "wiv_dicom.dll" or a debug build's "dicomd.so".

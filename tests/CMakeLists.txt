@@ -11,9 +11,11 @@ add_executable(wiv_unit_tests
   test_markup_svgpath_colormaps.cpp
   test_examples.cpp
   test_downsample.cpp
+  test_plugin_host.cpp
 )
 target_link_libraries(wiv_unit_tests PRIVATE wiv_lib GTest::gtest GTest::gtest_main)
-target_compile_definitions(wiv_unit_tests PRIVATE WIV_EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/examples")
+target_compile_definitions(wiv_unit_tests PRIVATE WIV_EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/examples"
+                                                  WIV_TEST_PLUGIN_DIR="${CMAKE_BINARY_DIR}/plugins")
 add_test(NAME wiv_unit_tests COMMAND wiv_unit_tests)
 set_tests_properties(wiv_unit_tests PROPERTIES LABELS "unit")
 

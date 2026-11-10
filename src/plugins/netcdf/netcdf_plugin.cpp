@@ -23,15 +23,18 @@
 #include "../wiv_plugin_common.h"
 
 #include <netcdf.h>
+#include "netcdf_direct.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <chrono>
 #include <mutex>
+#include <thread>
 #include <string>
 #include <vector>
 
@@ -60,6 +63,24 @@ struct PhaseTimer
         last = now;
     }
 };
+
+// Runs fn(begin, end) over [0, n) on all cores (inline when small).
+template <typename Fn>
+void parallelFor(size_t n, Fn fn)
+{
+    const size_t threads = n < (size_t(1) << 20) ? 1 : std::min<size_t>(16, std::max(1u, std::thread::hardware_concurrency()));
+    if (threads == 1)
+    {
+        fn(size_t(0), n);
+        return;
+    }
+    std::vector<std::thread> pool;
+    for (size_t t = 1; t < threads; ++t)
+        pool.emplace_back([=, &fn] { fn(n * t / threads, n * (t + 1) / threads); });
+    fn(size_t(0), n / threads);
+    for (auto& th : pool)
+        th.join();
+}
 
 bool hasExtension(const std::string& filename, const char* ext)
 {
@@ -240,8 +261,10 @@ void flipRows(T* data, size_t w, size_t h, size_t depth)
     for (size_t d = 0; d < depth; ++d)
     {
         T* slice = data + d * w * h;
-        for (size_t y = 0; y < h / 2; ++y)
-            std::swap_ranges(slice + y * w, slice + (y + 1) * w, slice + (h - 1 - y) * w);
+        parallelFor(h / 2, [&](size_t b, size_t e) {
+            for (size_t y = b; y < e; ++y)
+                std::swap_ranges(slice + y * w, slice + (y + 1) * w, slice + (h - 1 - y) * w);
+        });
     }
 }
 
@@ -276,7 +299,7 @@ WivPluginImage* fail(WivPluginImage* img, char** error_msg, const char* fmt, con
 // Planes above this get no RGBA8 preview (see WivPluginImage::rgba).
 constexpr size_t kPreviewMaxPixels = size_t(4) << 20;
 
-WivPluginImage* loadVariable(int ncid, const Candidate& c, char** error_msg)
+WivPluginImage* loadVariable(int ncid, const char* filename, const Candidate& c, char** error_msg)
 {
     PhaseTimer timer;
     t_timing.clear();
@@ -312,48 +335,88 @@ WivPluginImage* loadVariable(int ncid, const Candidate& c, char** error_msg)
     if (!img->samples)
         return fail(img, error_msg, "netcdf: out of memory reading %s", c.name);
 
-    int rc;
-    if (st == WIV_SAMPLE_U8)
-        rc = nc_get_var_uchar(ncid, c.varid, static_cast<unsigned char*>(img->samples));
-    else if (st == WIV_SAMPLE_U16)
-        rc = nc_get_var_ushort(ncid, c.varid, static_cast<unsigned short*>(img->samples));
-    else
-        rc = nc_get_var_float(ncid, c.varid, static_cast<float*>(img->samples));
-    timer.mark("nc_get_var");
-    // NC_ERANGE: some values didn't fit the conversion; the rest were still read.
-    if (rc != NC_NOERR && rc != NC_ERANGE)
-        return fail(img, error_msg, "netcdf: failed to read variable %s", c.name);
+    const bool flip = rowsAscendNorthward(ncid, c);
+    const float fillF = float(fillValue), missF = float(missingValue);
+    const float sc = float(scale), off = float(offset);
 
-    if (st == WIV_SAMPLE_FLOAT)
+    // Fast path (see netcdf_direct.h): one 2D chunked variable, inflated, scaled and flipped on all cores at once.
+    bool direct = false;
+#if defined(WIV_NETCDF_DIRECT_CHUNKS)
+    if (c.ndims == 2 && !std::getenv("WIV_NETCDF_NO_DIRECT")) // the variable turns the fast path off, for comparing/debugging
     {
-        float* f = static_cast<float*>(img->samples);
-        if (packed)
+        ncdirect::Request req;
+        bool known = true;
+        switch (c.type)
         {
-            const float fillF = float(fillValue), missF = float(missingValue);
-            const float sc = float(scale), off = float(offset);
-            for (size_t i = 0; i < total; ++i)
-            {
-                const float v = f[i];
-                if ((hasFill && v == fillF) || (hasMissing && v == missF))
-                    f[i] = std::nanf("");
-                else
-                    f[i] = v * sc + off;
-            }
+            case NC_BYTE: req.src = ncdirect::SrcKind::I8; break;
+            case NC_UBYTE: req.src = ncdirect::SrcKind::U8; break;
+            case NC_SHORT: req.src = ncdirect::SrcKind::I16; break;
+            case NC_USHORT: req.src = ncdirect::SrcKind::U16; break;
+            case NC_FLOAT: req.src = ncdirect::SrcKind::F32; break;
+            default: known = false;
+        }
+        if (known)
+        {
+            req.path = filename;
+            req.varName = c.name.c_str();
+            req.h = size_t(h);
+            req.w = size_t(w);
+            req.toFloat = st == WIV_SAMPLE_FLOAT;
+            req.packed = packed;
+            req.hasFill = hasFill;
+            req.hasMissing = hasMissing;
+            req.fillF = fillF;
+            req.missF = missF;
+            req.scale = sc;
+            req.offset = off;
+            req.flipRows = flip;
+            req.out = img->samples;
+            direct = ncdirect::read(req);
         }
     }
+#endif
+    timer.mark(direct ? "direct chunk read+convert+flip" : "direct (n/a)");
 
-    timer.mark("scale/offset/nan");
-    if (rowsAscendNorthward(ncid, c))
+    if (!direct)
     {
+        int rc;
         if (st == WIV_SAMPLE_U8)
-            flipRows(static_cast<uint8_t*>(img->samples), w, h, depth);
+            rc = nc_get_var_uchar(ncid, c.varid, static_cast<unsigned char*>(img->samples));
         else if (st == WIV_SAMPLE_U16)
-            flipRows(static_cast<uint16_t*>(img->samples), w, h, depth);
+            rc = nc_get_var_ushort(ncid, c.varid, static_cast<unsigned short*>(img->samples));
         else
-            flipRows(static_cast<float*>(img->samples), w, h, depth);
-    }
+            rc = nc_get_var_float(ncid, c.varid, static_cast<float*>(img->samples));
+        timer.mark("nc_get_var");
+        // NC_ERANGE: some values didn't fit the conversion; the rest were still read.
+        if (rc != NC_NOERR && rc != NC_ERANGE)
+            return fail(img, error_msg, "netcdf: failed to read variable %s", c.name);
 
-    timer.mark("flip");
+        if (st == WIV_SAMPLE_FLOAT && packed)
+        {
+            float* f = static_cast<float*>(img->samples);
+            parallelFor(total, [&](size_t b, size_t e) {
+                for (size_t i = b; i < e; ++i)
+                {
+                    const float v = f[i];
+                    if ((hasFill && v == fillF) || (hasMissing && v == missF))
+                        f[i] = std::nanf("");
+                    else
+                        f[i] = v * sc + off;
+                }
+            });
+        }
+        timer.mark("scale/offset/nan");
+        if (flip)
+        {
+            if (st == WIV_SAMPLE_U8)
+                flipRows(static_cast<uint8_t*>(img->samples), w, h, depth);
+            else if (st == WIV_SAMPLE_U16)
+                flipRows(static_cast<uint16_t*>(img->samples), w, h, depth);
+            else
+                flipRows(static_cast<float*>(img->samples), w, h, depth);
+        }
+        timer.mark("flip");
+    }
     // Slice-0 preview, scaled to its own range (the host redraws from the samples).
     if (!img->rgba)
     {
@@ -430,7 +493,7 @@ extern "C" WivPluginImage* wiv_plugin_load_page(const char* filename, int page, 
             *error_msg = wiv_plugin::makeError("netcdf: no 2D-4D numeric variable in %s", filename);
         return nullptr;
     }
-    return loadVariable(nf.ncid, nf.candidates[page], error_msg);
+    return loadVariable(nf.ncid, filename, nf.candidates[page], error_msg);
 }
 
 extern "C" const char* wiv_plugin_last_timing(void)
