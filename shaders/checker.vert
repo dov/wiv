@@ -3,8 +3,8 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-// Transparency checkerboard: one quad over the displayed image (or SVG
-// bounds), drawn underneath it so that translucent pixels show a pattern
+// Transparency checkerboard: one quad over the displayed image (or, for an
+// SVG, the whole canvas), drawn underneath it so that translucent pixels show a pattern
 // instead of a flat colour. The pattern itself is made in checker.frag from
 // the screen position. Whether it shows at all (and light or dark) is the
 // ViewParams second vec4's .w, so changing the mode needs no scene rebuild:
@@ -31,8 +31,12 @@ layout(location = 1) out flat vec3 fragFlat; // flat colour, or negative red for
 void main()
 {
     bool visible = vp.params2.w > 0.5;
-    gl_Position = visible ? pc.projection * pc.modelview * vec4(inPosition, 0.0, 1.0)
-                          : vec4(2.0, 2.0, 0.0, 1.0);
+    // A corner at +-1e30 is the "whole canvas" sentinel (SVG): that corner
+    // goes straight to the clip-space corner instead of through the camera.
+    bool canvas = abs(inPosition.x) > 1e20;
+    vec4 pos = canvas ? vec4(sign(inPosition.x), sign(inPosition.y), 0.0, 1.0)
+                      : pc.projection * pc.modelview * vec4(inPosition, 0.0, 1.0);
+    gl_Position = visible ? pos : vec4(2.0, 2.0, 0.0, 1.0);
     fragDark = vp.params2.w > 1.5 ? 1.0 : 0.0;
     fragFlat = vec3(-1.0);
     if (vp.params2.w >= 100.0)

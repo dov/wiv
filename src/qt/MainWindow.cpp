@@ -254,10 +254,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 
     // A horizontal two-finger touchpad swipe pages through the sibling files.
     connect(viewport_, &VulkanViewport::swipeNavigate, this, [this](int direction) {
+        // |direction| > 1 is a multi-image jump (Shift+wheel).
         if (direction > 0 && nextImageAction_->isEnabled())
-            goNextImage();
+            goImageStep(direction);
         else if (direction < 0 && previousImageAction_->isEnabled())
-            goPreviousImage();
+            goImageStep(direction);
     });
 
     viewport_->setMouseSettings(PreferencesDialog::loadMouseSettings());
@@ -609,8 +610,9 @@ void MainWindow::buildMenus()
             a->setActionGroup(group);
             a->setChecked(static_cast<int>(i) == saved);
             actions.push_back(a);
-            connect(a, &QAction::triggered, this, [this, i, mode = modes[i].second]() {
+            connect(a, &QAction::triggered, this, [this, i, mode = modes[i].second, name = QString(modes[i].first)]() {
                 viewport_->setTransparencyBackground(mode);
+                statusBar()->showMessage(QString("Transparency background: %1").arg(name), 3000);
                 QSettings s(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
                 s.setValue("view/transparencyBackground", static_cast<int>(i));
             });
@@ -618,12 +620,23 @@ void MainWindow::buildMenus()
         if (saved >= 0 && saved < static_cast<int>(std::size(modes))) viewport_->setTransparencyBackground(modes[saved].second);
         else actions.front()->setChecked(true);
 
-        // One key cycles through the modes.
+        // One key cycles checkerboard -> white -> black. Theme/Preferences color
+        // stay menu-only: they often look just like white, which made the
+        // cycle appear to stall. From one of those, the cycle carries on with
+        // the next of the three after it in the menu order.
         auto* cycle = menu->addAction("Next Transparency Background", this, [actions]() {
+            static const size_t order[] = {0, 3, 4}; // Checkerboard, White, Black
             size_t cur = 0;
             for (size_t i = 0; i < actions.size(); ++i)
                 if (actions[i]->isChecked()) cur = i;
-            actions[(cur + 1) % actions.size()]->trigger();
+            size_t next = order[0];
+            for (size_t o : order)
+                if (o > cur)
+                {
+                    next = o;
+                    break;
+                }
+            actions[next]->trigger();
         });
         cycle->setShortcut(QKeySequence("Shift+B"));
     }
@@ -2015,34 +2028,23 @@ void MainWindow::applyNavigationView(NavigationView v)
     if (viewport_->rememberViewPerFile() != perFile) viewport_->setRememberViewPerFile(perFile);
 }
 
-void MainWindow::goNextImage()
-{
-    if (navigationIsStale()) return;
-    spdlog::info("User invoked Next Image");
-    if (directoryFiles_.size() < 2)
-    {
-        // No sibling files: page through the file's own images instead.
-        if (viewport_->imageCount() > 1) viewport_->nextImage();
-        return;
-    }
-    lastNavigationStep_ = 1;
-    directoryFileIndex_ = (directoryFileIndex_ + 1) % directoryFiles_.size();
-    spdlog::info("Directory navigation: switching to {}", directoryFiles_[directoryFileIndex_].toStdString());
-    loadNavigationStep({directoryFiles_[directoryFileIndex_].toStdString()});
-}
+void MainWindow::goNextImage() { goImageStep(1); }
 
-void MainWindow::goPreviousImage()
+void MainWindow::goPreviousImage() { goImageStep(-1); }
+
+void MainWindow::goImageStep(int step)
 {
     if (navigationIsStale()) return;
-    spdlog::info("User invoked Previous Image");
+    spdlog::info("User invoked image step {}", step);
     if (directoryFiles_.size() < 2)
     {
         // No sibling files: page through the file's own images instead.
-        if (viewport_->imageCount() > 1) viewport_->previousImage();
+        if (viewport_->imageCount() > 1) viewport_->stepImage(step);
         return;
     }
-    lastNavigationStep_ = -1;
-    directoryFileIndex_ = (directoryFileIndex_ - 1 + directoryFiles_.size()) % directoryFiles_.size();
+    const int n = directoryFiles_.size();
+    lastNavigationStep_ = step > 0 ? 1 : -1;
+    directoryFileIndex_ = ((directoryFileIndex_ + step) % n + n) % n;
     spdlog::info("Directory navigation: switching to {}", directoryFiles_[directoryFileIndex_].toStdString());
     loadNavigationStep({directoryFiles_[directoryFileIndex_].toStdString()});
 }

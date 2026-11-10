@@ -127,6 +127,7 @@ public:
     // $image cycling (giv's shift-Up/shift-Down). No-ops if there are fewer
     // than 2 successfully-loaded images.
     void nextImage();
+    void stepImage(int step); // `step` images forwards (negative: back), wrapping
 
     // Hands the decode cache an image decoded off-thread (see
     // MainWindow::prefetchNeighbours()) so showing it later skips the decode.

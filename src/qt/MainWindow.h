@@ -284,6 +284,8 @@ private:
     void goFirstImage();
     void goLastImage();
     void goPreviousImage();
+    // Moves `step` images (negative = back), wrapping around.
+    void goImageStep(int step);
     void updateNavigationActionsEnabled();
 
     // Thumbnail strip under the canvas (View > Thumbnail Strip) and the

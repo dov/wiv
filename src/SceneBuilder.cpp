@@ -958,12 +958,11 @@ vsg::ref_ptr<vsg::Group> SceneBuilder::build(const SceneData& scene, const std::
         return group;
     };
 
-    // An SVG has no image to put it under: cover its content bounds instead
-    // (data is y-down, the world y-up - see the image quad below).
-    if (images.empty() && scene.hasBounds() &&
+    // An SVG has no image to put it under: cover the whole canvas instead.
+    // +-1e30 corners are checker.vert's "fill the viewport" sentinel.
+    if (images.empty() &&
         std::any_of(scene.datasets.begin(), scene.datasets.end(), [](const Dataset& ds) { return ds.fromSvg; }))
-        root->addChild(makeCheckerGroup(static_cast<float>(scene.minX), static_cast<float>(-scene.maxY),
-                                        static_cast<float>(scene.maxX), static_cast<float>(-scene.minY)));
+        root->addChild(makeCheckerGroup(-1e30f, -1e30f, 1e30f, 1e30f));
 
     // -------------------------------------------------------------
     // Image batch ($image references) - added first so vector data

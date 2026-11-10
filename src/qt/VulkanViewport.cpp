@@ -1525,7 +1525,8 @@ bool VulkanViewport::eventFilter(QObject* watched, QEvent* event)
                 wheelNavAccum_ += d.y();
                 while (std::abs(wheelNavAccum_) >= 120)
                 {
-                    emit swipeNavigate(wheelNavAccum_ > 0 ? -1 : 1);
+                    const int jump = we->modifiers() & Qt::ShiftModifier ? 10 : 1; // Shift+wheel: 10 images
+                    emit swipeNavigate(wheelNavAccum_ > 0 ? -jump : jump);
                     wheelNavAccum_ -= wheelNavAccum_ > 0 ? 120 : -120;
                 }
                 return true;
@@ -1804,6 +1805,13 @@ void VulkanViewport::previousImage()
 {
     if (loadedImageNames_.size() < 2) return;
     switchToImage((currentImageIndex_ - 1 + static_cast<int>(loadedImageNames_.size())) % static_cast<int>(loadedImageNames_.size()));
+}
+
+void VulkanViewport::stepImage(int step)
+{
+    const int n = static_cast<int>(loadedImageNames_.size());
+    if (n < 2) return;
+    switchToImage(((currentImageIndex_ + step) % n + n) % n);
 }
 
 void VulkanViewport::firstImage()
