@@ -11,6 +11,13 @@
 - Files with no remembered view are fitted when Auto Fit is off.
 - The version and commit id are logged at startup; wiv exits cleanly when Qt can't reach a display.
 
+### Large files
+- Big netCDF-4 variables are read on all cores and the host min/max scan is threaded, so a
+  470-megapixel float32 image opens in about a second.
+- Plugin buffers are taken over without copying, and very large raw-sample images skip the RGBA
+  preview.
+- The loading splash is shown for slow loads, including during the final GPU upload.
+
 ### Thumbnails
 - New thumbnail context-menu item that applies the current contrast and colormap to all files of
   the same type.

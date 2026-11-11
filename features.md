@@ -167,7 +167,7 @@ in Edit > Preferences > Keyboard.
   Red Temperature, Blue-Green-Red-Yellow, Blue-White, Green-Red-Blue-White,
   Equalize and Normalize (tables derived from the displayed 8-bit image)
   (ported from giv); colormap bar under the canvas showing min..max mapping.
-- Multi-slice volumes (FITS cubes, DICOM multi-frame, 3D npy): slice
+- Multi-slice volumes (FITS cubes, DICOM multi-frame, 3D npy, netCDF): slice
   stepping, `Slice N/M` in status bar, per-slice histogram.
 - Tools > Measure Distance submenu (`Z` toggles): Diagonal, Horizontal and Vertical caliper modes (mode remembered), draggable jaws with highlight and crosshair/hand cursors, status-bar messages.
 - Count Marks (`N`): caliper rectangle that counts the `.giv` marks inside it.

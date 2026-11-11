@@ -1,8 +1,8 @@
 # wiv
 
 **A fast image viewer that is also a GPU vector and scientific viewer.**
-Photos, camera RAW, FITS, DICOM and HDF5 data, SVG and millions of vector
-points, all rendered with Vulkan.
+Opens a 470-megapixel netCDF image in about a second and plots ten million
+points interactively, all rendered with Vulkan.
 
 <table align="center">
   <tr>
@@ -12,7 +12,7 @@ points, all rendered with Vulkan.
   </tr>
 </table>
 
-Opens your photos, camera RAW, HDR, FITS, DICOM, HDF5 and
+Opens your photos, camera RAW, HDR, FITS, DICOM, HDF5, netCDF and
 NumPy data like a fast image viewer, and opens SVG and
 [giv](https://github.com/dov/giv)-format `.giv` files as true vector
 graphics: millions of points, text, dashes, arrows and animation. Linux and
@@ -29,16 +29,30 @@ pans and zooms interactively. Marks, line segments and dashes are drawn with
 GPU instancing: one draw call for *all* marks and one for *all* line segments
 in a file.
 
+## Hundreds of megapixels, still interactive
+
+<p align="center"><img src="docs/images/huge-nc-file.webp" alt="Animation: a 470-megapixel netCDF satellite image gets a colour table, a contrast window and a gamma, then zooms to 1:1 at a pixel and back out" width="640"><br><em>Colour table, contrast window and gamma on a 470-megapixel float32 netCDF image, then a double-click to 1:1 and back.</em></p>
+
+This 21696&times;21696 float32 netCDF image (470 megapixels) opens in about a
+second on a modern desktop. Contrast, gamma and pseudo-colour then adjust in
+real time on the full-range data, with a histogram to match. If a load does
+take a while, a splash page shows what wiv is doing instead of a frozen window.
+
 ## Why wiv?
 
 - **Images and vectors in one viewer.** Overlay contours, quiver plots,
   measurement marks and labels on top of a raster image, or just view a folder
   of photos. Most image viewers can't draw vectors; most plotting tools can't
   browse a folder of RAW files.
+- **Explore your data.** Hover over a mark for a balloon popup with its
+  details, and show or hide whole datasets, including nested groups, with the
+  checkboxes in the Mark Browser.
 - **Real dynamic range, not 8-bit RGBA.** 8/16-bit grayscale, float FITS,
-  DICOM, HDF5 and `.npy` data keep their raw samples. Contrast stretch (with a
+  DICOM, HDF5, netCDF and `.npy` data keep their raw samples. Contrast stretch (with a
   histogram) and pseudo-colour tables run on the GPU, so you window the actual
   data rather than a quantised copy.
+- **Huge images, instantly.** Hundreds of megapixels open in about a second
+  and adjust in real time; see [above](#hundreds-of-megapixels-still-interactive).
 - **A real text engine.** HarfBuzz and FriBidi shaping: bidirectional and
   multilingual text, ligatures, kerning, Pango-style markup, `<textPath>`. Text
   is drawn as geometry with no glyph atlas, so it scales, rotates and animates
@@ -69,8 +83,10 @@ in a file.
 
 ## Who is it for?
 
-- **Astronomy, microscopy and medical imaging**: window FITS, DICOM, HDF5 and
-  NIfTI data with histogram contrast, pseudo-colour and calibrated measurement.
+- **Astronomy, microscopy, medical imaging and Earth science**: window FITS,
+  DICOM, HDF5, netCDF and NIfTI data, from telescope frames and MRI volumes to
+  satellite imagery and climate model output, with histogram contrast,
+  pseudo-colour and calibrated measurement.
   See [scientific tools](features.md#scientific--pixel-value-tools).
 - **Plots and annotations**: write a text `.giv` file from any language and
   view millions of points, polygons, arrows and labels over an image.
@@ -85,14 +101,19 @@ in a file.
 
 <table>
   <tr>
-    <td width="33%"><a href="docs/images/image-info.png"><img src="docs/images/image-info.png" width="250" alt="Image Info and EXIF dock"></a><br>Image Info and EXIF</td>
-    <td width="33%"><a href="docs/images/thumbnails.png"><img src="docs/images/thumbnails.png" width="250" alt="Thumbnail strip"></a><br>Thumbnail strip</td>
-    <td width="33%"><a href="docs/images/fits-contrast.png"><img src="docs/images/fits-contrast.png" width="250" alt="Contrast panel with histogram and colour table"></a><br>Contrast, histogram and colour table</td>
+    <td width="33%"><a href="docs/images/huge-nc-file.png"><img src="docs/images/huge-nc-file.png" width="250" alt="Huge netCDF file"></a><br>470-megapixel netCDF image, opens in about a second</td>
+    <td width="33%"><a href="docs/images/mandelbrot-datasets.png"><img src="docs/images/mandelbrot-datasets.png" width="250" alt="Mark Browser toggling the visibility of individual datasets of a 10 million point Mandelbrot plot"></a><br>Mark Browser: show or hide each dataset</td>
+    <td width="33%"><a href="docs/images/wiv-example-balloon-popups.png"><img src="docs/images/wiv-example-balloon-popups.png" width="250" alt="Balloon popups showing tooltips when the mouse hovers over a dataset"></a><br>Balloon popups: tooltips on hover over a dataset</td>
   </tr>
   <tr>
-    <td width="33%"><a href="docs/images/pixel-grid.png"><img src="docs/images/pixel-grid.png" width="250" alt="Pixel grid with sub-pixel coordinates"></a><br>Pixel grid</td>
-    <td width="33%"><a href="docs/images/quiver.png"><img src="docs/images/quiver.png" width="250" alt="Quiver plot"></a><br>Quiver plot</td>
     <td width="33%"><a href="docs/images/voronoi-mark-browser.png"><img src="docs/images/voronoi-mark-browser.png" width="250" alt="Voronoi diagram with the Mark Browser dock"></a><br>Voronoi diagram and Mark Browser</td>
+    <td width="33%"><a href="docs/images/fits-contrast.png"><img src="docs/images/fits-contrast.png" width="250" alt="Contrast panel with histogram and colour table"></a><br>Contrast, histogram and colour table</td>
+    <td width="33%"><a href="docs/images/quiver.png"><img src="docs/images/quiver.png" width="250" alt="Quiver plot"></a><br>Quiver plot</td>
+  </tr>
+  <tr>
+    <td width="33%"><a href="docs/images/image-info.png"><img src="docs/images/image-info.png" width="250" alt="Image Info and EXIF dock"></a><br>Image Info and EXIF</td>
+    <td width="33%"><a href="docs/images/thumbnails.png"><img src="docs/images/thumbnails.png" width="250" alt="Thumbnail strip"></a><br>Thumbnail strip</td>
+    <td width="33%"><a href="docs/images/pixel-grid.png"><img src="docs/images/pixel-grid.png" width="250" alt="Pixel grid with sub-pixel coordinates"></a><br>Pixel grid</td>
   </tr>
 </table>
 
@@ -111,7 +132,8 @@ Or [build from source](#build).
 | | wiv | giv | Gwenview | ImageJ / DS9 |
 | --- | --- | --- | --- | --- |
 | Photo browsing, RAW, HEIC/AVIF | yes | no | yes | limited |
-| FITS / DICOM / HDF5 with contrast and colour tables | yes | no | no | yes |
+| FITS / DICOM / HDF5 / netCDF with contrast and colour tables | yes | no | no | yes |
+| Hundreds-of-megapixel images with live contrast | yes | no | limited | limited |
 | Vector overlays on an image | yes | yes | no | ROI/overlays |
 | Millions of vector points, GPU rendered | yes | limited | no | no |
 | SVG with shaped text and animation | yes | no | basic | no |

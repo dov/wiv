@@ -53,7 +53,7 @@ sniffers. Files can also be dropped onto the window.
 wiv has two kinds of content, and a window can show both at once.
 
 **Images.** Raster formats are decoded by plugins (section 7) and drawn as a
-texture on the GPU. Grayscale data (8/16-bit, float FITS, DICOM, HDF5, `.npy`)
+texture on the GPU. Grayscale data (8/16-bit, float FITS, DICOM, HDF5, netCDF, `.npy`)
 keeps its raw samples, so contrast and colormap operate on the real data range.
 Zooming in uses nearest-neighbour filtering so you see pixels; zooming out uses
 bilinear filtering. Pixel (0,0) is the top-left corner and one image pixel is
@@ -628,7 +628,7 @@ transparency, without the checkerboard.
 | <kbd>s</kbd> | **Calibrate pixel size**: give a known distance, the last measurement or the image width/height; the caliper then reads in real units. |
 | <kbd>g</kbd> | Pixel grid; the status bar shows sub-pixel coordinates when enabled. |
 
-Volumes (FITS cubes, multi-frame DICOM, 3D `.npy`, HDF5 datasets) are stepped
+Volumes (FITS cubes, multi-frame DICOM, 3D `.npy`, HDF5 datasets, netCDF variables) are stepped
 with <kbd>PgUp</kbd>/<kbd>PgDn</kbd>; the status bar shows `Slice N/M` and the histogram is per slice.
 
 <p align="center"><img src="images/fits-contrast.png" alt="Adjust Contrast (<kbd>c</kbd>) on examples/m51.fits: histogram with draggable min/max handles and the colour table selector" width="560"><br><em>Adjust Contrast (<kbd>c</kbd>) on examples/m51.fits: histogram with draggable min/max handles and the colour table selector</em></p>
