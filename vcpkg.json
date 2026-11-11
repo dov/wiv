@@ -1,6 +1,6 @@
 {
   "name": "wiv",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Vulkan-based, giv-format-compatible 2D vector viewer",
   "builtin-baseline": "b472291f295551b7127359ea38fdd2ca092f6f1b",
   "dependencies": [

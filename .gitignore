@@ -1,5 +1,6 @@
 build/
 vcpkg_installed/
+extra_examples/
 *.o
 *.spv
 compile_commands.json

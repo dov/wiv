@@ -1,5 +1,29 @@
 # NEWS
 
+## Changes since v0.1.2 (version 0.1.3)
+
+### Large files
+- Big netCDF-4 variables are read on all cores and the host min/max scan is threaded, so a
+  470-megapixel float32 image opens in about a second.
+- Plugin buffers are taken over without copying, and very large raw-sample images skip the RGBA
+  preview.
+- The histogram and auto-contrast range are computed in one multithreaded pass on the decode
+  worker, so the GUI stays responsive while a huge image loads.
+- The loading splash is shown for any decode that takes over 200 ms (command line and File > Open),
+  including "Uploading to GPU..." during the final upload.
+- `[perf]` timings are logged for image loads.
+
+### Viewer
+- The SVG transparency backdrop fills the whole canvas, not just the content bounds.
+- Shift+B cycles Checkerboard, White and Black only (Theme and Preferences colors stay in the
+  menu) and shows a status message on every change.
+- Shift+wheel steps 10 images instead of 1 when the wheel navigates.
+
+### Documentation
+- netCDF is listed with the other scientific formats throughout the README and docs; new
+  "Hundreds of megapixels" section with an animated demo and two new gallery images.
+- New `tools/record_nc_demo.py` records that demo with a real mouse (xdotool and ffmpeg).
+
 ## Changes since v0.1.1 (version 0.1.2)
 
 ### Viewer
@@ -10,13 +34,6 @@
 - New splash/loading page, a margin color preference, an SVG backdrop fix and a Docks menu.
 - Files with no remembered view are fitted when Auto Fit is off.
 - The version and commit id are logged at startup; wiv exits cleanly when Qt can't reach a display.
-
-### Large files
-- Big netCDF-4 variables are read on all cores and the host min/max scan is threaded, so a
-  470-megapixel float32 image opens in about a second.
-- Plugin buffers are taken over without copying, and very large raw-sample images skip the RGBA
-  preview.
-- The loading splash is shown for slow loads, including during the final GPU upload.
 
 ### Thumbnails
 - New thumbnail context-menu item that applies the current contrast and colormap to all files of
