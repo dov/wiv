@@ -45,3 +45,35 @@ RUN pip3 install --no-cache-dir meson \
 ENV LD_LIBRARY_PATH=/usr/local/lib
 ENV CMAKE_PREFIX_PATH=/opt/Qt/6.8.3/gcc_64 \
     PATH=/opt/Qt/6.8.3/gcc_64/bin:$PATH
+# HDF5 1.14 and netCDF-C 4.9 from source: the netCDF plugin's direct multi-core chunk reader needs
+# H5Dchunk_iter (HDF5 >= 1.14), and 22.04 ships 1.10.  They go into /usr/local, which HDF5_ROOT and
+# CMAKE_PREFIX_PATH (below) put ahead of the apt libhdf5-dev/libnetcdf-dev above.  These are the last
+# layers so that changing them does not invalidate the Qt/GCC/HarfBuzz layers.  HDF5's high-level
+# library is what netCDF-4 links; the rest of the optional features are off to keep the bundle small.
+RUN apt-get update && apt-get install -y --no-install-recommends zlib1g-dev \
+ && rm -rf /var/lib/apt/lists/* \
+ && curl -fsSL https://github.com/HDFGroup/hdf5/releases/download/hdf5_1.14.6/hdf5-1.14.6.tar.gz | tar xz -C /tmp \
+ && cmake -S /tmp/hdf5-1.14.6 -B /tmp/hdf5-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib \
+      -DBUILD_SHARED_LIBS=ON -DBUILD_STATIC_LIBS=OFF -DBUILD_TESTING=OFF \
+      -DHDF5_BUILD_EXAMPLES=OFF -DHDF5_BUILD_TOOLS=OFF -DHDF5_BUILD_HL_LIB=ON -DHDF5_BUILD_CPP_LIB=OFF \
+      -DHDF5_BUILD_FORTRAN=OFF -DHDF5_BUILD_JAVA=OFF -DHDF5_ENABLE_Z_LIB_SUPPORT=ON \
+      -DHDF5_ENABLE_SZIP_SUPPORT=OFF -DHDF5_ENABLE_PARALLEL=OFF \
+ && cmake --build /tmp/hdf5-build && cmake --install /tmp/hdf5-build \
+ && rm -rf /tmp/hdf5-build /tmp/hdf5-1.14.6 && ldconfig
+RUN curl -fsSL https://github.com/Unidata/netcdf-c/archive/refs/tags/v4.9.3.tar.gz | tar xz -C /tmp \
+ && cmake -S /tmp/netcdf-c-4.9.3 -B /tmp/nc-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_PREFIX_PATH=/usr/local \
+      -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF \
+      -DNETCDF_ENABLE_NETCDF_4=ON -DENABLE_NETCDF_4=ON \
+      -DNETCDF_BUILD_UTILITIES=OFF -DBUILD_UTILITIES=OFF \
+      -DNETCDF_ENABLE_TESTS=OFF -DENABLE_TESTS=OFF \
+      -DNETCDF_ENABLE_DAP=OFF -DENABLE_DAP=OFF \
+      -DNETCDF_ENABLE_BYTERANGE=OFF -DENABLE_BYTERANGE=OFF \
+      -DNETCDF_ENABLE_NCZARR=OFF -DENABLE_NCZARR=OFF \
+      -DNETCDF_ENABLE_PLUGINS=OFF -DENABLE_PLUGINS=OFF \
+      -DNETCDF_ENABLE_HDF4=OFF -DENABLE_HDF4=OFF \
+ && cmake --build /tmp/nc-build && cmake --install /tmp/nc-build \
+ && rm -rf /tmp/nc-build /tmp/netcdf-c-4.9.3 && ldconfig
+ENV HDF5_ROOT=/usr/local \
+    CMAKE_PREFIX_PATH=/usr/local:/opt/Qt/6.8.3/gcc_64
