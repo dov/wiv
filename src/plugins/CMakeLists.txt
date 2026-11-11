@@ -164,8 +164,10 @@ elseif(TARGET PkgConfig::NETCDF)
 else()
   message(STATUS "netCDF not found - building without the netCDF plugin")
 endif()
-# Direct multi-core chunk reading of big netCDF-4 variables (netcdf_direct.h): needs HDF5 and zlib, and POSIX pread.
-if(TARGET wiv_plugin_netcdf AND HDF5_FOUND AND NOT WIN32 AND (NOT CMAKE_CROSSCOMPILING OR HDF5_DIR))
+# Direct multi-core chunk reading of big netCDF-4 variables (netcdf_direct.h): needs HDF5 >= 1.14
+# (H5Dchunk_iter), zlib and POSIX pread; older HDF5 (e.g. Ubuntu 22.04's 1.10) falls back to nc_get_var.
+if(TARGET wiv_plugin_netcdf AND HDF5_FOUND AND NOT WIN32 AND (NOT CMAKE_CROSSCOMPILING OR HDF5_DIR)
+   AND (NOT DEFINED HDF5_VERSION OR NOT HDF5_VERSION VERSION_LESS 1.14))
   find_package(Threads REQUIRED)
   target_compile_definitions(wiv_plugin_netcdf PRIVATE WIV_NETCDF_DIRECT_CHUNKS)
   if(TARGET hdf5::hdf5)
