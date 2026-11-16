@@ -2472,6 +2472,12 @@ void MainWindow::updateContrastToolsEnabled()
     bool hasRawSamples = img && img->sampleType != WIV_SAMPLE_NONE;
     contrastAction_->setEnabled(hasRawSamples);
     colorTableAction_->setEnabled(hasRawSamples);
+    // Nothing to adjust for an SVG/.giv or a plain colour image: pop the panels down.
+    if (!hasRawSamples)
+    {
+        if (contrastDock_->isVisible()) contrastDock_->hide();
+        if (colorTableDock_->isVisible()) colorTableDock_->hide();
+    }
 }
 
 void MainWindow::toggleFullScreen()
