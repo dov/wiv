@@ -707,6 +707,7 @@ struct ImageWalker
         ds.doDrawPolygon = false;
         ds.doDrawMarks = false;
         ds.isSprite = true;
+        ds.fromSvg = true; // so an image-only SVG still gets the transparency backdrop (see SceneBuilder)
         ds.spriteWidth = img.width;
         ds.spriteHeight = img.height;
         ds.spriteRGBA = std::make_shared<const std::vector<unsigned char>>(std::move(img.rgba));
@@ -1284,6 +1285,7 @@ void populateScene(const NSVGimage* svgConst, const SvgNode* dom, const std::str
             scene.datasets.emplace_back();
             Dataset& ds = scene.datasets.back();
             ds.pathName = shape->id;
+            ds.fromSvg = true;
             ds.doDrawLines = false;
             ds.doDrawPolygon = false;
             ds.doDrawMarks = false;
@@ -1307,6 +1309,7 @@ void populateScene(const NSVGimage* svgConst, const SvgNode* dom, const std::str
             scene.datasets.emplace_back();
             Dataset& ds = scene.datasets.back();
             ds.pathName = shape->id[0] ? shape->id : ("svg shape " + std::to_string(shapeIndex));
+            ds.fromSvg = true;
             ds.doDrawLines = false;
             ds.doDrawPolygon = false;
             ds.doDrawMarks = false;

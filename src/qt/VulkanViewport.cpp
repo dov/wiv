@@ -1082,7 +1082,8 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
         perfLast = now;
         return ms;
     };
-    // The global "View Marks" switch hides every dataset without disturbing
+    // The global "View Marks" switch hides every mark dataset (not SVG content,
+    // which has no marks to hide) without disturbing
     // the per-dataset isVisible flags the Mark Browser tree maintains - so
     // apply it only for the duration of this build, then restore.
     std::vector<bool> savedVisible(scene_.datasets.size());
@@ -1091,7 +1092,7 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
         savedVisible[i] = scene_.datasets[i].isVisible;
         const int f = scene_.datasets[i].frame;
         const bool inFrame = f < 0 || !hasMarkFrames() || f == animFrame_;
-        scene_.datasets[i].isVisible = savedVisible[i] && globalShowMarks_ && inFrame;
+        scene_.datasets[i].isVisible = savedVisible[i] && (globalShowMarks_ || scene_.datasets[i].fromSvg) && inFrame;
     }
 
     // A persistent SceneBuilder (not a fresh one per call): its build()
