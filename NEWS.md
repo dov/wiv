@@ -14,6 +14,8 @@
 - `[perf]` timings are logged for image loads.
 
 ### Viewer
+- The Image Info dock has a filter box: type part of a key or value (or a section name such as EXIF) to
+  narrow long property lists.
 - File > Save Raw Data... (Ctrl+Shift+S) writes the original 8/16-bit or float samples of grayscale, FITS,
   DICOM, HDF5, netCDF, NIfTI and `.npy` images as TIFF or `.npy`, either the current slice or the whole volume.
 - Edit > Copy View as Image (Ctrl+Alt+C) puts the rendered view on the clipboard, and Edit > Paste (Ctrl+V) opens

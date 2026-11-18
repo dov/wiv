@@ -201,7 +201,7 @@ Stored in `state.db` (SQLite, WAL mode) next to `wiv.ini` (e.g.
 
 ## Metadata and file operations
 
-- Image Info dock (`I` or `Alt+Enter`): file/image properties plus EXIF (JPEG, TIFF/DNG,
+- Image Info dock (`I` or `Alt+Enter`), with a filter box that narrows the list to matching rows or sections: file/image properties plus EXIF (JPEG, TIFF/DNG,
   PNG eXIf, WebP): camera, exposure, GPS; header attributes of Radiance HDR
   (EXPOSURE, comments, ...), PFM (byte order, scale) and OpenEXR (channels,
   compression, windows, chromaticities, string/float attributes).
