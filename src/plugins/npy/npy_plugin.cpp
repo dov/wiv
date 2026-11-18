@@ -222,3 +222,81 @@ extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** er
     fillPreview(img, sliceElemCount);
     return img;
 }
+
+// File > Image Info: the .npy header (format version, dtype, shape, layout) in readable form.
+extern "C" char* wiv_plugin_metadata(const char* filename, int /*page*/)
+{
+    FILE* fh = wiv_plugin::fopenUtf8(filename, "rb");
+    if (!fh)
+        return nullptr;
+    unsigned char pre[12];
+    if (std::fread(pre, 1, 10, fh) != 10 || std::memcmp(pre, "\x93NUMPY", 6) != 0)
+    {
+        std::fclose(fh);
+        return nullptr;
+    }
+    const int major = pre[6], minor = pre[7];
+    size_t preambleLen = 10;
+    uint32_t headerLen = static_cast<uint32_t>(pre[8] | (pre[9] << 8));
+    if (major >= 2) // version 2.0/3.0: 4-byte header length
+    {
+        if (std::fread(pre + 10, 1, 2, fh) != 2)
+        {
+            std::fclose(fh);
+            return nullptr;
+        }
+        headerLen = static_cast<uint32_t>(pre[8]) | (static_cast<uint32_t>(pre[9]) << 8) |
+                    (static_cast<uint32_t>(pre[10]) << 16) | (static_cast<uint32_t>(pre[11]) << 24);
+        preambleLen = 12;
+    }
+    std::string header;
+    if (headerLen > 0 && headerLen < (1u << 20))
+    {
+        header.resize(headerLen);
+        if (std::fread(header.data(), 1, headerLen, fh) != headerLen)
+            header.clear();
+    }
+    std::fseek(fh, 0, SEEK_END);
+    const long long fileSize = static_cast<long long>(std::ftell(fh));
+    std::fclose(fh);
+
+    // The header is a Python dict literal; pick out the three standard keys.
+    auto valueOf = [&](const char* key) -> std::string {
+        const std::string pat = std::string("'") + key + "':";
+        size_t p = header.find(pat);
+        if (p == std::string::npos) return {};
+        p += pat.size();
+        while (p < header.size() && header[p] == ' ') ++p;
+        if (p >= header.size()) return {};
+        size_t e;
+        if (header[p] == '\'') { e = header.find('\'', p + 1); return e == std::string::npos ? "" : header.substr(p + 1, e - p - 1); }
+        if (header[p] == '(') { e = header.find(')', p); return e == std::string::npos ? "" : header.substr(p, e - p + 1); }
+        e = header.find_first_of(",}", p);
+        return header.substr(p, e == std::string::npos ? std::string::npos : e - p);
+    };
+    const std::string descr = valueOf("descr"), fortran = valueOf("fortran_order"), shape = valueOf("shape");
+
+    wiv_plugin::MetadataBuilder md;
+    const char* S = "NumPy array";
+    md.add(S, "Format version", std::to_string(major) + "." + std::to_string(minor));
+    if (!descr.empty())
+    {
+        md.add(S, "dtype", descr);
+        // "<f4" = byte order, kind, bytes
+        if (descr.size() >= 3)
+        {
+            const char order = descr[0], kind = descr[1];
+            const std::string bytes = descr.substr(2);
+            const char* kindName = kind == 'f' ? "float" : kind == 'i' ? "signed integer" : kind == 'u' ? "unsigned integer"
+                                 : kind == 'c' ? "complex" : kind == 'b' ? "boolean" : kind == 'U' ? "unicode string"
+                                 : kind == 'S' ? "byte string" : kind == 'M' ? "datetime" : kind == 'm' ? "timedelta" : "other";
+            md.add(S, "Type", std::string(kindName) + ", " + bytes + (kind == 'U' || kind == 'S' ? " characters" : " bytes"));
+            md.add(S, "Byte order", order == '<' ? "little-endian" : order == '>' ? "big-endian" : order == '|' ? "not applicable" : "native");
+        }
+    }
+    if (!shape.empty()) md.add(S, "Shape", shape);
+    if (!fortran.empty()) md.add(S, "Memory order", fortran == "True" ? "Fortran (column-major)" : "C (row-major)");
+    md.add(S, "Header size", static_cast<long long>(preambleLen + headerLen));
+    if (fileSize > 0) md.add(S, "Data size", fileSize - static_cast<long long>(preambleLen + headerLen));
+    return md.release();
+}

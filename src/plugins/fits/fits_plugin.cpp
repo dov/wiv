@@ -23,6 +23,7 @@
 
 #include <cctype>
 #include <cstring>
+#include <algorithm>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -39,6 +40,23 @@ bool hasExtension(const std::string& filename, const char* ext)
     for (char& c : tail)
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return tail == ext;
+}
+
+// Serialises every cfitsio call in this plugin (see wiv_plugin_load_image).
+std::mutex cfitsioMutex;
+
+// The text of a FITS keyword value: string values lose their quotes and padding.
+std::string cleanFitsValue(std::string v)
+{
+    while (!v.empty() && v.back() == ' ') v.pop_back();
+    if (v.size() >= 2 && v.front() == '\'' && v.back() == '\'')
+    {
+        v = v.substr(1, v.size() - 2);
+        while (!v.empty() && v.back() == ' ') v.pop_back();
+        // '' inside a string is an escaped quote
+        for (size_t i = 0; (i = v.find("''", i)) != std::string::npos; ++i) v.erase(i, 1);
+    }
+    return v;
 }
 
 char* fitsError(int status, const char* filename)
@@ -62,8 +80,7 @@ extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** er
     // cfitsio keeps global state (I/O driver table, file handle table) and is
     // only thread-safe when built reentrant, which the Windows vcpkg build is
     // not. The Open dialog decodes thumbnails on several worker threads, so
-    // serialize all calls.
-    static std::mutex cfitsioMutex;
+    // serialize all calls (the metadata reader shares this lock).
     std::lock_guard<std::mutex> lock(cfitsioMutex);
 
     fitsfile* fptr = nullptr;
@@ -152,4 +169,83 @@ extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** er
     }
 
     return img;
+}
+
+// File > Image Info: every card of the header of the HDU that is displayed (the primary HDU), plus a summary
+// of the file's HDUs. COMMENT and HISTORY cards keep their text; other cards read `key = value / comment`.
+extern "C" char* wiv_plugin_metadata(const char* filename, int /*page*/)
+{
+    std::lock_guard<std::mutex> lock(cfitsioMutex);
+    fitsfile* fptr = nullptr;
+    int status = 0;
+    if (fits_open_file(&fptr, wiv_plugin::asciiSafePath(filename).c_str(), READONLY, &status))
+        return nullptr;
+
+    wiv_plugin::MetadataBuilder md;
+    int hdus = 0, hdu = 0;
+    fits_get_num_hdus(fptr, &hdus, &status);
+    fits_get_hdu_num(fptr, &hdu);
+    if (hdus > 1)
+    {
+        // A one-line description of each extension: type, and size for images.
+        std::string summary;
+        for (int i = 1; i <= hdus && i <= 32; ++i)
+        {
+            int type = 0, st = 0;
+            if (fits_movabs_hdu(fptr, i, &type, &st)) break;
+            std::string d = i == 1 ? "primary" : type == IMAGE_HDU ? "image" : type == ASCII_TBL ? "ASCII table" : "binary table";
+            if (type == IMAGE_HDU)
+            {
+                int naxis = 0;
+                long axes[4] = {0, 0, 0, 0};
+                if (!fits_get_img_dim(fptr, &naxis, &st) && naxis > 0 && !fits_get_img_size(fptr, std::min(naxis, 4), axes, &st))
+                {
+                    d += " ";
+                    for (int a = 0; a < std::min(naxis, 4); ++a) d += (a ? "x" : "") + std::to_string(axes[a]);
+                }
+                else d += " (empty)";
+            }
+            char extname[FLEN_VALUE] = "";
+            int st2 = 0;
+            fits_read_key(fptr, TSTRING, "EXTNAME", extname, nullptr, &st2);
+            if (!st2 && extname[0]) d += std::string(" '") + extname + "'";
+            summary += (i > 1 ? "; " : "") + std::to_string(i) + ": " + d;
+        }
+        md.add("FITS file", "HDUs", std::to_string(hdus));
+        md.add("FITS file", "HDU list", summary);
+        md.add("FITS file", "Displayed HDU", "1 (primary)");
+        int st = 0, type = 0;
+        fits_movabs_hdu(fptr, 1, &type, &st); // the image shown is the primary HDU
+    }
+
+    int nkeys = 0, more = 0;
+    status = 0;
+    if (!fits_get_hdrspace(fptr, &nkeys, &more, &status))
+    {
+        for (int i = 1; i <= nkeys; ++i)
+        {
+            char card[FLEN_CARD];
+            status = 0;
+            if (fits_read_record(fptr, i, card, &status)) break;
+            std::string line(card);
+            while (!line.empty() && line.back() == ' ') line.pop_back();
+            if (line.empty() || line == "END") continue;
+            const std::string key = line.substr(0, 8);
+            std::string keyName = key;
+            while (!keyName.empty() && keyName.back() == ' ') keyName.pop_back();
+            if (keyName == "COMMENT" || keyName == "HISTORY" || keyName == "CONTINUE" || line.size() < 10 || line[8] != '=')
+            {
+                md.add("FITS header", keyName.empty() ? "(blank)" : keyName, line.size() > 8 ? line.substr(line.size() > 9 && line[8] == ' ' ? 9 : 8) : "");
+                continue;
+            }
+            char keyname[FLEN_KEYWORD], value[FLEN_VALUE], comment[FLEN_COMMENT];
+            status = 0;
+            if (fits_read_keyn(fptr, i, keyname, value, comment, &status)) continue;
+            std::string v = cleanFitsValue(value);
+            if (comment[0]) v += "   / " + std::string(comment);
+            md.add("FITS header", keyname, v);
+        }
+    }
+    fits_close_file(fptr, &status);
+    return md.release();
 }

@@ -35,6 +35,7 @@
 #include <limits>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -68,6 +69,8 @@ using AnimNextFn = bool (*)(void*, unsigned char*, int*);
 using AnimCloseFn = void (*)(void*);
 using FreeImageFn = void (*)(WivPluginImage*);
 using FreeErrorFn = void (*)(char*);
+using MetadataFn = char* (*)(const char*, int);
+using FreeMetadataFn = void (*)(char*);
 
 struct Plugin
 {
@@ -87,6 +90,8 @@ struct Plugin
     AnimCloseFn animClose = nullptr;
     FreeImageFn freeImage = nullptr;
     FreeErrorFn freeError = nullptr;
+    MetadataFn metadata = nullptr; // optional, with freeMetadata
+    FreeMetadataFn freeMetadata = nullptr;
 };
 
 // Reorders a row-major, top-to-bottom buffer of `elemSize`-byte elements
@@ -308,6 +313,9 @@ std::vector<Plugin> scanPlugins()
             plugin.animOpen = nullptr, plugin.animNext = nullptr, plugin.animClose = nullptr;
         plugin.freeImage = reinterpret_cast<FreeImageFn>(dlsym(handle, "wiv_plugin_free_image"));
         plugin.freeError = reinterpret_cast<FreeErrorFn>(dlsym(handle, "wiv_plugin_free_error"));
+        plugin.metadata = reinterpret_cast<MetadataFn>(dlsym(handle, "wiv_plugin_metadata"));
+        plugin.freeMetadata = reinterpret_cast<FreeMetadataFn>(dlsym(handle, "wiv_plugin_free_metadata"));
+        if (!plugin.metadata || !plugin.freeMetadata) plugin.metadata = nullptr, plugin.freeMetadata = nullptr;
 
         if (!plugin.supportsFile || !plugin.loadImage || !plugin.freeImage || !plugin.freeError)
         {
@@ -546,6 +554,48 @@ std::string ImagePluginHost::formatOf(const std::string& filename)
     if (!format.empty())
         rememberFormat(filename, format);
     return format;
+}
+
+std::vector<MetadataEntry> ImagePluginHost::readMetadata(const std::string& filename, int page)
+{
+    // The plugin that decodes the file (suffix, else content), if it exports metadata.
+    const Plugin* owner = nullptr;
+    for (const Plugin& plugin : loadedPlugins())
+        if (plugin.supportsFile(filename.c_str()))
+        {
+            owner = &plugin;
+            break;
+        }
+    if (!owner)
+        for (const Plugin& plugin : loadedPlugins())
+            if (plugin.sniffFile && plugin.sniffFile(filename.c_str()))
+            {
+                owner = &plugin;
+                break;
+            }
+    std::vector<MetadataEntry> entries;
+    if (!owner || !owner->metadata)
+        return entries;
+
+    char* text = owner->metadata(filename.c_str(), page);
+    if (!text)
+        return entries;
+    const std::string_view all(text);
+    size_t pos = 0;
+    while (pos < all.size())
+    {
+        size_t eol = all.find('\n', pos);
+        if (eol == std::string_view::npos) eol = all.size();
+        const std::string_view line = all.substr(pos, eol - pos);
+        pos = eol + 1;
+        const size_t t1 = line.find('\t');
+        const size_t t2 = t1 == std::string_view::npos ? t1 : line.find('\t', t1 + 1);
+        if (t2 == std::string_view::npos) continue;
+        entries.push_back({std::string(line.substr(0, t1)), std::string(line.substr(t1 + 1, t2 - t1 - 1)),
+                           std::string(line.substr(t2 + 1))});
+    }
+    owner->freeMetadata(text);
+    return entries;
 }
 
 std::vector<std::string> ImagePluginHost::formatNames()

@@ -14,6 +14,10 @@
 - `[perf]` timings are logged for image loads.
 
 ### Viewer
+- The Image Info dock shows the full metadata of scientific files: every DICOM tag (named, grouped, with
+  sequences, UID names and character-set decoding), the NIfTI-1 header with its orientation, every FITS header
+  card, the `.npy` header, and the attributes of HDF5 datasets and netCDF variables. Combined with the filter
+  box, a long header is easy to search.
 - The Image Info dock has a filter box: type part of a key or value (or a section name such as EXIF) to
   narrow long property lists.
 - File > Save Raw Data... (Ctrl+Shift+S) writes the original 8/16-bit or float samples of grayscale, FITS,

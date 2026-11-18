@@ -205,6 +205,15 @@ Stored in `state.db` (SQLite, WAL mode) next to `wiv.ini` (e.g.
   PNG eXIf, WebP): camera, exposure, GPS; header attributes of Radiance HDR
   (EXPOSURE, comments, ...), PFM (byte order, scale) and OpenEXR (channels,
   compression, windows, chromaticities, string/float attributes).
+  Scientific formats list their full headers, supplied by the format plugins
+  (`wiv_plugin_metadata`, see `src/plugins/wiv_plugin.h`): DICOM (a summary, then every
+  tag grouped by area with names, nested sequences, transfer syntax and UID names, and text
+  decoded from the Specific Character Set; pixel data is skipped, not read), NIfTI-1 (full
+  header, orientation code from the sform/qform, extensions), FITS (every header card with its
+  comment, and the HDU list), NumPy `.npy` (dtype, shape, layout), HDF5 (the dataset's shape,
+  chunking and filters, its attributes, its group's and the file's) and netCDF (dimensions,
+  the variable's type, compression and attributes, and the global attributes). For HDF5 and
+  netCDF the entries follow the page (dataset or variable) on screen.
 - File menu: Open (`Ctrl+O`), Reload (`Enter`), Save Raw Data (`Ctrl+Shift+S`: the original 8/16-bit or
   float samples, not the rendered view, as an uncompressed TIFF (one page per slice) or `.npy`; enabled
   only for images with raw samples; asks for current slice or all slices of a volume), Rename

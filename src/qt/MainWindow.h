@@ -211,6 +211,16 @@ private:
     mutable QString exifPath_;
     mutable QDateTime exifMtime_;
     mutable std::vector<giv::ExifEntry> exifEntries_;
+    // Format-specific metadata from the image plugin (DICOM tags, NIfTI header, FITS cards, ...), cached
+    // per (file, modification time, page) because the Image Info panel refreshes on a timer.
+    mutable QString pluginMetaPath_;
+    mutable QDateTime pluginMetaMtime_;
+    mutable int pluginMetaPage_ = -1;
+    mutable std::vector<giv::MetadataEntry> pluginMeta_;
+    mutable QString pluginMetaPendingKey_; // the (file, mtime, page) a background read is fetching, if any
+    // Reads the plugin metadata off the GUI thread (the plugins share locks with the decoders, which may be
+    // busy prefetching a neighbouring image) and refreshes the panel when it arrives.
+    void requestPluginMetadata(const QString& path, const QDateTime& mtime, int page) const;
 
     std::unique_ptr<RpcServer> rpcServer_;
 

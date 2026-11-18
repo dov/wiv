@@ -66,6 +66,14 @@ private:
     size_t size_ = 0;
 };
 
+// One line of a plugin's metadata (wiv_plugin_metadata): grouped into display sections.
+struct MetadataEntry
+{
+    std::string section;
+    std::string key;
+    std::string value;
+};
+
 struct LoadedImage
 {
     int width = 0;
@@ -182,6 +190,11 @@ public:
     // content sniff that opens the file), so it also names files without an
     // extension. Thread-safe.
     static std::string formatOf(const std::string& filename);
+
+    // The format-specific metadata of `filename` (DICOM tags, NIfTI header, FITS cards, HDF5/netCDF
+    // attributes, ...) from the plugin that decodes it, in display order; empty if that plugin has none
+    // or the file cannot be read. `page` as in load(). Reads the file, so cache the result.
+    static std::vector<MetadataEntry> readMetadata(const std::string& filename, int page = 0);
 
     // The formats of all loaded plugins.
     static std::vector<std::string> formatNames();

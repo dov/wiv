@@ -126,6 +126,58 @@ inline void allocSamples(WivPluginImage* img, WivSampleType type, int depth = 1)
                                 static_cast<size_t>(depth) * sampleTypeSize(type));
 }
 
+// Collects the entries a plugin returns from wiv_plugin_metadata() (see wiv_plugin.h) and
+// serialises them as `section<TAB>key<TAB>value<LF>` lines.
+class MetadataBuilder
+{
+public:
+    void add(const std::string& section, const std::string& key, const std::string& value)
+    {
+        text_ += clean(section) + '\t' + clean(key) + '\t' + clean(value) + '\n';
+        ++count_;
+    }
+    void add(const std::string& section, const std::string& key, double value) { add(section, key, number(value)); }
+    void add(const std::string& section, const std::string& key, long long value) { add(section, key, std::to_string(value)); }
+    void add(const std::string& section, const std::string& key, int value) { add(section, key, std::to_string(value)); }
+    void add(const std::string& section, const std::string& key, const char* value) { add(section, key, std::string(value)); }
+    bool empty() const { return count_ == 0; }
+
+    // Shortest readable form of a number ("0.5", "1e+10", "3").
+    static std::string number(double v)
+    {
+        char buf[48];
+        std::snprintf(buf, sizeof(buf), "%.9g", v);
+        return buf;
+    }
+
+    // malloc'd copy for the caller to return, or NULL when nothing was added.
+    char* release() const
+    {
+        if (count_ == 0) return nullptr;
+        char* out = static_cast<char*>(std::malloc(text_.size() + 1));
+        std::memcpy(out, text_.c_str(), text_.size() + 1);
+        return out;
+    }
+
+private:
+    // Field separators must not occur inside a field; trailing blanks are dropped (DICOM and FITS pad).
+    static std::string clean(const std::string& s)
+    {
+        std::string r;
+        r.reserve(s.size());
+        for (char ch : s)
+        {
+            if (ch == '\t' || ch == '\n' || ch == '\r') ch = ' ';
+            else if (ch == '\0') continue;
+            r += ch;
+        }
+        while (!r.empty() && (r.back() == ' ')) r.pop_back();
+        return r;
+    }
+    std::string text_;
+    int count_ = 0;
+};
+
 inline char* makeError(const char* fmt, const char* arg)
 {
     char buf[1024];

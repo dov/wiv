@@ -17,3 +17,8 @@ extern "C" void wiv_plugin_free_error(char* error_msg)
 {
     std::free(error_msg);
 }
+
+extern "C" void wiv_plugin_free_metadata(char* text)
+{
+    std::free(text);
+}

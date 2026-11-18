@@ -505,3 +505,200 @@ extern "C" WivPluginImage* wiv_plugin_load_image(const char* filename, char** er
 {
     return wiv_plugin_load_page(filename, 0, error_msg);
 }
+
+// ---------------------------------------------------------------------------
+// Metadata (File > Image Info): file structure, the variable on screen, and the variable's and file's attributes.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+
+const char* ncTypeName(nc_type t)
+{
+    switch (t)
+    {
+        case NC_BYTE: return "int8";
+        case NC_UBYTE: return "uint8";
+        case NC_CHAR: return "char";
+        case NC_SHORT: return "int16";
+        case NC_USHORT: return "uint16";
+        case NC_INT: return "int32";
+        case NC_UINT: return "uint32";
+        case NC_INT64: return "int64";
+        case NC_UINT64: return "uint64";
+        case NC_FLOAT: return "float32";
+        case NC_DOUBLE: return "float64";
+        case NC_STRING: return "string";
+        default: return "other";
+    }
+}
+
+std::string ncAttributeValue(int ncid, int varid, const char* name)
+{
+    nc_type type;
+    size_t len = 0;
+    if (nc_inq_att(ncid, varid, name, &type, &len) != NC_NOERR)
+        return "<unreadable>";
+    if (len == 0)
+        return "<empty>";
+    if (type == NC_CHAR)
+    {
+        // nc_get_att_text has no length argument: it writes all `len` characters, so the buffer must hold them all.
+        if (len > (size_t(1) << 24))
+            return "<" + std::to_string(len) + " characters>";
+        std::string s(len, '\0');
+        if (nc_get_att_text(ncid, varid, name, &s[0]) != NC_NOERR)
+            return "<unreadable>";
+        while (!s.empty() && s.back() == '\0') s.pop_back();
+        if (s.size() > 4000)
+        {
+            s.resize(4000);
+            s += " ...";
+        }
+        return s;
+    }
+    if (type == NC_STRING)
+    {
+        std::vector<char*> v(len, nullptr);
+        if (nc_get_att_string(ncid, varid, name, v.data()) != NC_NOERR)
+            return "<unreadable>";
+        std::string out;
+        for (size_t i = 0; i < std::min<size_t>(len, 16); ++i) out += (i ? ", " : "") + std::string(v[i] ? v[i] : "");
+        if (len > 16) out += ", ... (" + std::to_string(len) + " strings)";
+        nc_free_string(len, v.data());
+        return out;
+    }
+    if (!isNumeric(type) || len > 100000)
+        return "<" + std::to_string(len) + " " + ncTypeName(type) + " values>";
+    std::string out;
+    const size_t shown = std::min<size_t>(len, 16);
+    if (type == NC_FLOAT || type == NC_DOUBLE)
+    {
+        std::vector<double> v(len);
+        if (nc_get_att_double(ncid, varid, name, v.data()) != NC_NOERR)
+            return "<unreadable>";
+        for (size_t i = 0; i < shown; ++i) out += (i ? ", " : "") + wiv_plugin::MetadataBuilder::number(v[i]);
+    }
+    else if (type == NC_UINT64 || type == NC_UINT || type == NC_USHORT || type == NC_UBYTE)
+    {
+        std::vector<unsigned long long> v(len);
+        if (nc_get_att_ulonglong(ncid, varid, name, v.data()) != NC_NOERR)
+            return "<unreadable>";
+        for (size_t i = 0; i < shown; ++i) out += (i ? ", " : "") + std::to_string(v[i]);
+    }
+    else
+    {
+        std::vector<long long> v(len);
+        if (nc_get_att_longlong(ncid, varid, name, v.data()) != NC_NOERR)
+            return "<unreadable>";
+        for (size_t i = 0; i < shown; ++i) out += (i ? ", " : "") + std::to_string(v[i]);
+    }
+    if (len > shown) out += ", ... (" + std::to_string(len) + " values)";
+    return out;
+}
+
+void addNcAttributes(wiv_plugin::MetadataBuilder& md, int ncid, int varid, int natts, const char* section)
+{
+    for (int a = 0; a < natts; ++a)
+    {
+        char aname[NC_MAX_NAME + 1];
+        if (nc_inq_attname(ncid, varid, a, aname) != NC_NOERR)
+            continue;
+        md.add(section, aname, ncAttributeValue(ncid, varid, aname));
+    }
+}
+
+std::string ncDimsText(int ncid, const Candidate& c, bool withNames)
+{
+    std::string s;
+    for (int i = 0; i < c.ndims; ++i)
+    {
+        char dn[NC_MAX_NAME + 1] = "";
+        if (withNames) nc_inq_dimname(ncid, c.dimids[i], dn);
+        s += (i ? ", " : "") + (withNames ? std::string(dn) + "=" : std::string()) + std::to_string(c.dims[i]);
+    }
+    return s;
+}
+
+} // namespace
+
+extern "C" char* wiv_plugin_metadata(const char* filename, int page)
+{
+    std::lock_guard<std::mutex> lock(g_ncMutex);
+    NcFile nf;
+    if (!openFile(filename, nf))
+        return nullptr;
+    const int ncid = nf.ncid;
+    wiv_plugin::MetadataBuilder md;
+
+    // The variable on screen.
+    const Candidate* cand = page >= 0 && page < static_cast<int>(nf.candidates.size()) ? &nf.candidates[static_cast<size_t>(page)] : nullptr;
+    int varAtts = 0;
+    if (cand)
+    {
+        const char* S = "netCDF variable";
+        md.add(S, "Name", cand->name);
+        md.add(S, "Data type", ncTypeName(cand->type));
+        md.add(S, "Dimensions", ncDimsText(ncid, *cand, true));
+        char vname[NC_MAX_NAME + 1];
+        nc_type vt;
+        int nd, dids[NC_MAX_VAR_DIMS];
+        if (nc_inq_var(ncid, cand->varid, vname, &vt, &nd, dids, &varAtts) != NC_NOERR)
+            varAtts = 0;
+        int shuffle = 0, deflate = 0, level = 0, storage = 0;
+        if (nc_inq_var_deflate(ncid, cand->varid, &shuffle, &deflate, &level) == NC_NOERR)
+        {
+            std::string comp = deflate ? "deflate level " + std::to_string(level) : "none";
+            if (shuffle) comp += ", shuffle";
+            md.add(S, "Compression", comp);
+        }
+        size_t chunks[NC_MAX_VAR_DIMS] = {};
+        if (nc_inq_var_chunking(ncid, cand->varid, &storage, chunks) == NC_NOERR && storage == NC_CHUNKED)
+        {
+            std::string cs;
+            for (int i = 0; i < cand->ndims; ++i) cs += (i ? " \xC3\x97 " : "") + std::to_string(chunks[i]);
+            md.add(S, "Chunk shape", cs);
+        }
+    }
+
+    // File structure.
+    {
+        const char* S = "netCDF file";
+        int format = 0;
+        if (nc_inq_format(ncid, &format) == NC_NOERR)
+        {
+            const char* f = format == NC_FORMAT_CLASSIC ? "classic (CDF-1)"
+                          : format == NC_FORMAT_64BIT_OFFSET ? "64-bit offset (CDF-2)"
+                          : format == NC_FORMAT_NETCDF4 ? "netCDF-4 (HDF5)"
+                          : format == NC_FORMAT_NETCDF4_CLASSIC ? "netCDF-4, classic model"
+                          : format == NC_FORMAT_64BIT_DATA ? "64-bit data (CDF-5)" : "unknown";
+            md.add(S, "Format", f);
+        }
+        int ndims = 0, nvars = 0, ngatts = 0, unlim = -1;
+        nc_inq(ncid, &ndims, &nvars, &ngatts, &unlim);
+        std::string dims;
+        for (int d = 0; d < ndims && d < 32; ++d)
+        {
+            char dn[NC_MAX_NAME + 1];
+            size_t len = 0;
+            if (nc_inq_dim(ncid, d, dn, &len) != NC_NOERR) continue;
+            dims += (d ? ", " : "") + std::string(dn) + " = " + std::to_string(len) + (d == unlim ? " (unlimited)" : "");
+        }
+        if (!dims.empty()) md.add(S, "Dimensions", dims);
+        md.add(S, "Variables", nvars);
+        if (nf.candidates.size() > 1)
+        {
+            std::string list;
+            const size_t n = std::min<size_t>(nf.candidates.size(), 64);
+            for (size_t i = 0; i < n; ++i)
+                list += (i ? "; " : "") + std::to_string(i + 1) + ": " + nf.candidates[i].name + " (" + ncDimsText(ncid, nf.candidates[i], false) + ")";
+            if (nf.candidates.size() > n) list += "; ...";
+            md.add(S, "Image variables", static_cast<long long>(nf.candidates.size()));
+            md.add(S, "Variable list", list);
+            if (cand) md.add(S, "Displayed variable", std::to_string(page + 1));
+        }
+        if (cand) addNcAttributes(md, ncid, cand->varid, varAtts, "netCDF variable attributes");
+        addNcAttributes(md, ncid, NC_GLOBAL, ngatts, "netCDF global attributes");
+    }
+    return md.release();
+}

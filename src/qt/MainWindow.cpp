@@ -80,6 +80,7 @@
 #include <QShowEvent>
 #include <QStatusBar>
 #include <QShortcut>
+#include <QThreadPool>
 #include <QTimer>
 #include <QThread>
 #include <QDateTime>
@@ -2455,6 +2456,30 @@ void MainWindow::showGlyphSizeDialog()
     glyphSizeDialog_->activateWindow();
 }
 
+void MainWindow::requestPluginMetadata(const QString& path, const QDateTime& mtime, int page) const
+{
+    const QString key = path + '\n' + mtime.toString(Qt::ISODateWithMs) + '\n' + QString::number(page);
+    if (key == pluginMetaPendingKey_) return; // already on its way
+    pluginMetaPendingKey_ = key;
+    QPointer<MainWindow> self(const_cast<MainWindow*>(this));
+    QThreadPool::globalInstance()->start([self, path, mtime, page, key]() {
+        auto entries = giv::ImagePluginHost::readMetadata(path.toUtf8().toStdString(), page);
+        if (!self) return;
+        QMetaObject::invokeMethod(
+            self.data(),
+            [self, path, mtime, page, key, entries = std::move(entries)]() mutable {
+                if (!self || self->pluginMetaPendingKey_ != key) return; // closed, or superseded by a newer request
+                self->pluginMetaPath_ = path;
+                self->pluginMetaMtime_ = mtime;
+                self->pluginMetaPage_ = page;
+                self->pluginMeta_ = std::move(entries);
+                self->pluginMetaPendingKey_.clear();
+                self->refreshInfoPanel();
+            },
+            Qt::QueuedConnection);
+    });
+}
+
 void MainWindow::refreshInfoPanel()
 {
     if (!infoDock_->isVisible()) return;
@@ -2571,6 +2596,29 @@ QString MainWindow::buildInfoText() const
             section("Metadata");
             for (const auto& e : exifEntries_)
                 row(QString::fromStdString(e.name), QString::fromStdString(e.value));
+        }
+
+        // ---- Format-specific metadata from the plugin (DICOM, NIfTI, FITS, HDF5, netCDF, npy) ----
+        // Read in the background; the sections appear once the result for this file and page is in.
+        if (fi.exists())
+        {
+            const int page = viewport_->currentPage();
+            const QDateTime mtime = fi.lastModified();
+            if (path != pluginMetaPath_ || mtime != pluginMetaMtime_ || page != pluginMetaPage_)
+                requestPluginMetadata(path, mtime, page);
+            else
+            {
+                // Each section once, in order of first appearance (a plugin's entries may interleave them).
+                std::vector<std::string> order;
+                for (const auto& e : pluginMeta_)
+                    if (std::find(order.begin(), order.end(), e.section) == order.end()) order.push_back(e.section);
+                for (const std::string& sec : order)
+                {
+                    section(QString::fromStdString(sec));
+                    for (const auto& e : pluginMeta_)
+                        if (e.section == sec) row(QString::fromStdString(e.key), QString::fromStdString(e.value));
+                }
+            }
         }
     }
 

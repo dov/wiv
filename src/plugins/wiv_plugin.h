@@ -154,6 +154,17 @@ extern "C"
     WIV_PLUGIN_API bool wiv_plugin_anim_next(void* decoder, unsigned char* rgba, int* delay_ms);
     WIV_PLUGIN_API void wiv_plugin_anim_close(void* decoder);
 
+    // OPTIONAL, for formats with rich metadata (DICOM tags, NIfTI header, FITS cards, HDF5/netCDF
+    // attributes, ...). A plugin exports both or neither. wiv_plugin_metadata returns a malloc'd,
+    // NUL-terminated UTF-8 text with one entry per line, `section<TAB>key<TAB>value<LF>`, in display
+    // order; tabs and line breaks inside a field are replaced by spaces (see
+    // wiv_plugin::MetadataBuilder). `page` is the same page index as wiv_plugin_load_page (the
+    // dataset/variable shown, for formats where pages are datasets). NULL if nothing is known or the
+    // file cannot be read. The text must be released with wiv_plugin_free_metadata (the plugin's
+    // allocator, as for images). May be called from the GUI thread while another thread decodes.
+    WIV_PLUGIN_API char* wiv_plugin_metadata(const char* filename, int page);
+    WIV_PLUGIN_API void wiv_plugin_free_metadata(char* text);
+
     // Frees an image returned by wiv_plugin_load_image.
     WIV_PLUGIN_API void wiv_plugin_free_image(WivPluginImage* img);
 
