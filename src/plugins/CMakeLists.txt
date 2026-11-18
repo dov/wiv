@@ -57,7 +57,27 @@ wiv_add_plugin(ora ora/ora_plugin.cpp)
 target_include_directories(wiv_plugin_ora PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
 target_link_libraries(wiv_plugin_ora PRIVATE ZLIB::ZLIB)
 
-wiv_add_plugin(dicom dicom/dicom_plugin.cpp)
+# DICOM (GDCM: all transfer syntaxes incl. JPEG/JPEG-LS/JPEG 2000/RLE, full data dictionary) is
+# optional. Found by library + header rather than GDCM's CMake config, which a stale /usr/local
+# install can break; the headers are taken from next to the library that was found.
+find_library(WIV_GDCM_MSFF gdcmMSFF)
+if(WIV_GDCM_MSFF)
+  get_filename_component(_gdcm_libdir ${WIV_GDCM_MSFF} DIRECTORY)
+  find_path(WIV_GDCM_INCLUDE gdcmReader.h
+    HINTS ${_gdcm_libdir}/../include ${_gdcm_libdir}/../../include
+    PATH_SUFFIXES gdcm gdcm-3.0 gdcm-3.1 gdcm-3.2 gdcm-3.3
+    NO_DEFAULT_PATH)
+  if(NOT WIV_GDCM_INCLUDE)
+    find_path(WIV_GDCM_INCLUDE gdcmReader.h PATH_SUFFIXES gdcm)
+  endif()
+endif()
+if(WIV_GDCM_MSFF AND WIV_GDCM_INCLUDE)
+  wiv_add_plugin(dicom dicom/dicom_plugin.cpp)
+  target_include_directories(wiv_plugin_dicom PRIVATE ${WIV_GDCM_INCLUDE})
+  target_link_libraries(wiv_plugin_dicom PRIVATE ${WIV_GDCM_MSFF})
+else()
+  message(STATUS "GDCM not found - building without the DICOM plugin")
+endif()
 
 # cfitsio ships a CMake config (CFITSIO::cfitsio) via vcpkg, but Fedora's
 # cfitsio-devel package only provides a pkg-config file - fall back to that

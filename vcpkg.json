@@ -48,6 +48,10 @@
       "platform": "windows"
     },
     {
+      "name": "gdcm",
+      "platform": "windows"
+    },
+    {
       "name": "sqlite3",
       "platform": "windows"
     },
