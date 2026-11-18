@@ -222,7 +222,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
             for (const auto& job : jobs)
             {
                 const QImage img = renderContrastThumbnail(job.second, state.min, state.max, static_cast<int>(state.colormapId),
-                                                           state.colormapEnabled, state.gamma);
+                                                           state.colormapEnabled, state.gamma, state.logScale);
                 if (img.isNull() || !strip) continue;
                 QMetaObject::invokeMethod(strip, [strip, row = job.first, img] { if (strip) strip->setThumbnail(row, img); },
                                           Qt::QueuedConnection);
@@ -472,6 +472,10 @@ void MainWindow::buildMenus()
     auto fileMenu = menuBar()->addMenu("&File");
     auto openAction = fileMenu->addAction("&Open...", this, &MainWindow::openFiles);
     openAction->setShortcut(QKeySequence("Ctrl+O"));
+    auto newWindowAction = fileMenu->addAction("&New Window", this, &MainWindow::newWindow);
+    newWindowAction->setShortcut(QKeySequence("Ctrl+N"));
+    auto duplicateAction = fileMenu->addAction("D&uplicate Window", this, &MainWindow::duplicateWindow);
+    duplicateAction->setShortcut(QKeySequence("Ctrl+D"));
 
     recentFilesMenu_ = fileMenu->addMenu("Recent Files");
     updateRecentFilesMenu();
@@ -2129,6 +2133,24 @@ void MainWindow::goImageStep(int step)
     directoryFileIndex_ = ((directoryFileIndex_ + step) % n + n) % n;
     spdlog::info("Directory navigation: switching to {}", directoryFiles_[directoryFileIndex_].toStdString());
     loadNavigationStep({directoryFiles_[directoryFileIndex_].toStdString()});
+}
+
+// New windows are separate wiv processes: each gets its own Vulkan context and
+// per-window state, and a crash or close in one does not touch the others.
+void MainWindow::newWindow()
+{
+    QProcess::startDetached(QCoreApplication::applicationFilePath(), {});
+}
+
+void MainWindow::duplicateWindow()
+{
+    QStringList args;
+    const QString file = currentFilePath();
+    if (!file.isEmpty())
+        args << file;
+    else
+        for (const auto& p : loadedPaths_) args << p;
+    QProcess::startDetached(QCoreApplication::applicationFilePath(), args);
 }
 
 QString MainWindow::currentFilePath() const

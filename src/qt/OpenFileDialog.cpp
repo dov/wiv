@@ -319,13 +319,13 @@ void storeFileThumbnail(const QString& path, const QImage& image)
     if (!image.isNull()) saveCachedThumbnail(path, image);
 }
 
-QImage renderContrastThumbnail(const QString& path, float min, float max, int colormapId, bool colormapEnabled, float gamma)
+QImage renderContrastThumbnail(const QString& path, float min, float max, int colormapId, bool colormapEnabled, float gamma, bool logScale)
 {
     auto loaded = giv::ImagePluginHost::load(path.toStdString());
     if (!loaded || loaded->sampleType == WIV_SAMPLE_NONE || loaded->width <= 0 || loaded->height <= 0) return QImage();
     if (colormapId < 0 || colormapId >= static_cast<int>(giv::colormaps::Id::Count)) return QImage();
     giv::PixelBuffer rgba;
-    giv::renderDisplayRgba(*loaded, min, max, static_cast<giv::colormaps::Id>(colormapId), colormapEnabled, rgba, 0, gamma);
+    giv::renderDisplayRgba(*loaded, min, max, static_cast<giv::colormaps::Id>(colormapId), colormapEnabled, rgba, 0, gamma, logScale);
     QImage full(rgba.data(), loaded->width, loaded->height, loaded->width * 4, QImage::Format_RGBA8888);
     const QImage thumb = giv::downscaleToFit(full, kThumbnailDecodeSize, kThumbnailDecodeSize);
     if (!thumb.isNull()) saveCachedThumbnail(path, thumb);

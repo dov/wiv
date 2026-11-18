@@ -271,6 +271,8 @@ private:
     QString statusLineText() const;
 
     void openFiles();
+    void newWindow();
+    void duplicateWindow();
     void updateRecentFilesMenu();
     void addRecentFile(const QString& path);
     void loadFilesInternal(const std::vector<std::string>& paths);

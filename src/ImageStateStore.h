@@ -28,6 +28,7 @@ public:
         int colormapId = 0;
         bool colormapEnabled = false;
         float gamma = 1.0f;
+        bool logScale = false;
     };
     struct View
     {

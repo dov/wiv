@@ -2,6 +2,11 @@
 
 ## Changes since v0.1.2 (version 0.1.3)
 
+### Windows and display
+- File > New Window (Ctrl+N) and Duplicate Window (Ctrl+D) start another wiv; the duplicate opens
+  the current file.
+- Contrast panel: a Log scale checkbox lifts dark detail; it is remembered per file.
+
 ### Large files
 - Big netCDF-4 variables are read on all cores and the host min/max scan is threaded, so a
   470-megapixel float32 image opens in about a second.

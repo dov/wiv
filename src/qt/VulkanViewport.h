@@ -317,6 +317,7 @@ public:
         giv::colormaps::Id colormapId = giv::colormaps::Id::None;
         bool colormapEnabled = false;
         float gamma = 1.0f;
+        bool logScale = false;
     };
 
     // The raw (undisplayed) currently-decoded image - nullptr if none, or if
@@ -387,6 +388,8 @@ public:
     void setColormap(giv::colormaps::Id id, bool enabled);
     // Display gamma of the current image (>0, 1 = linear, >1 brightens midtones); remembered per image.
     void setGamma(float gamma);
+    // Log-scale display of the stretched level (lifts dark detail); remembered per image.
+    void setLogScale(bool on);
     // Gives each of `paths` (other files) the current image's contrast window, colour table and gamma,
     // in memory and in the remembered state. Returns how many were set.
     int copyContrastStateTo(const std::vector<std::string>& paths);

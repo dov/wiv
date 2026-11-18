@@ -45,6 +45,8 @@ public:
     // (without emitting gammaChanged). The handle sits where the gamma curve
     // reaches 50% output, i.e. at fraction 0.5^gamma of the window.
     void setGamma(float gamma);
+    // Draws the curve with the log-scale mapping applied (display only).
+    void setLogScale(bool on);
 
 signals:
     // Emitted continuously while a handle is being dragged (widget -> caller).
@@ -77,6 +79,7 @@ private:
     float contrastMax_ = 1.0f;
     double strength_ = 0.0;
     float gamma_ = 1.0f;
+    bool logScale_ = false;
     bool hasCursorValue_ = false;
     double cursorValue_ = 0.0;
 

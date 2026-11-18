@@ -79,6 +79,14 @@ ContrastPanel::ContrastPanel(VulkanViewport* viewport, QWidget* parent) : QWidge
     grid->addWidget(gammaEdit_, 4, 2);
     grid->addWidget(gammaReset, 4, 3, 1, 2);
 
+    logCheck_ = new QCheckBox("Log scale", this);
+    logCheck_->setToolTip("Compress the bright end with a logarithmic curve to reveal dark detail");
+    connect(logCheck_, &QCheckBox::toggled, this, [this](bool on) {
+        histogram_->setLogScale(on);
+        viewport_->setLogScale(on);
+    });
+    grid->addWidget(logCheck_, 5, 0, 1, 5);
+
     auto* contrastBox = new QGroupBox("Contrast", this);
     contrastBox->setLayout(grid);
 
@@ -172,6 +180,11 @@ void ContrastPanel::refreshForImage()
 
     gammaEdit_->setText(QString::number(state.gamma, 'g', 4));
     histogram_->setGamma(state.gamma);
+    {
+        QSignalBlocker blocker(logCheck_);
+        logCheck_->setChecked(state.logScale);
+    }
+    histogram_->setLogScale(state.logScale);
 
     {
         QSignalBlocker blocker(colormapCombo_);

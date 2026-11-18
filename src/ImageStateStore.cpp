@@ -61,6 +61,7 @@ ImageStateStore::ImageStateStore(const std::string& dbPath)
     }
     // Added after the first release: older databases lack it (the ALTER then fails harmlessly).
     sqlite3_exec(db_, "ALTER TABLE image_state ADD COLUMN gamma REAL", nullptr, nullptr, nullptr);
+    sqlite3_exec(db_, "ALTER TABLE image_state ADD COLUMN log_scale INTEGER", nullptr, nullptr, nullptr);
     exec("CREATE TABLE IF NOT EXISTS scene_state("
          "path TEXT PRIMARY KEY, size INTEGER NOT NULL, mtime INTEGER NOT NULL, last_used INTEGER NOT NULL,"
          "image_index INTEGER NOT NULL)");
@@ -132,7 +133,7 @@ std::optional<ImageStateStore::Contrast> ImageStateStore::loadContrast(const std
     const std::string imagePath = canonicalPath(rawPath);
     FileId id;
     if (!db_ || !fileId(imagePath, id)) return std::nullopt;
-    Stmt st(db_, "SELECT cmin, cmax, colormap, colormap_enabled, gamma FROM image_state "
+    Stmt st(db_, "SELECT cmin, cmax, colormap, colormap_enabled, gamma, log_scale FROM image_state "
                  "WHERE path=?1 AND size=?2 AND mtime=?3 AND has_contrast=1");
     if (!st) return std::nullopt;
     sqlite3_bind_text(st.s, 1, imagePath.c_str(), -1, SQLITE_TRANSIENT);
@@ -149,6 +150,7 @@ std::optional<ImageStateStore::Contrast> ImageStateStore::loadContrast(const std
         const double g = sqlite3_column_double(st.s, 4);
         if (g > 0.0) c.gamma = static_cast<float>(g);
     }
+    c.logScale = sqlite3_column_type(st.s, 5) != SQLITE_NULL && sqlite3_column_int(st.s, 5) != 0;
     return c;
 }
 
@@ -180,13 +182,13 @@ void ImageStateStore::saveContrast(const std::string& rawPath, const Contrast& c
     const std::string imagePath = canonicalPath(rawPath);
     FileId id;
     if (!db_ || !fileId(imagePath, id)) return;
-    Stmt st(db_, "INSERT INTO image_state(path,size,mtime,last_used,has_contrast,cmin,cmax,colormap,colormap_enabled,gamma)"
-                 " VALUES(?1,?2,?3,?4,1,?5,?6,?7,?8,?9)"
+    Stmt st(db_, "INSERT INTO image_state(path,size,mtime,last_used,has_contrast,cmin,cmax,colormap,colormap_enabled,gamma,log_scale)"
+                 " VALUES(?1,?2,?3,?4,1,?5,?6,?7,?8,?9,?10)"
                  " ON CONFLICT(path) DO UPDATE SET"
                  " has_view=CASE WHEN size=excluded.size AND mtime=excluded.mtime THEN has_view ELSE 0 END,"
                  " size=excluded.size, mtime=excluded.mtime, last_used=excluded.last_used, has_contrast=1,"
                  " cmin=excluded.cmin, cmax=excluded.cmax, colormap=excluded.colormap,"
-                 " colormap_enabled=excluded.colormap_enabled, gamma=excluded.gamma");
+                 " colormap_enabled=excluded.colormap_enabled, gamma=excluded.gamma, log_scale=excluded.log_scale");
     if (!st) return;
     sqlite3_bind_text(st.s, 1, imagePath.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_int64(st.s, 2, id.size);
@@ -197,6 +199,7 @@ void ImageStateStore::saveContrast(const std::string& rawPath, const Contrast& c
     sqlite3_bind_int(st.s, 7, c.colormapId);
     sqlite3_bind_int(st.s, 8, c.colormapEnabled ? 1 : 0);
     sqlite3_bind_double(st.s, 9, c.gamma);
+    sqlite3_bind_int(st.s, 10, c.logScale ? 1 : 0);
     sqlite3_step(st.s);
 }
 

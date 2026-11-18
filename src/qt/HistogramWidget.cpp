@@ -53,6 +53,13 @@ void HistogramWidget::setStrength(double value)
     update();
 }
 
+void HistogramWidget::setLogScale(bool on)
+{
+    if (on == logScale_) return;
+    logScale_ = on;
+    update();
+}
+
 void HistogramWidget::setGamma(float gamma)
 {
     if (gamma == gamma_) return;
@@ -190,7 +197,11 @@ void HistogramWidget::paintEvent(QPaintEvent*)
         QPolygonF curve;
         const int n = xMax - xMin;
         for (int i = 0; i <= n; i += 2)
-            curve << QPointF(xMin + i, (height() - 1) * (1.0 - std::pow(static_cast<double>(i) / n, inv)));
+            {
+            double t = static_cast<double>(i) / n;
+            if (logScale_) t = std::log1p(100.0 * t) / std::log(101.0);
+            curve << QPointF(xMin + i, (height() - 1) * (1.0 - std::pow(t, inv)));
+        }
         curve << QPointF(xMax, 0.0);
         p.setBrush(Qt::NoBrush);
         p.setPen(QPen(QColor(230, 120, 20), 1.5));

@@ -57,6 +57,7 @@ private:
     QLineEdit* windowEdit_ = nullptr;
     QSlider* strengthSlider_ = nullptr;
     QLineEdit* gammaEdit_ = nullptr;
+    QCheckBox* logCheck_ = nullptr;
     QComboBox* colormapCombo_ = nullptr;
     QCheckBox* volumeHistogramCheck_ = nullptr; // shown only for multi-slice images
 

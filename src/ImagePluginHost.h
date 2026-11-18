@@ -116,6 +116,7 @@ struct LoadedImage
         bool colormapEnabled = false;
         int slice = 0;
         float gamma = 1.0f; // display gamma (>1 brightens midtones), baked into the colour table
+        bool logScale = false; // log(1+100t) applied before gamma, baked into the colour table
         bool lowContrast = false; // $low_contrast: shown dimmed (colormap/pixels compressed toward mid-gray)
     } display;
 

@@ -1748,7 +1748,7 @@ QString VulkanViewport::pixelValueText(double worldX, double worldY) const
         // The GPU does the stretch, so work out the colour the shader shows for this one sample.
         const size_t rawIdx = static_cast<size_t>(raw.width) * raw.height * currentSlice_ + sampleIdx;
         const uint32_t rgba = giv::displayRgbaAt(raw, img.display.min, img.display.max, img.display.colormap,
-                                                  img.display.colormapEnabled, rawIdx, img.display.gamma);
+                                                  img.display.colormapEnabled, rawIdx, img.display.gamma, img.display.logScale);
         r = rgba & 0xff, g = (rgba >> 8) & 0xff, b = (rgba >> 16) & 0xff, a = 255;
     }
     else
@@ -2426,6 +2426,7 @@ void VulkanViewport::recomputeDisplayImage()
         const ContrastState state = currentContrastState();
         display.display = {state.min, state.max, state.colormapId, state.colormapEnabled, currentSlice_};
         display.display.gamma = state.gamma;
+        display.display.logScale = state.logScale;
     }
     display.display.lowContrast = scene_.lowContrast;
     displayImages_ = {std::move(display)};
@@ -2441,7 +2442,7 @@ QImage VulkanViewport::currentViewImage(int maxSize)
     if (src.sampleType != WIV_SAMPLE_NONE)
     {
         const ContrastState state = currentContrastState();
-        giv::renderDisplayRgba(src, state.min, state.max, state.colormapId, state.colormapEnabled, rgba, currentSlice_, state.gamma);
+        giv::renderDisplayRgba(src, state.min, state.max, state.colormapId, state.colormapEnabled, rgba, currentSlice_, state.gamma, state.logScale);
     }
     else
         rgba = src.rgba;
@@ -2488,6 +2489,7 @@ VulkanViewport::ContrastState VulkanViewport::currentContrastState()
                     defaultState.colormapEnabled = saved->colormapEnabled;
                 }
                 if (saved->gamma > 0.0f) defaultState.gamma = saved->gamma;
+                defaultState.logScale = saved->logScale;
                 if (!autoContrast_ && saved->max > saved->min)
                 {
                     defaultState.min = saved->min;
@@ -2540,7 +2542,7 @@ int VulkanViewport::copyContrastStateTo(const std::vector<std::string>& paths)
         if (key == self) continue;
         contrastState_[key] = state;
         if (store)
-            store->saveContrast(path, {state.min, state.max, static_cast<int>(state.colormapId), state.colormapEnabled, state.gamma});
+            store->saveContrast(path, {state.min, state.max, static_cast<int>(state.colormapId), state.colormapEnabled, state.gamma, state.logScale});
         ++n;
     }
     return n;
@@ -2555,7 +2557,7 @@ void VulkanViewport::setContrast(float min, float max)
     state.max = max;
     contrastState_[contrastKey()] = state;
     if (auto* store = currentPage_ == 0 ? stateStore() : nullptr)
-        store->saveContrast(currentImageName(), {state.min, state.max, static_cast<int>(state.colormapId), state.colormapEnabled, state.gamma});
+        store->saveContrast(currentImageName(), {state.min, state.max, static_cast<int>(state.colormapId), state.colormapEnabled, state.gamma, state.logScale});
     lastContrastMin_ = min;
     lastContrastMax_ = max;
     hasLastContrast_ = true;
@@ -2582,7 +2584,7 @@ void VulkanViewport::setColormap(giv::colormaps::Id id, bool enabled)
     state.colormapEnabled = enabled;
     contrastState_[contrastKey()] = state;
     if (auto* store = currentPage_ == 0 ? stateStore() : nullptr)
-        store->saveContrast(currentImageName(), {state.min, state.max, static_cast<int>(state.colormapId), state.colormapEnabled, state.gamma});
+        store->saveContrast(currentImageName(), {state.min, state.max, static_cast<int>(state.colormapId), state.colormapEnabled, state.gamma, state.logScale});
     lastColormapId_ = id;
     lastColormapEnabled_ = enabled;
 
@@ -2599,6 +2601,23 @@ void VulkanViewport::setColormap(giv::colormaps::Id id, bool enabled)
                  perfMs(perfRendered, perfApplied), perfMs(perfApplied, std::chrono::steady_clock::now()));
 }
 
+void VulkanViewport::setLogScale(bool on)
+{
+    if (loadedImages_.empty() || loadedImages_.front().sampleType == WIV_SAMPLE_NONE) return;
+
+    ContrastState state = currentContrastState();
+    state.logScale = on;
+    contrastState_[contrastKey()] = state;
+    if (auto* store = currentPage_ == 0 ? stateStore() : nullptr)
+        store->saveContrast(currentImageName(), {state.min, state.max, static_cast<int>(state.colormapId), state.colormapEnabled, state.gamma, state.logScale});
+
+    recomputeDisplayImage();
+    QString error;
+    if (!applyDisplayImage(&error))
+        spdlog::error("Failed to apply log scale: {}", error.toStdString());
+    emit contrastChanged();
+}
+
 void VulkanViewport::setGamma(float gamma)
 {
     if (loadedImages_.empty() || loadedImages_.front().sampleType == WIV_SAMPLE_NONE) return;
@@ -2608,7 +2627,7 @@ void VulkanViewport::setGamma(float gamma)
     state.gamma = gamma;
     contrastState_[contrastKey()] = state;
     if (auto* store = currentPage_ == 0 ? stateStore() : nullptr)
-        store->saveContrast(currentImageName(), {state.min, state.max, static_cast<int>(state.colormapId), state.colormapEnabled, state.gamma});
+        store->saveContrast(currentImageName(), {state.min, state.max, static_cast<int>(state.colormapId), state.colormapEnabled, state.gamma, state.logScale});
 
     recomputeDisplayImage();
     QString error;

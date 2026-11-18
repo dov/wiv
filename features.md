@@ -161,6 +161,7 @@ in Edit > Preferences > Keyboard.
   operates on real dynamic range, not quantised RGBA8.
 - Adjust Contrast panel (`C`): histogram with draggable min/max handles,
   min/max and center/window fields, auto contrast; live view.
+- Log scale checkbox in the contrast panel (log(1+100t) before gamma; remembered per file).
 - Whole-volume histogram toggle for multi-slice data.
 - Contrast stretch and colormap applied on the GPU.
 - Color Table / pseudo-colour (`P`): None, Invert, Low Contrast, Rainbow,
@@ -214,7 +215,7 @@ Stored in `state.db` (SQLite, WAL mode) next to `wiv.ini` (e.g.
   chunking and filters, its attributes, its group's and the file's) and netCDF (dimensions,
   the variable's type, compression and attributes, and the global attributes). For HDF5 and
   netCDF the entries follow the page (dataset or variable) on screen.
-- File menu: Open (`Ctrl+O`), Reload (`Enter`), Save Raw Data (`Ctrl+Shift+S`: the original 8/16-bit or
+- File menu: Open (`Ctrl+O`), New Window (`Ctrl+N`) and Duplicate Window (`Ctrl+D`; separate wiv processes), Reload (`Enter`), Save Raw Data (`Ctrl+Shift+S`: the original 8/16-bit or
   float samples, not the rendered view, as an uncompressed TIFF (one page per slice) or `.npy`; enabled
   only for images with raw samples; asks for current slice or all slices of a volume), Rename
   (`F2`), Delete (`Del`), Open File Location (`W`),

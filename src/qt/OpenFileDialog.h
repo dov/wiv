@@ -59,7 +59,7 @@ void storeFileThumbnail(const QString& path, const QImage& image);
 // Renders `path`'s thumbnail through the given contrast window / colormap / gamma, stores it in the disk
 // cache and returns it. Null for files without raw sample data (colour images, .giv, .svg), whose
 // thumbnails don't depend on contrast. Safe to call from a worker thread.
-QImage renderContrastThumbnail(const QString& path, float min, float max, int colormapId, bool colormapEnabled, float gamma);
+QImage renderContrastThumbnail(const QString& path, float min, float max, int colormapId, bool colormapEnabled, float gamma, bool logScale = false);
 
 enum class ThumbnailState { Queued, Ready, Failed };
 
