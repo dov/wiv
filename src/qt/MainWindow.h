@@ -249,6 +249,7 @@ private:
     // doc comment.
     bool firstShow_ = true;
     bool startupActualPixels_ = false;
+    QStringList pastedTempFiles_; // PNGs written for pasted clipboard images; removed on exit
     QString startupExportPath_;
     QSize startupExportSize_;
     bool startupZoom_ = false;
@@ -348,6 +349,8 @@ private:
     QString currentFilePath() const;
     void copyCurrentFile();
     void copyCursorInfo();
+    void copyViewAsImage(); // File > Copy View as Image
+    void pasteFromClipboard(); // File > Paste
     void deleteCurrentFile();
     void renameCurrentFile();
     void openFileLocation();

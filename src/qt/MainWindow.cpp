@@ -385,7 +385,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     });
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow()
+{
+    for (const QString& f : pastedTempFiles_) QFile::remove(f);
+}
 
 bool MainWindow::startRpcServer(int port)
 {
@@ -487,10 +490,6 @@ void MainWindow::buildMenus()
     reloadAction->setShortcuts({QKeySequence(Qt::Key_Return), QKeySequence(Qt::Key_Enter)});
 
     fileMenu->addSeparator();
-    auto copyAction = fileMenu->addAction("&Copy", this, &MainWindow::copyCurrentFile);
-    copyAction->setShortcut(QKeySequence("Ctrl+C"));
-    auto copyCoordAction = fileMenu->addAction("Copy Coordinate && Color", this, &MainWindow::copyCursorInfo);
-    copyCoordAction->setShortcut(QKeySequence("Ctrl+Shift+C"));
     auto renameAction = fileMenu->addAction("Re&name...", this, &MainWindow::renameCurrentFile);
     renameAction->setShortcut(QKeySequence("F2"));
     auto deleteAction = fileMenu->addAction("&Delete", this, &MainWindow::deleteCurrentFile);
@@ -934,6 +933,15 @@ void MainWindow::buildMenus()
     colorTableAction_->setEnabled(false);
 
     auto editMenu = menuBar()->addMenu("&Edit");
+    auto copyAction = editMenu->addAction("&Copy", this, &MainWindow::copyCurrentFile);
+    copyAction->setShortcut(QKeySequence("Ctrl+C"));
+    auto copyCoordAction = editMenu->addAction("Copy Coordinate && Color", this, &MainWindow::copyCursorInfo);
+    copyCoordAction->setShortcut(QKeySequence("Ctrl+Shift+C"));
+    auto copyImageAction = editMenu->addAction("Copy View as &Image", this, &MainWindow::copyViewAsImage);
+    copyImageAction->setShortcut(QKeySequence("Ctrl+Alt+C"));
+    auto pasteAction = editMenu->addAction("&Paste", this, &MainWindow::pasteFromClipboard);
+    pasteAction->setShortcut(QKeySequence("Ctrl+V"));
+    editMenu->addSeparator();
     editMenu->addAction("Preferences...", this, [this]() {
         spdlog::info("Preferences dialog opened");
         PreferencesDialog dlg(bindableActions_, this);
@@ -2069,6 +2077,88 @@ void MainWindow::copyCurrentFile()
     if (!image.isNull()) mime->setImageData(image);
     QApplication::clipboard()->setMimeData(mime);
     infoLabel_->setText("Copied: " + QFileInfo(path).fileName());
+}
+
+void MainWindow::copyViewAsImage()
+{
+    // Render what the window shows (including contrast, colour table and marks)
+    // through the export path into a temporary PNG, then put the pixels on the
+    // clipboard. Unlike Copy this works for FITS, RAW, .giv, SVG etc.
+    const QSize size = viewport_->visibleSizePx();
+    if (size.isEmpty())
+    {
+        statusBar()->showMessage("Nothing to copy: no view", 3000);
+        return;
+    }
+    VulkanViewport::ExportView view;
+    view.kind = VulkanViewport::ExportView::Kind::Current;
+    const QString tmp = QDir::temp().filePath(QString("wiv-copy-%1.png").arg(QCoreApplication::applicationPid()));
+    QString error;
+    if (!viewport_->exportImage(tmp, size.width(), size.height(), view, &error))
+    {
+        statusBar()->showMessage("Could not copy the view: " + error, 5000);
+        return;
+    }
+    QImage image(tmp);
+    QFile::remove(tmp);
+    if (image.isNull())
+    {
+        statusBar()->showMessage("Could not copy the view: rendered image unreadable", 5000);
+        return;
+    }
+    QApplication::clipboard()->setImage(image);
+    statusBar()->showMessage(QString("Copied view as image (%1\u00d7%2)").arg(image.width()).arg(image.height()), 3000);
+}
+
+void MainWindow::pasteFromClipboard()
+{
+    const QMimeData* mime = QApplication::clipboard()->mimeData();
+    if (!mime) return;
+
+    // 1. Files copied in a file manager (or by our own Copy).
+    std::vector<std::string> paths;
+    for (const QUrl& url : mime->urls())
+        if (url.isLocalFile() && QFileInfo::exists(url.toLocalFile()))
+            paths.push_back(url.toLocalFile().toStdString());
+
+    // 2. Plain text holding one path per line (file:// URLs allowed).
+    if (paths.empty() && mime->hasText() && !mime->hasImage())
+    {
+        for (QString line : mime->text().split('\n', Qt::SkipEmptyParts))
+        {
+            line = line.trimmed();
+            if (line.startsWith("file://")) line = QUrl(line).toLocalFile();
+            if (!line.isEmpty() && QFileInfo(line).isFile()) paths.push_back(line.toStdString());
+        }
+    }
+    if (!paths.empty())
+    {
+        spdlog::info("Paste: loading {} file(s) from the clipboard", paths.size());
+        loadFiles(paths);
+        return;
+    }
+
+    // 3. Pixels (a screenshot, or "copy image" from a browser or editor).
+    if (mime->hasImage())
+    {
+        const QImage image = qvariant_cast<QImage>(mime->imageData());
+        if (!image.isNull())
+        {
+            static int counter = 0;
+            const QString tmp = QDir::temp().filePath(
+                QString("wiv-paste-%1-%2.png").arg(QCoreApplication::applicationPid()).arg(++counter));
+            if (!image.save(tmp, "PNG"))
+            {
+                statusBar()->showMessage("Could not store the pasted image", 5000);
+                return;
+            }
+            pastedTempFiles_ << tmp;
+            spdlog::info("Paste: loading a {}x{} clipboard image", image.width(), image.height());
+            loadFiles({tmp.toStdString()});
+            return;
+        }
+    }
+    statusBar()->showMessage("Nothing to paste: the clipboard has no image or file", 3000);
 }
 
 void MainWindow::copyCursorInfo()

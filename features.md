@@ -205,9 +205,12 @@ Stored in `state.db` (SQLite, WAL mode) next to `wiv.ini` (e.g.
   PNG eXIf, WebP): camera, exposure, GPS; header attributes of Radiance HDR
   (EXPOSURE, comments, ...), PFM (byte order, scale) and OpenEXR (channels,
   compression, windows, chromaticities, string/float attributes).
-- File menu: Open (`Ctrl+O`), Reload (`Enter`), Copy (`Ctrl+C`), Rename
+- File menu: Open (`Ctrl+O`), Reload (`Enter`), Rename
   (`F2`), Delete (`Del`), Open File Location (`W`),
   Quit (`Q`).
+- Edit menu: Copy (`Ctrl+C`), Copy Coordinate & Color (`Ctrl+Shift+C`), Copy View as Image
+  (`Ctrl+Alt+C`, renders the current view to the clipboard), Paste (`Ctrl+V`: files, paths or an
+  image such as a screenshot), Preferences.
 - Auto Reload: polls file and reloads when it changes (500 ms).
 - Open in External App (`E`) / Open With submenu: configurable apps
   (`Ctrl+1..9`), system default, choose application, per-extension rules;

@@ -14,6 +14,8 @@
 - `[perf]` timings are logged for image loads.
 
 ### Viewer
+- Edit > Copy View as Image (Ctrl+Alt+C) puts the rendered view on the clipboard, and Edit > Paste (Ctrl+V) opens
+  copied files, pasted paths or a clipboard image such as a screenshot.
 - The SVG transparency backdrop fills the whole canvas, not just the content bounds.
 - Shift+B cycles Checkerboard, White and Black only (Theme and Preferences colors stay in the
   menu) and shows a status message on every change.
