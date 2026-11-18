@@ -205,7 +205,9 @@ Stored in `state.db` (SQLite, WAL mode) next to `wiv.ini` (e.g.
   PNG eXIf, WebP): camera, exposure, GPS; header attributes of Radiance HDR
   (EXPOSURE, comments, ...), PFM (byte order, scale) and OpenEXR (channels,
   compression, windows, chromaticities, string/float attributes).
-- File menu: Open (`Ctrl+O`), Reload (`Enter`), Rename
+- File menu: Open (`Ctrl+O`), Reload (`Enter`), Save Raw Data (`Ctrl+Shift+S`: the original 8/16-bit or
+  float samples, not the rendered view, as an uncompressed TIFF (one page per slice) or `.npy`; enabled
+  only for images with raw samples; asks for current slice or all slices of a volume), Rename
   (`F2`), Delete (`Del`), Open File Location (`W`),
   Quit (`Q`).
 - Edit menu: Copy (`Ctrl+C`), Copy Coordinate & Color (`Ctrl+Shift+C`), Copy View as Image

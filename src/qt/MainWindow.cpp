@@ -12,6 +12,7 @@
 #include "ExternalApps.h"
 #include "GlyphSizeDialog.h"
 #include "ImagePluginHost.h"
+#include "RawImageWriter.h"
 #include "InstalledApps.h"
 #include "InfoPanel.h"
 #include "MarkTreeView.h"
@@ -477,6 +478,12 @@ void MainWindow::buildMenus()
     fileMenu->addSeparator();
     auto exportAction = fileMenu->addAction("&Export...", this, &MainWindow::exportImage);
     exportAction->setShortcut(QKeySequence("Ctrl+E"));
+    saveRawAction_ = fileMenu->addAction("Save &Raw Data...", this, &MainWindow::saveRawData);
+    saveRawAction_->setShortcut(QKeySequence("Ctrl+Shift+S"));
+    connect(fileMenu, &QMenu::aboutToShow, this, [this]() {
+        const giv::LoadedImage* img = viewport_->currentImage();
+        saveRawAction_->setEnabled(img && giv::hasRawSamples(*img));
+    });
 
     // giv: Escape aborts a pending pick_coordinate request.
     auto* escapeAction = new QAction(this);
@@ -1338,6 +1345,72 @@ void MainWindow::exportImage()
     QString error;
     if (!viewport_->exportImage(path, size.width(), size.height(), view, &error))
         QMessageBox::critical(this, "Export", QString("Could not export the image: %1").arg(error));
+}
+
+// File > Save Raw Data...: a file chooser followed by an
+// options dialog that only asks what applies (here: which slices of a volume).
+void MainWindow::saveRawData()
+{
+    spdlog::info("User invoked File > Save Raw Data...");
+    const giv::LoadedImage* img = viewport_->currentImage();
+    if (!img || !giv::hasRawSamples(*img))
+    {
+        QMessageBox::information(this, "Save Raw Data",
+                                 "This image has no raw sample data (colour images only have their 8-bit rendering). "
+                                 "Use File > Export to save the rendered view.");
+        return;
+    }
+
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+    const QString lastDir = settings.value("lastRawSaveDir", QDir::currentPath()).toString();
+    const QString lastFormat = settings.value("lastRawSaveFormat", "tif").toString();
+    const QString base = QFileInfo(loadedBaseName_.section(", ", 0, 0)).completeBaseName();
+    const QString tiffFilter = "TIFF (*.tif *.tiff)", npyFilter = "NumPy array (*.npy)";
+    QString selectedFilter = lastFormat == "npy" ? npyFilter : tiffFilter;
+    QString path = QFileDialog::getSaveFileName(this, "Save Raw Data", QDir(lastDir).filePath(base + "." + lastFormat),
+                                                tiffFilter + ";;" + npyFilter, &selectedFilter);
+    if (path.isEmpty()) return;
+
+    giv::RawSaveOptions options;
+    if (!giv::rawFormatFromPath(path.toStdString(), options.format))
+    {
+        // No (or an unknown) suffix: take the format from the chosen filter.
+        options.format = selectedFilter == npyFilter ? giv::RawFormat::Npy : giv::RawFormat::Tiff;
+        path += options.format == giv::RawFormat::Npy ? ".npy" : ".tif";
+    }
+
+    options.slice = viewport_->currentSlice();
+    if (img->depth > 1)
+    {
+        QDialog dialog(this);
+        dialog.setWindowTitle("Save Raw Data");
+        auto* layout = new QVBoxLayout(&dialog);
+        auto* current = new QRadioButton(QString("Current slice (%1 of %2)").arg(options.slice + 1).arg(img->depth));
+        auto* all = new QRadioButton(options.format == giv::RawFormat::Tiff
+                                         ? QString("All %1 slices (as pages)").arg(img->depth)
+                                         : QString("All %1 slices (one 3D array)").arg(img->depth));
+        (settings.value("lastRawSaveAllSlices", false).toBool() ? all : current)->setChecked(true);
+        layout->addWidget(current);
+        layout->addWidget(all);
+        auto* buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
+        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        layout->addWidget(buttons);
+        if (dialog.exec() != QDialog::Accepted) return;
+        options.allSlices = all->isChecked();
+        settings.setValue("lastRawSaveAllSlices", options.allSlices);
+    }
+    settings.setValue("lastRawSaveDir", QFileInfo(path).absolutePath());
+    settings.setValue("lastRawSaveFormat", options.format == giv::RawFormat::Npy ? "npy" : "tif");
+
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    std::string error;
+    const bool ok = giv::writeRawImage(path.toStdString(), *img, options, &error);
+    QApplication::restoreOverrideCursor();
+    if (!ok)
+        QMessageBox::critical(this, "Save Raw Data", QString("Could not save the raw data: %1").arg(QString::fromStdString(error)));
+    else
+        statusBar()->showMessage("Saved raw data: " + QFileInfo(path).fileName(), 5000);
 }
 
 void MainWindow::loadFilesJoined(const std::vector<std::string>& paths)

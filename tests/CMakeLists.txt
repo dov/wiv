@@ -11,6 +11,7 @@ add_executable(wiv_unit_tests
   test_markup_svgpath_colormaps.cpp
   test_examples.cpp
   test_downsample.cpp
+  test_raw_writer.cpp
   test_plugin_host.cpp
 )
 target_link_libraries(wiv_unit_tests PRIVATE wiv_lib GTest::gtest GTest::gtest_main)

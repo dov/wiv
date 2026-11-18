@@ -184,6 +184,7 @@ add_library(wiv_lib OBJECT
   src/BalloonController.cpp
   src/ImagePluginHost.cpp
   src/ImageDownsample.cpp
+  src/RawImageWriter.cpp
   src/Colormaps.cpp
   src/ExifReader.cpp
   src/ImageStateStore.cpp

@@ -266,6 +266,8 @@ private:
     void loadFilesInternal(const std::vector<std::string>& paths);
     void reloadFiles();
     void exportImage(); // File > Export...
+    void saveRawData(); // File > Save Raw Data...
+    QAction* saveRawAction_ = nullptr; // enabled only while the image has raw samples
     void setAutoReload(bool enable);
 
     // Rescans the directory of `loadedPath` for giv-compatible files (see
