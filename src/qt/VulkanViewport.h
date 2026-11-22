@@ -941,7 +941,7 @@ private:
     // (re)created and auto-fit to the new bounds (a fresh file load) or left
     // untouched (a visibility-only rebuild), and whether the balloon overlay
     // is force-reset to hidden (new file) or kept as it was.
-    bool rebuildSceneGraph(QString* error, bool isInitialLoad);
+    bool rebuildSceneGraph(QString* error, bool isInitialLoad, bool deferFirstRender = false);
 
     // Waits (bounded, see rebuildSceneGraph()'s doc comment on why not
     // viewer_->deviceWaitIdle()) for the GPU to retire every frame that may

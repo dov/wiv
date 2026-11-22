@@ -1020,7 +1020,10 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
     decodeCurrentImage();
 
     auto buildStart = std::chrono::steady_clock::now();
-    if (!rebuildSceneGraph(error, /*isInitialLoad=*/true)) return false;
+    // The forced first render is deferred until the view below is fitted or
+    // restored: rendering here would present the new content under the previous
+    // image's zoom/pan for one frame, which flickers when stepping quickly.
+    if (!rebuildSceneGraph(error, /*isInitialLoad=*/true, /*deferFirstRender=*/true)) return false;
     // With Auto Fit off a load normally keeps the current zoom/pan, but pure
     // vector content (.giv/.marks/.svg) with no remembered view of its own has
     // no sensible "previous state": fit it by default.
@@ -1040,6 +1043,19 @@ bool VulkanViewport::loadFiles(const std::vector<std::string>& paths, QString* e
             }
         }
         if (rememberView_ || vectorFile) fitContentToWindow();
+    }
+    {
+        // The deferred first render (see rebuildSceneGraph()), now with the final view.
+        viewer_->request();
+        try
+        {
+            viewer_->render();
+        }
+        catch (const vsg::Exception& e)
+        {
+            if (error) *error = QString("failed to render first frame: %1 (VkResult %2)").arg(QString::fromStdString(e.message)).arg(e.result);
+            return false;
+        }
     }
     double buildMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - buildStart).count();
 
@@ -1070,7 +1086,7 @@ bool VulkanViewport::waitForGpuIdle()
     return true;
 }
 
-bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
+bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad, bool deferFirstRender)
 {
     // [perf] phase timing, logged once at the end (also on the early error returns it is simply omitted).
     using PerfClock = std::chrono::steady_clock;
@@ -1405,7 +1421,12 @@ bool VulkanViewport::rebuildSceneGraph(QString* error, bool isInitialLoad)
     labelPicker_->setEnabled(wasBalloonEnabled);
     if (!wasBalloonEnabled) balloonLabel_->hide();
 
-    if (isInitialLoad)
+    if (isInitialLoad && deferFirstRender)
+    {
+        // The caller renders once it has settled the view.
+        viewer_->request();
+    }
+    else if (isInitialLoad)
     {
         // Force the first frame to be recorded/presented right here, matching
         // the reference application's Widget3D construction order (compile() then one
