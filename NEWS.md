@@ -1,16 +1,27 @@
 # NEWS
 
-## Changes since v0.1.2 (version 0.1.3)
+## Changes since v0.1.3 (unreleased)
 
 ### Windows and display
-- File > Export shows a Save Options dialog: JPEG quality and progressive, WebP quality or lossless,
-  PNG compression, TIFF compression. Export can also write QOI.
+- File > Export shows a Save Options dialog: JPEG quality and progressive, WebP quality or lossless, PNG compression, TIFF compression. Export can also write QOI.
 - QOI images can be opened.
-- View > Apply Embedded ICC Profile (on by default) converts JPEG, PNG, TIFF and WebP photos with
-  a Display P3, Adobe RGB or other RGB profile to sRGB.
-- File > New Window (Ctrl+N) and Duplicate Window (Ctrl+D) start another wiv; the duplicate opens
-  the current file.
+- View > Apply Embedded ICC Profile (on by default) converts JPEG, PNG, TIFF and WebP photos with a Display P3, Adobe RGB or other RGB profile to sRGB.
+- File > New Window (Ctrl+N) and Duplicate Window (Ctrl+D) start another wiv; the duplicate opens the current file.
 - Contrast panel: a Log scale checkbox lifts dark detail; it is remembered per file.
+
+### Viewer
+- The Image Info dock shows the full metadata of scientific files: every DICOM tag (named, grouped, with sequences, UID names and character-set decoding), the NIfTI-1 header with its orientation, every FITS header card, the `.npy` header, and the attributes of HDF5 datasets and netCDF variables. Combined with the filter box, a long header is easy to search.
+- The Image Info dock has a filter box: type part of a key or value (or a section name such as EXIF) to narrow long property lists.
+- File > Save Raw Data... (Ctrl+Shift+S) writes the original 8/16-bit or float samples of grayscale, FITS, DICOM, HDF5, netCDF, NIfTI and `.npy` images as TIFF or `.npy`, either the current slice or the whole volume.
+- Edit > Copy View as Image (Ctrl+Alt+C) puts the rendered view on the clipboard, and Edit > Paste (Ctrl+V) opens copied files, pasted paths or a clipboard image such as a screenshot.
+- Wheel zoom uses giv's steps: 1.4x per notch, 1.1x with Shift (finer) and 2x with Ctrl.
+- Every checkable menu item (View options, dock toggles, Loop Animation) says "<Name>: on/off" in the status bar when toggled.
+- Force Opaque no longer turns fully transparent marks, lines and fills visible.
+- The Mark Browser is compact: narrow indentation with larger expand triangles, and columns fitted to their contents (Path fills any spare width).
+- The Mark Browser pops down when the loaded file has no marks (plain images and SVGs).
+- Holding the arrow key no longer flickers: a newly loaded file is drawn only once its view is fitted, not for one frame under the previous file's zoom and pan.
+
+## Changes since v0.1.2 (version 0.1.3)
 
 ### Large files
 - Big netCDF-4 variables are read on all cores and the host min/max scan is threaded, so a
@@ -24,23 +35,10 @@
 - `[perf]` timings are logged for image loads.
 
 ### Viewer
-- The Image Info dock shows the full metadata of scientific files: every DICOM tag (named, grouped, with
-  sequences, UID names and character-set decoding), the NIfTI-1 header with its orientation, every FITS header
-  card, the `.npy` header, and the attributes of HDF5 datasets and netCDF variables. Combined with the filter
-  box, a long header is easy to search.
-- The Image Info dock has a filter box: type part of a key or value (or a section name such as EXIF) to
-  narrow long property lists.
-- File > Save Raw Data... (Ctrl+Shift+S) writes the original 8/16-bit or float samples of grayscale, FITS,
-  DICOM, HDF5, netCDF, NIfTI and `.npy` images as TIFF or `.npy`, either the current slice or the whole volume.
-- Edit > Copy View as Image (Ctrl+Alt+C) puts the rendered view on the clipboard, and Edit > Paste (Ctrl+V) opens
-  copied files, pasted paths or a clipboard image such as a screenshot.
 - The SVG transparency backdrop fills the whole canvas, not just the content bounds.
 - Shift+B cycles Checkerboard, White and Black only (Theme and Preferences colors stay in the
   menu) and shows a status message on every change.
 - Shift+wheel steps 10 images instead of 1 when the wheel navigates.
-- Every checkable menu item (View options, dock toggles, Loop Animation) says "<Name>: on/off" in the
-  status bar when toggled.
-- Force Opaque no longer turns fully transparent marks, lines and fills visible.
 
 ### Documentation
 - netCDF is listed with the other scientific formats throughout the README and docs; new
