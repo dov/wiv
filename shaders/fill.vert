@@ -42,5 +42,5 @@ void main()
     // shaft vector (zw), matching lines.vert's shaft.
     vec2 worldPos = inPosition + inOffsetPixels.zw * (vp.params2.x - 1.0) + inOffsetPixels.xy * (vp.params.x * vp.params2.y);
     gl_Position = pc.projection * pc.modelview * vec4(worldPos, 0.0, 1.0);
-    fragColor = vec4(inColor.rgb, vp.params.y > 0.5 ? 1.0 : min(inColor.a * vp.params2.z, 1.0));
+    fragColor = vec4(inColor.rgb, vp.params.y > 0.5 ? (inColor.a > 0.0 ? 1.0 : 0.0) : min(inColor.a * vp.params2.z, 1.0));
 }

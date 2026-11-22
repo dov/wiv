@@ -38,6 +38,7 @@
 - Shift+B cycles Checkerboard, White and Black only (Theme and Preferences colors stay in the
   menu) and shows a status message on every change.
 - Shift+wheel steps 10 images instead of 1 when the wheel navigates.
+- Force Opaque no longer turns fully transparent marks, lines and fills visible.
 
 ### Documentation
 - netCDF is listed with the other scientific formats throughout the README and docs; new

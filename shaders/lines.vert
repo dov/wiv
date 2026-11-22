@@ -71,7 +71,7 @@ void main()
     vec2 worldPos = p0 + dirN * along + normal * across;
 
     gl_Position = pc.projection * pc.modelview * vec4(worldPos, 0.0, 1.0);
-    fragColor = vec4(inColor.rgb, vp.params.y > 0.5 ? 1.0 : min(inColor.a * vp.params2.z, 1.0));
+    fragColor = vec4(inColor.rgb, vp.params.y > 0.5 ? (inColor.a > 0.0 ? 1.0 : 0.0) : min(inColor.a * vp.params2.z, 1.0));
     fragAlong = inWidthDash.w + along;
     fragDash = inWidthDash.yz;
     fragGeom = vec4(along, across, segLen, halfWidth) / wpp;
