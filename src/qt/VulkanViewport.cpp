@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (c) 2026 Dov Grobgeld
+#include "ExportWriter.h"
 #include "VulkanViewport.h"
 #include "ToggleCapture.h"
 
@@ -3546,7 +3547,8 @@ QSize VulkanViewport::visibleSizePx() const
     return QSize(static_cast<int>(e.width), static_cast<int>(e.height));
 }
 
-bool VulkanViewport::exportImage(const QString& path, int width, int height, const ExportView& view, QString* error)
+bool VulkanViewport::exportImage(const QString& path, int width, int height, const ExportView& view, QString* error,
+                                 const ExportOptions& options)
 {
     auto fail = [&](const QString& message) {
         spdlog::error("Export failed: {}", message.toStdString());
@@ -3692,7 +3694,8 @@ bool VulkanViewport::exportImage(const QString& path, int width, int height, con
     if (!rendered) return fail("could not render a frame (is the window shown?)");
 
     QImage image(pixels.data(), width, height, width * 4, QImage::Format_RGBA8888);
-    if (!image.copy().save(path)) return fail(QString("could not write %1").arg(path));
+    QString writeError;
+    if (!writeExportImage(image.copy(), path, options, &writeError)) return fail(writeError);
     spdlog::info("Exported {}x{} image to {}", width, height, path.toStdString());
     return true;
 }

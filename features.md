@@ -27,7 +27,7 @@ in Edit > Preferences > Keyboard.
 | JPEG (fast path) | `.jpg .jpeg` | `jpegturbo` | libjpeg-turbo; reduced-size (1/2,1/4,1/8) fast previews |
 | TIFF | `.tif .tiff` | `tiff` (libtiff) | multi-page; orientation-aware; raw sample data |
 | WebP | `.webp` | `webp` | animated WebP |
-| QOI | `.qoi` | `qoi` | own codec (`src/Qoi.h`) |
+| QOI | `.qoi` | `qoi` | own codec (`src/Qoi.h`); also writable via File > Export |
 | HEIC/HEIF/AVIF | `.heic .heif .hif .avif .avifs` | `heif` (libheif, optional) | AVIF sequences need libheif 1.20+ |
 | JPEG XL | `.jxl` | `jxl` (libjxl, optional) | animated JXL plays (frames coalesced; rotated animations show first frame only) |
 | Camera RAW | `.3fr .arw .cr2 .cr3 .crw .dcr .dng .erf .fff .gpr .iiq .kdc .mef .mos .mrw .nef .nrw .orf .pef .raf .raw .rw2 .rwl .sr2 .srf .srw .x3f` | `raw` (LibRaw, optional) | |
@@ -80,7 +80,7 @@ in Edit > Preferences > Keyboard.
   every load), Image, Menu Bar, Auto Reload, Loop Animation.
 - Force opaque (`A`) — ignore alpha channel.
 - Glyph Appearance panel (View, `Ctrl+G`): global live multipliers for mark size, line width, quiver length and opacity (no scene rebuild; unused rows hidden). Gestures: Ctrl+LMB drag vertical = marks, horizontal = quiver length; Ctrl+RMB drag horizontal = line width, vertical = opacity; Alt+wheel = quivers. Force Opaque overrides opacity.
-- Export (File > Export..., `--export`, RPC `export_image`): renders the current view off-screen at any size to PNG/JPEG/BMP/TIFF/WebP.
+- Export (File > Export..., `--export`, RPC `export_image`): renders the current view off-screen at any size to PNG/JPEG/BMP/TIFF/WebP/QOI. A Save Options dialog offers the format's options: JPEG quality and progressive, WebP quality or lossless, PNG compression level, TIFF compression (none/LZW); settings are remembered.
 - Configurable background colour, MSAA (off/2x/4x).
 - Full screen (`F11`), hideable menu bar (`Ctrl+M`).
 - Drag-and-drop of files onto the window (incl. a native Windows drop target).

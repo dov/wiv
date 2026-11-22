@@ -3,6 +3,8 @@
 ## Changes since v0.1.2 (version 0.1.3)
 
 ### Windows and display
+- File > Export shows a Save Options dialog: JPEG quality and progressive, WebP quality or lossless,
+  PNG compression, TIFF compression. Export can also write QOI.
 - QOI images can be opened.
 - File > New Window (Ctrl+N) and Duplicate Window (Ctrl+D) start another wiv; the duplicate opens
   the current file.

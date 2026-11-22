@@ -35,6 +35,9 @@
 #include <vector>
 
 #include <QAction>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QFormLayout>
 #include <QApplication>
 #include <QClipboard>
 #include <QDesktopServices>
@@ -1228,6 +1231,104 @@ void MainWindow::loadFiles(const std::vector<std::string>& paths)
     addRecentFile(expanded.first());
 }
 
+// The Save Options dialog shown after File > Export picks a file: only the options that apply to
+// the format (quality, compression, ...), remembered between runs. Formats with no options skip it.
+static bool askExportOptions(QWidget* parent, ExportFormat format, ExportOptions& options)
+{
+    const ExportOptionSupport support = exportOptionSupport(format);
+    if (!support.any()) return true;
+
+    QSettings s(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
+    s.beginGroup("exportOptions");
+    QDialog dialog(parent);
+    dialog.setWindowTitle("Save Options");
+    auto* form = new QFormLayout();
+    QSlider* quality = nullptr;
+    QLabel* qualityLabel = nullptr;
+    QCheckBox *lossless = nullptr, *progressive = nullptr;
+    QComboBox *pngLevel = nullptr, *tiffComp = nullptr;
+    if (support.quality)
+    {
+        quality = new QSlider(Qt::Horizontal);
+        quality->setRange(1, 100);
+        quality->setValue(s.value(format == ExportFormat::Jpeg ? "jpegQuality" : "webpQuality", 90).toInt());
+        qualityLabel = new QLabel(QString::number(quality->value()));
+        qualityLabel->setMinimumWidth(qualityLabel->fontMetrics().horizontalAdvance("100"));
+        QObject::connect(quality, &QSlider::valueChanged, qualityLabel, [qualityLabel](int v) { qualityLabel->setText(QString::number(v)); });
+        auto* row = new QHBoxLayout();
+        row->addWidget(quality, 1);
+        row->addWidget(qualityLabel);
+        form->addRow("Quality:", row);
+    }
+    if (support.lossless)
+    {
+        lossless = new QCheckBox("Lossless");
+        lossless->setChecked(s.value("webpLossless", false).toBool());
+        form->addRow(QString(), lossless);
+        QObject::connect(lossless, &QCheckBox::toggled, quality, [quality](bool on) { quality->setEnabled(!on); });
+        quality->setEnabled(!lossless->isChecked());
+    }
+    if (support.progressive)
+    {
+        progressive = new QCheckBox("Progressive");
+        progressive->setChecked(s.value("jpegProgressive", false).toBool());
+        form->addRow(QString(), progressive);
+    }
+    if (support.pngCompression)
+    {
+        pngLevel = new QComboBox();
+        pngLevel->addItem("None (fastest)", 0);
+        pngLevel->addItem("Fast", 1);
+        pngLevel->addItem("Normal", 6);
+        pngLevel->addItem("Best (smallest)", 9);
+        pngLevel->setCurrentIndex(std::max(0, pngLevel->findData(s.value("pngCompression", 6).toInt())));
+        form->addRow("Compression:", pngLevel);
+    }
+    if (support.tiffCompression)
+    {
+        tiffComp = new QComboBox();
+        tiffComp->addItem("None", 0);
+        tiffComp->addItem("LZW", 1);
+        tiffComp->setCurrentIndex(std::max(0, tiffComp->findData(s.value("tiffCompression", 1).toInt())));
+        form->addRow("Compression:", tiffComp);
+    }
+    auto* layout = new QVBoxLayout(&dialog);
+    layout->addLayout(form);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    dialog.setMinimumWidth(320);
+    if (dialog.exec() != QDialog::Accepted) return false;
+
+    if (quality)
+    {
+        options.quality = quality->value();
+        s.setValue(format == ExportFormat::Jpeg ? "jpegQuality" : "webpQuality", options.quality);
+    }
+    if (lossless)
+    {
+        options.lossless = lossless->isChecked();
+        s.setValue("webpLossless", options.lossless);
+    }
+    if (progressive)
+    {
+        options.progressive = progressive->isChecked();
+        s.setValue("jpegProgressive", options.progressive);
+    }
+    if (pngLevel)
+    {
+        options.pngCompression = pngLevel->currentData().toInt();
+        s.setValue("pngCompression", options.pngCompression);
+    }
+    if (tiffComp)
+    {
+        options.tiffCompression = tiffComp->currentData().toInt();
+        s.setValue("tiffCompression", options.tiffCompression);
+    }
+    return true;
+}
+
 void MainWindow::exportImage()
 {
     spdlog::info("User invoked File > Export...");
@@ -1347,8 +1448,11 @@ void MainWindow::exportImage()
     if (QFileInfo(path).suffix().isEmpty()) path += ".png";
     settings.setValue("lastExportDir", QFileInfo(path).absolutePath());
 
+    ExportOptions options;
+    if (!askExportOptions(this, exportFormatFromPath(path), options)) return; // cancelled
+
     QString error;
-    if (!viewport_->exportImage(path, size.width(), size.height(), view, &error))
+    if (!viewport_->exportImage(path, size.width(), size.height(), view, &error, options))
         QMessageBox::critical(this, "Export", QString("Could not export the image: %1").arg(error));
 }
 

@@ -185,6 +185,7 @@ add_library(wiv_lib OBJECT
   src/ImagePluginHost.cpp
   src/ImageDownsample.cpp
   src/RawImageWriter.cpp
+  src/ExportWriter.cpp
   src/Colormaps.cpp
   src/ExifReader.cpp
   src/ImageStateStore.cpp

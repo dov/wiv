@@ -9,6 +9,7 @@
 // packaged as loadFiles() so it can be re-run from File > Open as well as
 // at startup.
 //
+#include "ExportWriter.h"
 #include "ImageStateStore.h"
 #include <memory>
 #include "BalloonController.h"
@@ -423,6 +424,8 @@ public:
 
     // View to render in exportImage(). Kinds that don't carry their own scale
     // and center derive them from the content or the on-screen view.
+    using ExportOptions = givqt::ExportOptions;
+
     struct ExportView
     {
         enum class Kind
@@ -441,7 +444,8 @@ public:
     // extension (whatever QImage can write: png, jpg, bmp, ...). The
     // Measure Distance overlay is not included. Must run on the GUI thread
     // with the window shown. Returns false and sets *error on failure.
-    bool exportImage(const QString& path, int width, int height, const ExportView& view, QString* error = nullptr);
+    bool exportImage(const QString& path, int width, int height, const ExportView& view, QString* error = nullptr,
+                     const ExportOptions& options = {});
 
     // Size in device pixels of what the view currently shows (excludes scroll bars and any
     // masked-off part of the render window): the export size that reproduces the on-screen view.

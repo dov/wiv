@@ -12,6 +12,7 @@ add_executable(wiv_unit_tests
   test_examples.cpp
   test_downsample.cpp
   test_raw_writer.cpp
+  test_qoi_export.cpp
   test_plugin_metadata.cpp
   test_plugin_host.cpp
 )
