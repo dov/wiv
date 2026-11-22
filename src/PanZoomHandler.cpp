@@ -205,7 +205,12 @@ void PanZoomHandler::apply(vsg::ScrollWheelEvent& event)
     double amount = static_cast<double>(event.delta.y) - static_cast<double>(event.delta.z);
     if (amount == 0.0) return;
 
-    double factor = std::pow(0.9, amount * (shiftHeld() ? 5.0 : 1.0));
+    // Per-notch zoom strengths copied from giv's scroll_event: 1.4 plain, 1.1 with Shift
+    // (fine), 2.0 with Ctrl (coarse; wins over Shift). Zooming in shrinks the view by 1/strength.
+    double strength = 1.4;
+    if (shiftHeld()) strength = 1.1;
+    if (QGuiApplication::keyboardModifiers() & Qt::ControlModifier) strength = 2.0;
+    double factor = std::pow(1.0 / strength, amount);
 
     // vsg doesn't give pointer position on ScrollWheelEvent, so fall back to
     // lastX_/lastY_, which apply(MoveEvent&) keeps current on every hover

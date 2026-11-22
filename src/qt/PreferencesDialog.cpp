@@ -367,7 +367,7 @@ QWidget* PreferencesDialog::buildMouseTab()
 
     auto layout = new QVBoxLayout(page);
     layout->addLayout(form);
-    layout->addWidget(new QLabel("Left- or middle-drag pans, right-drag zooms, Shift+wheel zooms faster and Alt+wheel "
+    layout->addWidget(new QLabel("Left- or middle-drag pans, right-drag zooms, wheel zooms 1.4x per step (Shift 1.1x, Ctrl 2x) and Alt+wheel "
                                  "scales quivers, as in giv."));
     layout->addStretch();
     return page;
