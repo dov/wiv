@@ -13,6 +13,7 @@
 // host it in either a standalone window or a docked side panel (see
 // MainWindow::showMarkBrowser/setMarkBrowserPlacement).
 //
+#include <QResizeEvent>
 #include <QWidget>
 
 #include <memory>
@@ -38,6 +39,12 @@ public:
     // browser may be open (matches giv's giv_mark_tree_dialog_update_tree_view).
     void rebuildFromScene();
 
+    // Tight around the columns, so a dock showing this starts as narrow as its contents allow.
+    QSize sizeHint() const override;
+
+protected:
+    void resizeEvent(QResizeEvent* event) override;
+
 private:
     struct Node
     {
@@ -52,6 +59,9 @@ private:
     std::vector<std::unique_ptr<Node>> nodes_;
     bool updatingCheckState_ = false; // guards against reacting to our own setCheckState() calls
 
+    void fitColumns();
+    void fillExtraWidth(); // gives spare viewport width to the Path column
+    int fittedPathWidth_ = 0;
     void onItemChanged(QTreeWidgetItem* item, int column);
     void setSubtreeChecked(QTreeWidgetItem* item, bool checked);
 };

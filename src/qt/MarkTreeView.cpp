@@ -4,26 +4,68 @@
 
 #include "VulkanViewport.h"
 
+#include <QApplication>
 #include <QFileInfo>
 #include <QHeaderView>
+#include <QPainter>
+#include <QProxyStyle>
+#include <QScrollBar>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 #include <QVariant>
 
+#include <algorithm>
 #include <unordered_map>
 
 namespace givqt
 {
+
+namespace
+{
+// Qt scales the expand/collapse triangles with the indentation, so the narrow indent used here
+// would shrink them. This draws them at a fixed, comfortable size inside the narrow slot instead.
+class BigBranchStyle : public QProxyStyle
+{
+public:
+    using QProxyStyle::QProxyStyle;
+
+    void drawPrimitive(PrimitiveElement element, const QStyleOption* option, QPainter* painter,
+                       const QWidget* widget) const override
+    {
+        if (element != PE_IndicatorBranch || !(option->state & State_Children))
+        {
+            QProxyStyle::drawPrimitive(element, option, painter, widget);
+            return;
+        }
+        const bool open = option->state & State_Open;
+        const QPointF c = QRectF(option->rect).center();
+        constexpr double kLong = 10.0, kShort = 6.0; // base and depth of the triangle
+        QPolygonF tri;
+        if (open) tri << QPointF(c.x() - kLong / 2, c.y() - kShort / 2) << QPointF(c.x() + kLong / 2, c.y() - kShort / 2) << QPointF(c.x(), c.y() + kShort / 2);
+        else tri << QPointF(c.x() - kShort / 2, c.y() - kLong / 2) << QPointF(c.x() - kShort / 2, c.y() + kLong / 2) << QPointF(c.x() + kShort / 2, c.y());
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(option->palette.color((option->state & State_Selected) ? QPalette::HighlightedText : QPalette::Text));
+        painter->drawPolygon(tri);
+        painter->restore();
+    }
+};
+} // namespace
 
 MarkTreeView::MarkTreeView(VulkanViewport* viewport, QWidget* parent) : QWidget(parent), viewport_(viewport)
 {
     tree_ = new QTreeWidget(this);
     tree_->setColumnCount(3);
     tree_->setHeaderLabels({"Path", "Visible", "#nodes"});
-    tree_->header()->setSectionResizeMode(0, QHeaderView::Interactive);
-    tree_->header()->resizeSection(0, 220);
-    tree_->header()->setSectionResizeMode(2, QHeaderView::Fixed);
-    tree_->header()->resizeSection(2, 60);
+    // Narrow nesting steps (the default is about 20 px; the branch arrows still fit); columns are fitted to their contents
+    // in fitColumns() but stay user-resizable.
+    tree_->setIndentation(6);
+    auto* branchStyle = new BigBranchStyle(QApplication::style()->name());
+    branchStyle->setParent(tree_); // owned by the tree; QWidget::setStyle does not take ownership
+    tree_->setStyle(branchStyle);
+    tree_->header()->setStretchLastSection(false);
+    tree_->header()->setSectionResizeMode(QHeaderView::Interactive);
 
     auto layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -115,6 +157,40 @@ void MarkTreeView::rebuildFromScene()
 
     tree_->expandAll();
     updatingCheckState_ = false;
+    fitColumns();
+}
+
+void MarkTreeView::fitColumns()
+{
+    // Each column is as wide as its longest entry (header included); an over-long Path is
+    // cut at kMaxPathWidth - the user can still drag it wider.
+    constexpr int kMaxPathWidth = 280;
+    for (int c = 0; c < tree_->columnCount(); ++c) tree_->resizeColumnToContents(c);
+    if (tree_->columnWidth(0) > kMaxPathWidth) tree_->setColumnWidth(0, kMaxPathWidth);
+    fittedPathWidth_ = tree_->columnWidth(0);
+    fillExtraWidth();
+    updateGeometry();
+}
+
+void MarkTreeView::fillExtraWidth()
+{
+    // Spare room (a dock wider than the contents) goes to Path rather than an empty strip on the right.
+    int others = 0;
+    for (int c = 1; c < tree_->columnCount(); ++c) others += tree_->columnWidth(c);
+    tree_->setColumnWidth(0, std::max(fittedPathWidth_, tree_->viewport()->width() - others));
+}
+
+void MarkTreeView::resizeEvent(QResizeEvent* event)
+{
+    QWidget::resizeEvent(event);
+    fillExtraWidth();
+}
+
+QSize MarkTreeView::sizeHint() const
+{
+    int w = 2 * tree_->frameWidth() + 4;
+    for (int c = 0; c < tree_->columnCount(); ++c) w += tree_->columnWidth(c);
+    return QSize(w + tree_->verticalScrollBar()->sizeHint().width(), QWidget::sizeHint().height());
 }
 
 void MarkTreeView::onItemChanged(QTreeWidgetItem* item, int column)
