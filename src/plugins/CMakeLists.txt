@@ -48,6 +48,10 @@ target_link_libraries(wiv_plugin_webp PRIVATE WebP::webp WebP::webpdemux)
 
 wiv_add_plugin(npy npy/npy_plugin.cpp)
 
+# QOI (own codec in src/Qoi.h, no external deps).
+wiv_add_plugin(qoi qoi/qoi_plugin.cpp)
+target_include_directories(wiv_plugin_qoi PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
 # NIfTI (.nii/.nii.gz) and OpenRaster/Krita (.ora/.kra): small self-contained
 # readers that only need zlib (already pulled in by libtiff/freetype).
 find_package(ZLIB REQUIRED)

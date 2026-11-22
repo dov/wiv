@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (c) 2026 Dov Grobgeld
 #include "ImagePluginHost.h"
+#include "Qoi.h"
 
 #include <gtest/gtest.h>
 
@@ -95,4 +96,25 @@ TEST_F(PluginHostTest, AdoptedPluginBuffersStayValid)
     EXPECT_EQ(std::memcmp(copy.samples.data(), v.data(), v.size() * 2), 0);
     EXPECT_EQ(copy.rgba.size(), w * h * 4);
     std::filesystem::remove(path);
+}
+
+// The qoi plugin loads a file written by the shared codec, by suffix and by content.
+TEST_F(PluginHostTest, QoiPluginLoadsEncodedImage)
+{
+    const int w = 5, h = 3;
+    std::vector<uint8_t> px(w * h * 4);
+    for (size_t i = 0; i < px.size(); ++i) px[i] = static_cast<uint8_t>(i * 7);
+    for (size_t i = 3; i < px.size(); i += 4) px[i] = 255;
+    const auto enc = giv::qoi::encode(px.data(), w, h, 4);
+    for (const char* name : {"wiv_test_qoi.qoi", "wiv_test_qoi_noext.bin"})
+    {
+        const std::filesystem::path path = std::filesystem::temp_directory_path() / name;
+        std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char*>(enc.data()), static_cast<std::streamsize>(enc.size()));
+        auto img = giv::ImagePluginHost::load(path.string());
+        ASSERT_TRUE(img.has_value()) << name;
+        EXPECT_EQ(img->width, w);
+        EXPECT_EQ(img->height, h);
+        EXPECT_EQ(std::memcmp(img->rgba.data(), px.data(), px.size()), 0);
+        std::filesystem::remove(path);
+    }
 }

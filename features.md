@@ -27,6 +27,7 @@ in Edit > Preferences > Keyboard.
 | JPEG (fast path) | `.jpg .jpeg` | `jpegturbo` | libjpeg-turbo; reduced-size (1/2,1/4,1/8) fast previews |
 | TIFF | `.tif .tiff` | `tiff` (libtiff) | multi-page; orientation-aware; raw sample data |
 | WebP | `.webp` | `webp` | animated WebP |
+| QOI | `.qoi` | `qoi` | own codec (`src/Qoi.h`) |
 | HEIC/HEIF/AVIF | `.heic .heif .hif .avif .avifs` | `heif` (libheif, optional) | AVIF sequences need libheif 1.20+ |
 | JPEG XL | `.jxl` | `jxl` (libjxl, optional) | animated JXL plays (frames coalesced; rotated animations show first frame only) |
 | Camera RAW | `.3fr .arw .cr2 .cr3 .crw .dcr .dng .erf .fff .gpr .iiq .kdc .mef .mos .mrw .nef .nrw .orf .pef .raf .raw .rw2 .rwl .sr2 .srf .srw .x3f` | `raw` (LibRaw, optional) | |
