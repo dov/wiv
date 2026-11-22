@@ -78,6 +78,7 @@ in Edit > Preferences > Keyboard.
   Vertical Zoom Lock, Colormap Bar and Show Marks are saved when toggled and
   restored at startup. Not persisted on purpose: Balloon Tooltips (reset on
   every load), Image, Menu Bar, Auto Reload, Loop Animation.
+- View > Apply Embedded ICC Profile (on by default, remembered): colour images with an embedded non-sRGB RGB profile (JPEG, PNG, TIFF, WebP) are converted to sRGB with Little CMS when loaded; sRGB profiles, grayscale/CMYK profiles and raw-sample data are left alone. Optional build dependency (lcms2).
 - Force opaque (`A`) — ignore alpha channel.
 - Glyph Appearance panel (View, `Ctrl+G`): global live multipliers for mark size, line width, quiver length and opacity (no scene rebuild; unused rows hidden). Gestures: Ctrl+LMB drag vertical = marks, horizontal = quiver length; Ctrl+RMB drag horizontal = line width, vertical = opacity; Alt+wheel = quivers. Force Opaque overrides opacity.
 - Export (File > Export..., `--export`, RPC `export_image`): renders the current view off-screen at any size to PNG/JPEG/BMP/TIFF/WebP/QOI. A Save Options dialog offers the format's options: JPEG quality and progressive, WebP quality or lossless, PNG compression level, TIFF compression (none/LZW); settings are remembered.
@@ -305,7 +306,7 @@ Absence is inferred from the menus and source layout, not exhaustively
 proven; re-check before relying on an item.
 
 - No image editing (crop, resize, adjust colour, annotate); export only renders the current view.
-- No slideshow mode, no print support, no ICC colour management.
+- No slideshow mode, no print support. ICC: only embedded RGB profiles are converted to sRGB (no display-profile management, no HEIF/AVIF/JXL profiles).
 - No video playback.
 - No EXIF editing; EXIF only for JPEG/TIFF/PNG/WebP.
 - No remote/network file loading beyond local paths.

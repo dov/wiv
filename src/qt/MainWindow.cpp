@@ -11,6 +11,7 @@
 #include "ContrastPanel.h"
 #include "ExternalApps.h"
 #include "GlyphSizeDialog.h"
+#include "IccProfile.h"
 #include "ImagePluginHost.h"
 #include "RawImageWriter.h"
 #include "InstalledApps.h"
@@ -605,6 +606,18 @@ void MainWindow::buildMenus()
     forceOpaqueAction_->setCheckable(true);
     forceOpaqueAction_->setShortcut(QKeySequence("A"));
 
+    // Convert images with an embedded (non-sRGB) ICC profile to sRGB. Remembered; reloads the images.
+    applyIccAction_ = viewMenu->addAction("Apply Embedded ICC Profile");
+    applyIccAction_->setCheckable(true);
+    applyIccAction_->setChecked(giv::ImagePluginHost::applyIccProfile());
+    applyIccAction_->setEnabled(giv::iccConversionAvailable());
+    applyIccAction_->setToolTip("Convert photos with an embedded colour profile (Display P3, Adobe RGB, ...) to sRGB");
+    connect(applyIccAction_, &QAction::toggled, this, [this](bool on) {
+        giv::ImagePluginHost::setApplyIccProfile(on);
+        viewport_->retainCachedImages({}, {}); // drop images prefetched with the old setting
+        reloadFiles();
+    });
+
     // What shows behind translucent pixels of an image or SVG (not .giv files).
     {
         using TB = VulkanViewport::TransparencyBackground;
@@ -755,6 +768,7 @@ void MainWindow::buildMenus()
             {subPixelAction_, "subPixelCoordinates"},  {horizontalFlipAction_, "horizontalFlip"},
             {verticalFlipAction_, "verticalFlip"},     {verticalZoomLockAction_, "verticalZoomLock"},
             {colorMapBarAction_, "colorMapBar"},       {showMarksAction_, "showMarks"},
+            {applyIccAction_, "applyIcc"},
         };
         QSettings settings(QSettings::IniFormat, QSettings::UserScope, "wiv", "wiv");
         for (const auto& [action, key] : sticky)

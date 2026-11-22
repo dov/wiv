@@ -52,6 +52,10 @@
       "platform": "windows"
     },
     {
+      "name": "lcms",
+      "platform": "windows"
+    },
+    {
       "name": "sqlite3",
       "platform": "windows"
     },

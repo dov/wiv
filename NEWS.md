@@ -6,6 +6,8 @@
 - File > Export shows a Save Options dialog: JPEG quality and progressive, WebP quality or lossless,
   PNG compression, TIFF compression. Export can also write QOI.
 - QOI images can be opened.
+- View > Apply Embedded ICC Profile (on by default) converts JPEG, PNG, TIFF and WebP photos with
+  a Display P3, Adobe RGB or other RGB profile to sRGB.
 - File > New Window (Ctrl+N) and Duplicate Window (Ctrl+D) start another wiv; the duplicate opens
   the current file.
 - Contrast panel: a Log scale checkbox lifts dark detail; it is remembered per file.

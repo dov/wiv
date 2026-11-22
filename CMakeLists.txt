@@ -38,6 +38,8 @@ find_package(EXPAT REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(HARFBUZZ REQUIRED IMPORTED_TARGET harfbuzz)
 pkg_check_modules(FRIBIDI REQUIRED IMPORTED_TARGET fribidi)
+# Little CMS converts embedded ICC profiles to sRGB; optional (the View option is then a no-op).
+pkg_check_modules(LCMS2 QUIET IMPORTED_TARGET lcms2)
 if(NOT WIN32)
   pkg_check_modules(FONTCONFIG REQUIRED IMPORTED_TARGET fontconfig)
 endif()
@@ -186,6 +188,7 @@ add_library(wiv_lib OBJECT
   src/ImageDownsample.cpp
   src/RawImageWriter.cpp
   src/ExportWriter.cpp
+  src/IccProfile.cpp
   src/Colormaps.cpp
   src/ExifReader.cpp
   src/ImageStateStore.cpp
@@ -230,6 +233,12 @@ endif()
 add_dependencies(wiv_lib wiv_shaders)
 
 target_include_directories(wiv_lib PUBLIC src ${CMAKE_SOURCE_DIR}/third_party)
+if(LCMS2_FOUND)
+  target_compile_definitions(wiv_lib PUBLIC WIV_HAVE_LCMS)
+  target_link_libraries(wiv_lib PUBLIC PkgConfig::LCMS2)
+else()
+  message(STATUS "Little CMS not found - building without ICC profile conversion")
+endif()
 target_link_libraries(wiv_lib PUBLIC vsg::vsg vsgXchange::vsgXchange vsgQt::vsgQt Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent Qt6::Network QtAwesome ${WIV_HWY_TARGET} spdlog::spdlog SQLite::SQLite3 EXPAT::EXPAT PkgConfig::HARFBUZZ PkgConfig::FRIBIDI)
 if(NOT WIN32)
   target_link_libraries(wiv_lib PUBLIC PkgConfig::FONTCONFIG)

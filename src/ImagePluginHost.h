@@ -173,6 +173,11 @@ public:
     // paying for a full decode of every candidate up front.
     static bool isSupported(const std::string& filename);
 
+    // Whether load() and loadPreview() convert colour images with an embedded (non-sRGB) ICC profile
+    // to sRGB. On by default; a no-op without Little CMS. Callers reload the image after changing it.
+    static void setApplyIccProfile(bool on);
+    static bool applyIccProfile();
+
     // A quick reduced-resolution stand-in for load(filename) - only for
     // plugins exporting wiv_plugin_load_preview, and only when the image is
     // big enough for that to pay off. Returns nullopt otherwise (the caller

@@ -5,6 +5,7 @@
 #include "plugins/wiv_plugin.h"
 #include "plugins/wiv_plugin_common.h"
 #include "AppPaths.h"
+#include "IccProfile.h"
 
 #include <spdlog/spdlog.h>
 
@@ -27,6 +28,7 @@
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
@@ -343,6 +345,29 @@ std::vector<Plugin>& loadedPlugins()
 
 } // namespace
 
+namespace
+{
+std::atomic<bool> g_applyIcc{true};
+
+// Converts a colour image from its embedded ICC profile to sRGB. Single-channel sample data is
+// left alone (the contrast tools work on the raw values).
+void applyIccToRgba(LoadedImage& image, const std::string& filename)
+{
+    if (!g_applyIcc.load() || !iccConversionAvailable() || image.sampleType != WIV_SAMPLE_NONE || image.rgba.empty()) return;
+    const std::vector<uint8_t> profile = readIccProfile(filename);
+    if (profile.empty() || !iccConversionNeeded(profile)) return;
+    std::vector<uint8_t> pixels(image.rgba.data(), image.rgba.data() + image.rgba.size());
+    if (convertRgba8ToSrgb(profile, pixels.data(), pixels.size() / 4))
+    {
+        image.rgba = std::move(pixels);
+        spdlog::info("Converted {} from ICC profile \"{}\" to sRGB", filename, iccDescription(profile));
+    }
+}
+} // namespace
+
+void ImagePluginHost::setApplyIccProfile(bool on) { g_applyIcc.store(on); }
+bool ImagePluginHost::applyIccProfile() { return g_applyIcc.load(); }
+
 std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename, int page, const volatile int* cancel)
 {
     using Clock = std::chrono::steady_clock;
@@ -414,6 +439,7 @@ std::optional<LoadedImage> ImagePluginHost::load(const std::string& filename, in
         const int orientation = img->orientation;
         const auto tOrient = Clock::now();
         applyOrientation(result, orientation);
+        applyIccToRgba(result, filename);
         const double msOrient = msSince(tOrient);
         const auto tMinMax = Clock::now();
         computeSampleMinMax(result);
@@ -510,6 +536,7 @@ std::optional<LoadedImage> ImagePluginHost::loadPreview(const std::string& filen
         const int orientation = img->orientation;
         plugin.freeImage(img);
         applyOrientation(result, orientation);
+        applyIccToRgba(result, filename);
         const bool swapDims = orientation >= 5 && orientation <= 8;
         result.fullWidth = swapDims ? fullHeight : fullWidth;
         result.fullHeight = swapDims ? fullWidth : fullHeight;

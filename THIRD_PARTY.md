@@ -26,7 +26,7 @@ system or from vcpkg at build time. Each remains under its own license.
   [Expat](https://libexpat.github.io), [zlib](https://zlib.net)
 - [HarfBuzz](https://harfbuzz.github.io), [FriBidi](https://github.com/fribidi/fribidi),
   [Fontconfig](https://www.fontconfig.org), FreeType
-- Image-format plugin libraries: libjpeg-turbo, libtiff, libwebp, cfitsio, and,
+- Image-format plugin libraries: libjpeg-turbo, libtiff, libwebp, Little CMS (lcms2, MIT), cfitsio, and,
   where installed, GDCM (DICOM), libheif, libjxl, LibRaw, OpenEXR, HDF5 and netCDF
 
 ## Format compatibility

@@ -182,6 +182,7 @@ private:
     QMenu* openWithMenu_ = nullptr;
     QAction* openWithTail_ = nullptr; // the separator above System Default
     QList<QAction*> openWithDetected_; // the system's suggestions for the current file, rebuilt on each show
+    QAction* applyIccAction_ = nullptr; // View > Apply Embedded ICC Profile
     QList<QAction*> openWithActions_; // File > Open With slots, one per configured application
     QList<QAction*> dispatchActions_; // key-only commands outside the menus, still rebindable
     QList<QAction*> bindableActions_; // every menu action whose shortcuts the user may rebind
