@@ -277,9 +277,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     }
 
     connect(viewport_, &VulkanViewport::sceneLoaded, this, [this]() {
-        if (markBrowserDock_->isVisible()) markTreeView_->rebuildFromScene();
-        refreshInfoPanel();
         const auto& scene = viewport_->sceneData();
+        // Marks only exist for .giv scenes: pop the Mark Browser down for a plain image or SVG
+        // (it can still be opened by hand), keep it current for a scene.
+        if (scene.datasets.empty())
+            markBrowserDock_->hide();
+        else if (markBrowserDock_->isVisible())
+            markTreeView_->rebuildFromScene();
+        refreshInfoPanel();
         if (!scene.datasets.empty())
         {
             size_t totalPoints = 0;
