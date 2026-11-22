@@ -38,6 +38,8 @@
 - Shift+B cycles Checkerboard, White and Black only (Theme and Preferences colors stay in the
   menu) and shows a status message on every change.
 - Shift+wheel steps 10 images instead of 1 when the wheel navigates.
+- Every checkable menu item (View options, dock toggles, Loop Animation) says "<Name>: on/off" in the
+  status bar when toggled.
 - Force Opaque no longer turns fully transparent marks, lines and fills visible.
 
 ### Documentation

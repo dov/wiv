@@ -535,6 +535,16 @@ void MainWindow::buildMenus()
     quitAction->setShortcuts({QKeySequence::Quit, QKeySequence("Q")});
 
     auto viewMenu = menuBar()->addMenu("&View");
+    // Acknowledge a checkable item's user toggle in the status bar ("Pixel Grid: on").
+    // Connected to triggered, so programmatic setChecked() and startup restore stay silent.
+    auto reportToggle = [this](QAction* action, const QString& name = {}) {
+        connect(action, &QAction::triggered, this, [this, action, name](bool on) {
+            QString label = name.isEmpty() ? action->text() : name;
+            label.remove('&');
+            if (label.endsWith("...")) label.chop(3);
+            statusBar()->showMessage(QString("%1: %2").arg(label, on ? "on" : "off"), 3000);
+        });
+    };
     // giv's View > Menu Bar. The action is also added to the window so its
     // shortcut still works - and can bring the menu back - while it is hidden.
     menuBarAction_ = viewMenu->addAction("Menu Bar", this, [this](bool show) { menuBar()->setVisible(show); });
@@ -602,7 +612,10 @@ void MainWindow::buildMenus()
     balloonAction_->setCheckable(true);
     balloonAction_->setShortcut(QKeySequence("B"));
 
-    forceOpaqueAction_ = viewMenu->addAction("Force Opaque", viewport_, &VulkanViewport::toggleForceOpaque);
+    forceOpaqueAction_ = viewMenu->addAction("Force Opaque", this, [this]() {
+        viewport_->toggleForceOpaque();
+        statusBar()->showMessage(QString("Force opaque: %1").arg(viewport_->forceOpaque() ? "on" : "off"), 3000);
+    });
     forceOpaqueAction_->setCheckable(true);
     forceOpaqueAction_->setShortcut(QKeySequence("A"));
 
@@ -872,6 +885,7 @@ void MainWindow::buildMenus()
     addAnimAction("Slower Animation", "[", [this]() { viewport_->scaleAnimationSpeed(0.8); });
     addAnimAction("Normal Animation Speed", "\\", [this]() { viewport_->setAnimationSpeed(1.0); });
     QAction* loopAction = addAnimAction("Loop Animation", "Shift+K", [this](bool on) { viewport_->setAnimationLooping(on); });
+    reportToggle(loopAction);
     loopAction->setCheckable(true);
     loopAction->setChecked(viewport_->animationLooping());
     for (QAction* a : animActions_) a->setEnabled(false);
@@ -960,6 +974,15 @@ void MainWindow::buildMenus()
     docksMenu->addAction(colorTableAction_);
     contrastAction_->setEnabled(false);
     colorTableAction_->setEnabled(false);
+
+    // Every other checkable View item, and the dock toggles, say what they did.
+    // (Force Opaque, Measure, Count Marks and Transparency Background already do.)
+    for (QAction* a : {menuBarAction_, thumbnailStripAction_, balloonAction_, applyIccAction_, pixelGridAction_, subPixelAction_,
+                       horizontalFlipAction_, verticalFlipAction_, verticalZoomLockAction_, showImageAction_, colorMapBarAction_,
+                       showMarksAction_, autoFitAction_, rememberViewAction_, autoContrastAction_, autoReloadAction_})
+        reportToggle(a);
+    for (QAction* a : docksMenu->actions())
+        if (a->isCheckable()) reportToggle(a);
 
     auto editMenu = menuBar()->addMenu("&Edit");
     auto copyAction = editMenu->addAction("&Copy", this, &MainWindow::copyCurrentFile);
@@ -1457,7 +1480,7 @@ void MainWindow::exportImage()
     QString lastDir = settings.value("lastExportDir", QDir::currentPath()).toString();
     QString suggested = QDir(lastDir).filePath(QFileInfo(loadedBaseName_.section(", ", 0, 0)).completeBaseName() + ".png");
     QString path = QFileDialog::getSaveFileName(this, "Export Image", suggested,
-                                                "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp)");
+                                                "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp *.qoi)");
     if (path.isEmpty()) return;
     if (QFileInfo(path).suffix().isEmpty()) path += ".png";
     settings.setValue("lastExportDir", QFileInfo(path).absolutePath());
