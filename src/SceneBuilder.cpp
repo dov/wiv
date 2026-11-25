@@ -77,6 +77,20 @@ vsg::ref_ptr<vsg::ShaderStage> loadShader(VkShaderStageFlagBits stage, const std
     return shader;
 }
 
+// Standard "over" blending for color AND alpha. vsg's default writes the source alpha straight into
+// the target (dstAlpha = ZERO), so a fully transparent fragment (e.g. a `$color none` polygon) wiped the
+// alpha of what was already drawn - invisible on screen, but an exported PNG came out transparent there.
+void configureBlend(vsg::ColorBlendState& colorBlend, bool blend)
+{
+    colorBlend.configureAttachments(blend);
+    if (!blend) return;
+    for (auto& a : colorBlend.attachments)
+    {
+        a.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        a.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    }
+}
+
 // Builds a graphics pipeline bind command with the given vertex
 // bindings/attributes, no descriptor sets, and the standard VSG-provided
 // {projection, modelview} push-constant matrices. No depth test (flat 2D
@@ -117,7 +131,7 @@ vsg::ref_ptr<vsg::BindGraphicsPipeline> makePipeline(const std::string& shaderDi
     // transparent fragment mix with whatever was already in the attachment,
     // corrupting the id readback (see marks_label.frag).
     auto colorBlend = vsg::ColorBlendState::create();
-    colorBlend->configureAttachments(blend);
+    configureBlend(*colorBlend, blend);
 
     vsg::GraphicsPipelineStates pipelineStates{
         vsg::VertexInputState::create(bindings, attributes),
@@ -196,7 +210,7 @@ ImagePipeline makeImagePipeline(const std::string& shaderDir, bool rawSamples = 
     depthStencil->depthWriteEnable = VK_FALSE;
 
     auto colorBlend = vsg::ColorBlendState::create();
-    colorBlend->configureAttachments(!labelPass);
+    configureBlend(*colorBlend, !labelPass);
 
     vsg::VertexInputState::Bindings bindings{
         VkVertexInputBindingDescription{0, sizeof(vsg::vec2), VK_VERTEX_INPUT_RATE_VERTEX},
